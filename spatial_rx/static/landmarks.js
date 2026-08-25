@@ -1,11 +1,22 @@
-const COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"];
-const SEL_COLORS = ["#64748b", "#475569", "#78716c", "#57534e"];
+import createScatterplot from "https://esm.sh/regl-scatterplot@1.14.1";
+import { scaleLinear } from "https://esm.sh/d3-scale@4.0.2";
+
+const COLORS = ["#00e5ff", "#ff2d95", "#b8ff00", "#ffb000", "#7c4dff", "#00ffa3"];
+const SEL_COLORS = ["#94a3b8", "#64748b", "#a8a29e", "#78716c"];
 const BUFFERABLE = ["line", "spline", "gradient"];
 const BUFFER_SIDES = [
   { value: "left", label: "Left", title: "Buffer left of the arrow direction" },
   { value: "both", label: "Both", title: "Buffer on both sides" },
   { value: "right", label: "Right", title: "Buffer right of the arrow direction" },
 ];
+
+function decodeF32Base64(b64) {
+  if (!b64) return new Float32Array(0);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Float32Array(bytes.buffer);
+}
 
 function isDarkTheme(node) {
   let el = node;
@@ -81,7 +92,7 @@ function render({ model, el }) {
   });
 
   const icons = {
-    select: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2l7 4-3 1-1 3z"/></svg>`,
+    select: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1.5v11M1.5 7h11"/><path d="M7 1.5L5 3.5M7 1.5L9 3.5M7 12.5L5 10.5M7 12.5L9 10.5M1.5 7L3.5 5M1.5 7L3.5 9M12.5 7L10.5 5M12.5 7L10.5 9"/></svg>`,
     point: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="2.5" fill="currentColor"/></svg>`,
     line: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 11L12 3"/></svg>`,
     polygon: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 2L12 6.5L9.5 12H4.5L2 6.5Z"/></svg>`,
@@ -94,7 +105,7 @@ function render({ model, el }) {
   const eyeIcon = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 7s2.2-3.5 5.5-3.5S12.5 7 12.5 7 10.3 10.5 7 10.5 1.5 7 1.5 7z"/><circle cx="7" cy="7" r="1.6"/></svg>`;
   const eyeOffIcon = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 2l10 10"/><path d="M5.8 3.4C6.2 3.2 6.6 3.1 7 3.1c3.3 0 5.5 3.9 5.5 3.9-.3.5-.8 1.2-1.4 1.8"/><path d="M9.5 9.6C8.8 10.1 7.9 10.5 7 10.5 3.7 10.5 1.5 7 1.5 7c.4-.7 1-1.5 1.8-2.2"/></svg>`;
   const LABELS = {
-    select: "Select",
+    select: "Pan/Zoom",
     lasso: "Lasso",
     polygon: "Polygon",
     rectangle: "Rectangle",
@@ -288,6 +299,10 @@ function render({ model, el }) {
 
   const main = document.createElement("div");
   main.className = "landmarks__main";
+  const plotStack = document.createElement("div");
+  plotStack.className = "landmarks__plot";
+  const webglCanvas = document.createElement("canvas");
+  webglCanvas.className = "landmarks__webgl";
   const canvas = document.createElement("canvas");
   canvas.width = model.get("width");
   canvas.height = model.get("height");
@@ -296,7 +311,19 @@ function render({ model, el }) {
   const tooltip = document.createElement("div");
   tooltip.className = "landmarks__tooltip";
   tooltip.hidden = true;
-  main.appendChild(canvas);
+  const isScatter = () => model.get("renderer") === "scatter";
+  if (isScatter()) {
+    plotStack.appendChild(webglCanvas);
+    plotStack.appendChild(canvas);
+    const legend = document.createElement("div");
+    legend.className = "landmarks__legend";
+    legend.hidden = true;
+    plotStack.appendChild(legend);
+    main.appendChild(plotStack);
+    main.classList.add("landmarks__main--scatter");
+  } else {
+    main.appendChild(canvas);
+  }
   const figure = document.createElement("div");
   figure.className = "landmarks__figure";
   figure.appendChild(topbar);
@@ -310,6 +337,9 @@ function render({ model, el }) {
   const ctx = canvas.getContext("2d");
   const chartImage = new Image();
   let imageLoaded = false;
+  let scatterplot = null;
+  let xScale = null;
+  let yScale = null;
   let draft = [];
   let isDragging = false;
   let dragStart = null;
@@ -349,6 +379,9 @@ function render({ model, el }) {
   }
 
   function pixelToData(pixelX, pixelY) {
+    if (isScatter() && xScale && yScale) {
+      return { x: xScale.invert(pixelX), y: yScale.invert(pixelY) };
+    }
     const [xMin, xMax] = model.get("x_bounds");
     const [yMin, yMax] = model.get("y_bounds");
     const [left, top, right, bottom] = model.get("axes_pixel_bounds");
@@ -360,6 +393,9 @@ function render({ model, el }) {
     };
   }
   function dataToPixel(dataX, dataY) {
+    if (isScatter() && xScale && yScale) {
+      return { x: xScale(dataX), y: yScale(dataY) };
+    }
     const [xMin, xMax] = model.get("x_bounds");
     const [yMin, yMax] = model.get("y_bounds");
     const [left, top, right, bottom] = model.get("axes_pixel_bounds");
@@ -369,8 +405,191 @@ function render({ model, el }) {
     };
   }
   function isInsideAxes(c) {
+    if (isScatter()) {
+      return c.x >= 0 && c.x <= canvas.width && c.y >= 0 && c.y <= canvas.height;
+    }
     const [left, top, right, bottom] = model.get("axes_pixel_bounds");
     return c.x >= left && c.x <= right && c.y >= top && c.y <= bottom;
+  }
+
+  function syncInteractionMode() {
+    if (!isScatter()) return;
+    // Select = pan/zoom via WebGL; drawing modes capture events on the overlay.
+    const pan = currentMode === "select";
+    canvas.style.pointerEvents = pan ? "none" : "auto";
+    canvas.style.cursor = pan ? "default" : "crosshair";
+    if (scatterplot) {
+      scatterplot.set({
+        mouseMode: "panZoom",
+        actionKeyMap: {},
+      });
+    }
+  }
+
+  function pointsFromModel() {
+    const raw = decodeF32Base64(model.get("points_data") || "");
+    const n = Math.floor(raw.length / 4);
+    const pts = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const o = i * 4;
+      pts[i] = [raw[o], raw[o + 1], raw[o + 2], raw[o + 3]];
+    }
+    return pts;
+  }
+
+  function applyViewportSize() {
+    const w = Math.max(1, Number(model.get("width")) || 400);
+    const h = Math.max(1, Number(model.get("height")) || 400);
+    // Size the widget shell; figure panel flex-fills the remaining viewport
+    // (not forced square).
+    container.style.width = `${w}px`;
+    container.style.maxWidth = "100%";
+    body.style.height = `${h}px`;
+    main.style.width = "";
+    main.style.height = "";
+    main.style.maxWidth = "";
+    main.style.aspectRatio = "";
+  }
+
+  function syncCanvasBuffer() {
+    const w = Math.max(1, Math.round(main.clientWidth || model.get("width") || 400));
+    const h = Math.max(1, Math.round(main.clientHeight || model.get("height") || 400));
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    if (isScatter() && webglCanvas) {
+      if (webglCanvas.width !== w) webglCanvas.width = w;
+      if (webglCanvas.height !== h) webglCanvas.height = h;
+      if (scatterplot) scatterplot.set({ width: w, height: h });
+      const bounds = model.get("axes_pixel_bounds") || [0, 0, w, h];
+      if (bounds[2] !== w || bounds[3] !== h) {
+        model.set("axes_pixel_bounds", [0, 0, w, h]);
+        model.save_changes();
+      }
+    }
+    return { w, h };
+  }
+
+  function applyScatterColors() {
+    if (!scatterplot) return;
+    const palette = model.get("point_palette") || ["#60a5fa"];
+    scatterplot.set({
+      pointColor: palette.length ? palette : ["#60a5fa"],
+      pointColorActive: "#ffffff",
+      pointColorHover: "#ffffff",
+      colorBy: "valueA",
+      opacityBy: null,
+      pointOpacity: model.get("point_opacity") ?? 0.75,
+      pointSize: model.get("point_size") ?? 3,
+    });
+  }
+
+  function formatLegendValue(v) {
+    if (!Number.isFinite(v)) return "";
+    const a = Math.abs(v);
+    if (a !== 0 && (a >= 1000 || a < 0.01)) return v.toExponential(1);
+    if (a >= 100) return v.toFixed(0);
+    if (a >= 10) return v.toFixed(1);
+    return v.toFixed(2);
+  }
+
+  function updateScatterLegend() {
+    if (!isScatter()) return;
+    const legend = plotStack.querySelector(".landmarks__legend");
+    if (!legend) return;
+    const mode = model.get("color_by") || "categorical";
+    const title = model.get("legend_title") || "";
+    const palette = model.get("point_palette") || [];
+    const labels = model.get("legend_labels") || [];
+
+    legend.innerHTML = "";
+    if (title) {
+      const t = document.createElement("div");
+      t.className = "landmarks__legend-title";
+      t.textContent = title;
+      legend.appendChild(t);
+    }
+
+    if (mode === "continuous" && palette.length > 1) {
+      const bar = document.createElement("div");
+      bar.className = "landmarks__legend-bar";
+      bar.style.background = `linear-gradient(to top, ${palette[0]}, ${palette[Math.floor(palette.length / 2)]}, ${palette[palette.length - 1]})`;
+      const scale = document.createElement("div");
+      scale.className = "landmarks__legend-scale";
+      const vmax = document.createElement("span");
+      vmax.textContent = formatLegendValue(model.get("color_vmax"));
+      const vmin = document.createElement("span");
+      vmin.textContent = formatLegendValue(model.get("color_vmin"));
+      scale.appendChild(vmax);
+      scale.appendChild(vmin);
+      const row = document.createElement("div");
+      row.className = "landmarks__legend-continuous";
+      row.appendChild(bar);
+      row.appendChild(scale);
+      legend.appendChild(row);
+      legend.hidden = false;
+      return;
+    }
+
+    if (mode === "categorical" && labels.length) {
+      const list = document.createElement("div");
+      list.className = "landmarks__legend-cats";
+      labels.forEach((label, i) => {
+        const row = document.createElement("div");
+        row.className = "landmarks__legend-row";
+        const swatch = document.createElement("span");
+        swatch.className = "landmarks__legend-swatch";
+        swatch.style.background = palette[i % palette.length] || "#888";
+        const text = document.createElement("span");
+        text.className = "landmarks__legend-label";
+        text.textContent = label;
+        row.appendChild(swatch);
+        row.appendChild(text);
+        list.appendChild(row);
+      });
+      legend.appendChild(list);
+      legend.hidden = false;
+      return;
+    }
+
+    legend.hidden = !title;
+  }
+
+  function initScatter() {
+    if (!isScatter() || scatterplot) return;
+    applyViewportSize();
+    const [xMin, xMax] = model.get("x_bounds");
+    const [yMin, yMax] = model.get("y_bounds");
+    xScale = scaleLinear().domain([xMin, xMax]);
+    yScale = scaleLinear().domain([yMin, yMax]);
+    const bg = model.get("scatter_background") || (container.classList.contains("landmarks--dark") ? "#0f172a" : "#ffffff");
+    const { w, h } = syncCanvasBuffer();
+    scatterplot = createScatterplot({
+      canvas: webglCanvas,
+      width: w,
+      height: h,
+      xScale,
+      yScale,
+      backgroundColor: bg,
+      mouseMode: "panZoom",
+      actionKeyMap: {},
+      lassoOnLongPress: false,
+    });
+    applyScatterColors();
+    scatterplot.draw(pointsFromModel());
+    updateScatterLegend();
+    scatterplot.subscribe("view", () => {
+      draw();
+    });
+    syncInteractionMode();
+  }
+
+  function resizeScatter() {
+    if (!isScatter() || !scatterplot) return;
+    const prevW = canvas.width;
+    const prevH = canvas.height;
+    const { w, h } = syncCanvasBuffer();
+    if (w === prevW && h === prevH) return;
+    draw();
   }
 
   function cardinalSample(points, tension, nPerSeg, closed) {
@@ -599,6 +818,66 @@ function render({ model, el }) {
     draw();
   }
 
+  function commitLayerRename(kind, index, nextName, fallback) {
+    const name = String(nextName || "").trim() || fallback;
+    if (kind === "selection") {
+      model.set(
+        "selections",
+        (model.get("selections") || []).map((sel, i) =>
+          i === index ? { ...sel, id: name } : sel
+        )
+      );
+    } else {
+      model.set(
+        "landmarks",
+        (model.get("landmarks") || []).map((lm, i) =>
+          i === index ? { ...lm, id: name } : lm
+        )
+      );
+    }
+    model.save_changes();
+    updateUI();
+    draw();
+  }
+
+  function startLayerRename(kind, index, labelEl) {
+    const items =
+      kind === "selection" ? model.get("selections") || [] : model.get("landmarks") || [];
+    const item = items[index];
+    if (!item || !labelEl || labelEl.dataset.editing === "1") return;
+    const prev = String(item.id ?? "");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "landmarks__label-input";
+    input.value = prev;
+    input.setAttribute("aria-label", "Rename layer");
+    labelEl.dataset.editing = "1";
+    labelEl.replaceWith(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (commit) => {
+      if (done) return;
+      done = true;
+      if (commit) commitLayerRename(kind, index, input.value, prev);
+      else updateUI();
+    };
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        finish(true);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        finish(false);
+      }
+    });
+    input.addEventListener("blur", () => finish(true));
+    input.addEventListener("click", (e) => e.stopPropagation());
+    input.addEventListener("mousedown", (e) => e.stopPropagation());
+    input.addEventListener("dblclick", (e) => e.stopPropagation());
+  }
+
   function rebuildLists() {
     const kind = model.get("selected_kind") || "";
     const idx = model.get("selected_index");
@@ -608,7 +887,19 @@ function render({ model, el }) {
       const row = document.createElement("button");
       row.type = "button";
       row.className = "landmarks__row" + (kind === "selection" && i === idx ? " landmarks__row--active" : "");
-      row.innerHTML = `<span class="landmarks__icon" style="color:${color}">${icons[sel.type] || icons.polygon}</span><span class="landmarks__label">${sel.id}</span>`;
+      const icon = document.createElement("span");
+      icon.className = "landmarks__icon";
+      icon.style.color = color;
+      icon.innerHTML = icons[sel.type] || icons.polygon;
+      const label = document.createElement("span");
+      label.className = "landmarks__label";
+      label.textContent = sel.id;
+      label.title = "Double-click to rename";
+      label.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startLayerRename("selection", i, label);
+      });
       const del = document.createElement("span");
       del.className = "landmarks__row-delete";
       del.textContent = "x";
@@ -626,6 +917,8 @@ function render({ model, el }) {
         updateUI();
         draw();
       });
+      row.appendChild(icon);
+      row.appendChild(label);
       row.appendChild(del);
       row.addEventListener("click", () => setSelected("selection", i));
       selList.appendChild(row);
@@ -636,7 +929,10 @@ function render({ model, el }) {
       const t = lm.type === "gradient" ? "spline" : lm.type;
       const hidden = !!lm.hidden;
       const row = document.createElement("div");
-      row.className = "landmarks__row landmarks__row--static" + (hidden ? " landmarks__row--hidden" : "");
+      row.className =
+        "landmarks__row landmarks__row--static" +
+        (hidden ? " landmarks__row--hidden" : "") +
+        (kind === "landmark" && i === idx ? " landmarks__row--active" : "");
       const hideBtn = document.createElement("button");
       hideBtn.type = "button";
       hideBtn.className = "landmarks__row-hide";
@@ -662,6 +958,12 @@ function render({ model, el }) {
       const label = document.createElement("span");
       label.className = "landmarks__label";
       label.textContent = lm.id;
+      label.title = "Double-click to rename";
+      label.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startLayerRename("landmark", i, label);
+      });
       const del = document.createElement("button");
       del.type = "button";
       del.className = "landmarks__row-delete";
@@ -683,6 +985,7 @@ function render({ model, el }) {
       row.appendChild(icon);
       row.appendChild(label);
       row.appendChild(del);
+      row.addEventListener("click", () => setSelected("landmark", i));
       lmList.appendChild(row);
     });
   }
@@ -1041,7 +1344,7 @@ function render({ model, el }) {
       const i = Math.min(pathPts.length - 2, Math.floor(t * (pathPts.length - 1)));
       const a = pathPts[i], b = pathPts[i + 1];
       const ang = Math.atan2(b.y - a.y, b.x - a.x);
-      const len = 8;
+      const len = 12;
       ctx.beginPath();
       ctx.moveTo(b.x, b.y);
       ctx.lineTo(b.x - len * Math.cos(ang - 0.4), b.y - len * Math.sin(ang - 0.4));
@@ -1054,7 +1357,7 @@ function render({ model, el }) {
 
   function strokeWithHalo(lineWidth, color, dashed) {
     ctx.setLineDash(dashed || []);
-    ctx.lineWidth = lineWidth + 2;
+    ctx.lineWidth = lineWidth + 4;
     ctx.strokeStyle = "#ffffff";
     ctx.stroke();
     ctx.lineWidth = lineWidth;
@@ -1073,7 +1376,7 @@ function render({ model, el }) {
     ctx.fillStyle = hexToRgba(color, opacity);
     ctx.fill();
     ctx.setLineDash([5, 4]);
-    ctx.lineWidth = selected ? 3 : 2;
+    ctx.lineWidth = selected ? 2.5 : 1.5;
     ctx.strokeStyle = color;
     ctx.stroke();
     if (selected && (sel.type === "rectangle" || sel.type === "ellipse")) {
@@ -1095,17 +1398,19 @@ function render({ model, el }) {
 
   function drawLandmark(lm, color, selected) {
     const path = landmarkPath(lm);
-    const stroke = model.get("stroke_width") || 2;
+    const stroke = model.get("stroke_width") || 4;
     const opacity = model.get("landmark_opacity") || 0.25;
-    const lw = selected ? stroke + 1 : stroke;
+    const lw = selected ? stroke + 1.5 : stroke;
+    const markOuter = selected ? 7 : 6;
+    const markInner = selected ? 5 : 4;
     ctx.save();
     if (lm.type === "point" && path.length) {
       ctx.beginPath();
-      ctx.arc(path[0].x, path[0].y, selected ? 5 : 4, 0, Math.PI * 2);
+      ctx.arc(path[0].x, path[0].y, markOuter, 0, Math.PI * 2);
       ctx.fillStyle = "#ffffff";
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(path[0].x, path[0].y, selected ? 4 : 3, 0, Math.PI * 2);
+      ctx.arc(path[0].x, path[0].y, markInner, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
     } else if (lm.type === "shape" && path.length >= 3) {
@@ -1125,7 +1430,7 @@ function render({ model, el }) {
         ctx.fillStyle = hexToRgba(color, opacity * 0.7);
         ctx.fill();
         ctx.setLineDash([4, 4]);
-        ctx.lineWidth = 1;
+        ctx.lineWidth = Math.max(2, lw * 0.5);
         ctx.strokeStyle = hexToRgba(color, 0.7);
         ctx.stroke();
         ctx.setLineDash([]);
@@ -1136,11 +1441,11 @@ function render({ model, el }) {
       if (lm.type === "spline" || lm.type === "gradient" || buffer) drawArrowheads(path, color);
       (lm.vertices || []).map(([x, y]) => dataToPixel(x, y)).forEach((p) => {
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, markOuter - 1, 0, Math.PI * 2);
         ctx.fillStyle = "#ffffff";
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, markInner - 1, 0, Math.PI * 2);
         ctx.fillStyle = color;
         ctx.fill();
       });
@@ -1150,8 +1455,9 @@ function render({ model, el }) {
 
   function drawDraft() {
     ctx.save();
-    const draftColor = "#64748b";
     const isSelDraft = ["lasso", "polygon", "rectangle", "ellipse"].includes(currentMode);
+    const draftColor = isSelDraft ? "#94a3b8" : "#00e5ff";
+    const draftLw = isSelDraft ? 2 : (model.get("stroke_width") || 4);
     const strokeDraft = (lw) => {
       if (isSelDraft) {
         ctx.setLineDash([4, 4]);
@@ -1165,7 +1471,7 @@ function render({ model, el }) {
     if (isLassoing && lassoPath.length >= 2) {
       ctx.beginPath();
       lassoPath.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-      strokeDraft(2);
+      strokeDraft(draftLw);
     } else if (isBoxing && boxStart && boxCurrent) {
       const x = Math.min(boxStart.x, boxCurrent.x), y = Math.min(boxStart.y, boxCurrent.y);
       const w = Math.abs(boxCurrent.x - boxStart.x), h = Math.abs(boxCurrent.y - boxStart.y);
@@ -1175,7 +1481,7 @@ function render({ model, el }) {
       } else {
         ctx.rect(x, y, w, h);
       }
-      strokeDraft(2);
+      strokeDraft(draftLw);
     } else if (draft.length) {
       const verts = draft.map((p) => dataToPixel(p.x, p.y));
       const path =
@@ -1187,15 +1493,15 @@ function render({ model, el }) {
       ctx.beginPath();
       path.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
       if (currentMode === "polygon" || currentMode === "shape") ctx.closePath();
-      strokeDraft(2);
+      strokeDraft(draftLw);
       verts.forEach((p) => {
         ctx.beginPath();
-        ctx.arc(p.x, p.y, isSelDraft ? 3 : 3.5, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, isSelDraft ? 3 : 5, 0, Math.PI * 2);
         ctx.fillStyle = isSelDraft ? draftColor : "#ffffff";
         ctx.fill();
         if (!isSelDraft) {
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
           ctx.fillStyle = draftColor;
           ctx.fill();
         }
@@ -1206,7 +1512,9 @@ function render({ model, el }) {
 
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (imageLoaded) ctx.drawImage(chartImage, 0, 0, canvas.width, canvas.height);
+    if (!isScatter() && imageLoaded) {
+      ctx.drawImage(chartImage, 0, 0, canvas.width, canvas.height);
+    }
     const kind = model.get("selected_kind");
     const selected = model.get("selected_index");
     (model.get("selections") || []).forEach((sel, i) => {
@@ -1227,18 +1535,68 @@ function render({ model, el }) {
   canvas.addEventListener("keydown", handleKeyDown);
 
   chartImage.onload = () => { imageLoaded = true; draw(); };
-  chartImage.src = model.get("chart_base64");
-  model.on("change:chart_base64", () => { imageLoaded = false; chartImage.src = model.get("chart_base64"); });
+  if (!isScatter()) {
+    chartImage.src = model.get("chart_base64");
+  }
+  model.on("change:chart_base64", () => {
+    if (isScatter()) return;
+    imageLoaded = false;
+    chartImage.src = model.get("chart_base64");
+  });
   ["landmarks", "selections", "selected_index", "selected_kind"].forEach((k) => {
     model.on(`change:${k}`, () => { updateUI(); draw(); });
   });
-  model.on("change:mode", () => { currentMode = model.get("mode"); updateModeButtons(); });
-  model.on("change:width", () => { canvas.width = model.get("width"); draw(); });
-  model.on("change:height", () => { canvas.height = model.get("height"); draw(); });
+  model.on("change:mode", () => {
+    currentMode = model.get("mode");
+    updateModeButtons();
+    syncInteractionMode();
+  });
+  model.on("change:width", () => {
+    applyViewportSize();
+    syncCanvasBuffer();
+    draw();
+  });
+  model.on("change:height", () => {
+    applyViewportSize();
+    syncCanvasBuffer();
+    draw();
+  });
+  model.on("change:points_data", () => {
+    if (!scatterplot) return;
+    applyScatterColors();
+    scatterplot.draw(pointsFromModel());
+    updateScatterLegend();
+    draw();
+  });
+  ["point_palette", "point_size", "point_opacity", "color_by", "legend_labels", "legend_title", "color_vmin", "color_vmax"].forEach((k) => {
+    model.on(`change:${k}`, () => {
+      applyScatterColors();
+      if (scatterplot) scatterplot.redraw();
+      updateScatterLegend();
+      draw();
+    });
+  });
 
   updateModeButtons();
   updateUI();
-  draw();
+  applyViewportSize();
+  if (isScatter()) {
+    // Defer until layout has a size.
+    requestAnimationFrame(() => {
+      initScatter();
+      draw();
+      const ro = new ResizeObserver(() => resizeScatter());
+      ro.observe(main);
+    });
+  } else {
+    syncCanvasBuffer();
+    draw();
+    const ro = new ResizeObserver(() => {
+      syncCanvasBuffer();
+      draw();
+    });
+    ro.observe(main);
+  }
 }
 
 export default { render };

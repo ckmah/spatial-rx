@@ -1,6 +1,7 @@
 .gallery {
   position: relative;
   width: 100%;
+  overflow: visible;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   color-scheme: inherit;
 
@@ -126,25 +127,23 @@
   overflow-wrap: anywhere;
 }
 
-.gallery__desc {
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--gallery-muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+#gallery-tooltip-host {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483646;
+  overflow: visible;
 }
 
 .gallery__tooltip {
-  position: absolute;
-  z-index: 20;
-  max-width: 400px;
+  position: fixed;
+  z-index: 2147483647;
+  max-width: min(400px, calc(100vw - 16px));
   padding: 10px 12px;
   border-radius: 8px;
-  background: var(--gallery-tip-bg);
-  color: var(--gallery-tip-fg);
+  background: #111827;
+  color: #f9fafb;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -152,4 +151,14 @@
   word-break: break-word;
   pointer-events: none;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.gallery__tooltip--dark {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.gallery__tooltip--light {
+  background: #111827;
+  color: #f9fafb;
 }

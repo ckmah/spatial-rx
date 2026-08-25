@@ -13,8 +13,8 @@ class GalleryWidget(AnyWidget):
     """Selectable gallery of cards (title required; description and image optional).
 
     Each item is a dict with:
-    - ``title`` (required)
-    - ``description`` (optional)
+    - ``title`` (required; shown on the card)
+    - ``description`` (optional; hover tooltip only, not on the card)
     - ``image`` (optional data URL or http(s) URL)
 
     Synced selection is ``selected_index`` (``-1`` when none).
