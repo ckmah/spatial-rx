@@ -7,9 +7,78 @@ const BUFFER_SIDES = [
   { value: "right", label: "Right", title: "Buffer right of the arrow direction" },
 ];
 
+function isDarkTheme(node) {
+  let el = node;
+  while (el) {
+    if (el.classList) {
+      if (
+        el.classList.contains("dark") ||
+        el.classList.contains("dark-theme") ||
+        el.classList.contains("theme-dark")
+      ) {
+        return true;
+      }
+      if (
+        el.classList.contains("light") ||
+        el.classList.contains("light-theme") ||
+        el.classList.contains("theme-light")
+      ) {
+        return false;
+      }
+    }
+    const theme = el.getAttribute?.("data-theme") || el.getAttribute?.("data-mode");
+    if (theme === "dark") return true;
+    if (theme === "light") return false;
+    el = el.parentElement;
+  }
+  const root = document.documentElement;
+  const body = document.body;
+  for (const n of [root, body]) {
+    if (!n) continue;
+    if (
+      n.classList.contains("dark") ||
+      n.classList.contains("dark-theme") ||
+      n.getAttribute("data-theme") === "dark" ||
+      n.getAttribute("data-mode") === "dark"
+    ) {
+      return true;
+    }
+    if (
+      n.classList.contains("light") ||
+      n.classList.contains("light-theme") ||
+      n.getAttribute("data-theme") === "light" ||
+      n.getAttribute("data-mode") === "light"
+    ) {
+      return false;
+    }
+  }
+  return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+}
+
+function syncThemeClass(container) {
+  const dark = isDarkTheme(container.parentElement || container);
+  container.classList.toggle("landmarks--dark", dark);
+  container.classList.toggle("landmarks--light", !dark);
+}
+
 function render({ model, el }) {
   const container = document.createElement("div");
   container.className = "landmarks";
+  syncThemeClass(container);
+  const themeObserver = new MutationObserver(() => syncThemeClass(container));
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class", "data-theme", "data-mode"],
+  });
+  if (document.body) {
+    themeObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class", "data-theme", "data-mode"],
+    });
+  }
+  window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", () => {
+    syncThemeClass(container);
+  });
 
   const icons = {
     select: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2l7 4-3 1-1 3z"/></svg>`,
@@ -37,18 +106,13 @@ function render({ model, el }) {
   };
 
   const availableModes = model.get("modes") || [];
-  const SELECT_MODES = ["lasso", "polygon", "rectangle", "ellipse"].filter((m) =>
+  const SELECT_MODES = ["select", "lasso"].filter((m) =>
     availableModes.includes(m)
   );
   const LANDMARK_MODES = ["point", "line", "spline", "shape"].filter((m) =>
     availableModes.includes(m)
   );
-  const hasSelect = availableModes.includes("select");
-  const modes = [
-    ...(hasSelect ? ["select"] : []),
-    ...SELECT_MODES,
-    ...LANDMARK_MODES,
-  ];
+  const modes = [...SELECT_MODES, ...LANDMARK_MODES];
   const modeButtons = {};
   let currentMode = model.get("mode") || "select";
   if (!modes.includes(currentMode)) currentMode = modes[0] || "select";
@@ -104,14 +168,17 @@ function render({ model, el }) {
   topbar.className = "landmarks__topbar";
   topbar.setAttribute("role", "toolbar");
   topbar.setAttribute("aria-label", "Drawing tools");
+
+  const modesBar = document.createElement("div");
+  modesBar.className = "landmarks__topbar-modes";
   const toolGroups = [];
-  if (hasSelect) toolGroups.push(makeToolGroup("Select", ["select"]));
-  if (SELECT_MODES.length) toolGroups.push(makeToolGroup("Selections", SELECT_MODES));
+  if (SELECT_MODES.length) toolGroups.push(makeToolGroup("Select", SELECT_MODES));
   if (LANDMARK_MODES.length) toolGroups.push(makeToolGroup("Landmarks", LANDMARK_MODES));
   toolGroups.forEach((group, i) => {
-    if (i) topbar.appendChild(makeSep());
-    topbar.appendChild(group);
+    if (i) modesBar.appendChild(makeSep());
+    modesBar.appendChild(group);
   });
+  topbar.appendChild(modesBar);
 
   const body = document.createElement("div");
   body.className = "landmarks__body";
@@ -151,6 +218,7 @@ function render({ model, el }) {
   sidebar.appendChild(makeSectionSep());
 
   const toolsSection = makeSection("Layer tools");
+  toolsSection.classList.add("landmarks__section--tools");
   const toolsHint = document.createElement("div");
   toolsHint.className = "landmarks__hint";
   toolsHint.textContent = "Select a landmark to edit its parameters.";
@@ -160,13 +228,18 @@ function render({ model, el }) {
   toolsFor.hidden = true;
   toolsSection.appendChild(toolsFor);
 
-  const paramWrap = document.createElement("label");
-  paramWrap.className = "landmarks__param";
-  paramWrap.hidden = true;
-  const paramLabel = document.createElement("span");
-  paramLabel.className = "landmarks__label";
-  paramLabel.textContent = "tension";
-  paramWrap.appendChild(paramLabel);
+  function makeTitledControl(titleText) {
+    const wrap = document.createElement("div");
+    wrap.className = "landmarks__side-control";
+    wrap.hidden = true;
+    const title = document.createElement("span");
+    title.className = "landmarks__side-control-title";
+    title.textContent = titleText;
+    wrap.appendChild(title);
+    return { wrap, title };
+  }
+
+  const { wrap: paramWrap } = makeTitledControl("tension");
   const paramInput = document.createElement("input");
   paramInput.type = "range";
   paramInput.min = "0";
@@ -180,13 +253,7 @@ function render({ model, el }) {
   paramWrap.appendChild(paramValue);
   toolsSection.appendChild(paramWrap);
 
-  const bufferWrap = document.createElement("div");
-  bufferWrap.className = "landmarks__group";
-  bufferWrap.hidden = true;
-  const bufferSideLabel = document.createElement("span");
-  bufferSideLabel.className = "landmarks__label";
-  bufferSideLabel.textContent = "buffer side";
-  bufferWrap.appendChild(bufferSideLabel);
+  const { wrap: bufferSideWrap } = makeTitledControl("buffer");
   const seg = document.createElement("div");
   seg.className = "landmarks__seg";
   seg.setAttribute("role", "group");
@@ -202,13 +269,10 @@ function render({ model, el }) {
     segButtons[value] = btn;
     seg.appendChild(btn);
   });
-  bufferWrap.appendChild(seg);
-  const bufferWidthWrap = document.createElement("label");
-  bufferWidthWrap.className = "landmarks__param";
-  const bufferWidthLabel = document.createElement("span");
-  bufferWidthLabel.className = "landmarks__label";
-  bufferWidthLabel.textContent = "width";
-  bufferWidthWrap.appendChild(bufferWidthLabel);
+  bufferSideWrap.appendChild(seg);
+  toolsSection.appendChild(bufferSideWrap);
+
+  const { wrap: bufferWidthWrap } = makeTitledControl("width");
   const bufferInput = document.createElement("input");
   bufferInput.type = "range";
   bufferInput.min = "0";
@@ -219,8 +283,7 @@ function render({ model, el }) {
   bufferValue.className = "landmarks__param-value";
   bufferValue.textContent = "0";
   bufferWidthWrap.appendChild(bufferValue);
-  bufferWrap.appendChild(bufferWidthWrap);
-  toolsSection.appendChild(bufferWrap);
+  toolsSection.appendChild(bufferWidthWrap);
   sidebar.appendChild(toolsSection);
 
   const main = document.createElement("div");
@@ -234,9 +297,12 @@ function render({ model, el }) {
   tooltip.className = "landmarks__tooltip";
   tooltip.hidden = true;
   main.appendChild(canvas);
+  const figure = document.createElement("div");
+  figure.className = "landmarks__figure";
+  figure.appendChild(topbar);
+  figure.appendChild(main);
   body.appendChild(sidebar);
-  body.appendChild(main);
-  container.appendChild(topbar);
+  body.appendChild(figure);
   container.appendChild(body);
   container.appendChild(tooltip);
   el.appendChild(container);
@@ -636,7 +702,8 @@ function render({ model, el }) {
     const usesBuffer = !!selected && BUFFERABLE.includes(selected.type);
 
     paramWrap.hidden = !usesTension;
-    bufferWrap.hidden = !usesBuffer;
+    bufferSideWrap.hidden = !usesBuffer;
+    bufferWidthWrap.hidden = !usesBuffer;
     toolsHint.hidden = usesTension || usesBuffer;
     toolsFor.hidden = !selected;
     if (selected) toolsFor.textContent = `for ${selected.id}`;

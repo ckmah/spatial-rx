@@ -17,9 +17,6 @@ if TYPE_CHECKING:
 _DEFAULT_MODES = [
     "select",
     "lasso",
-    "polygon",
-    "rectangle",
-    "ellipse",
     "point",
     "line",
     "spline",

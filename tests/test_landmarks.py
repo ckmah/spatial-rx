@@ -21,8 +21,29 @@ def test_defaults():
     plt.close(fig)
     assert w.mode == "select"
     assert "spline" in w.modes and "shape" in w.modes
+    assert "lasso" in w.modes
+    assert "polygon" not in w.modes
     assert not hasattr(w, "active_selection_id")
     assert not hasattr(w, "distances")
+
+
+def test_gallery_requires_title():
+    from spatial_rx import GalleryWidget
+    import pytest
+
+    with pytest.raises(ValueError):
+        GalleryWidget(items=[{"description": "no title"}])
+    g = GalleryWidget(
+        items=[
+            {"title": "A", "description": "alpha", "image": "data:image/svg+xml,x"},
+            {"title": "B"},
+        ],
+        selected_index=0,
+        columns=4,
+    )
+    assert g.selected_index == 0
+    assert len(g.items) == 2
+    assert "description" not in g.items[1]
 
 
 def test_get_indices_by_selection_id():
