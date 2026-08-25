@@ -56,6 +56,7 @@ idx = w.get_indices(x, y, selection_id="selection 1")
 ## Demos
 
 - `demos/landmarks.py` — spatial transcriptomics playground (TIFF/CSV under `demos/data/`)
+  [![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/ckmah/spatial-rx/blob/main/demos/landmarks.py)
 
 ### Showcase notebook
 
