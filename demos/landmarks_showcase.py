@@ -136,7 +136,7 @@ def _(mo):
     mo.md(r"""
     # Data layers
 
-    Inspect morphology, segmentation, and transcripts under `demos/data/cells/` [[1]]:
+    Inspect morphology, segmentation, and transcripts under `demos/data/cells/` [1]:
     """)
     return
 
@@ -207,6 +207,22 @@ def _(alt, gene_totals, mo, transcripts):
         align="start",
         gap=1,
     )
+    return
+
+
+@app.cell
+def _(masks, plt, transcripts):
+    fig, ax = plt.subplots()
+    ax.imshow(masks)
+    _scale_factor = 4.5
+    ax.scatter(
+        (transcripts["x"] - transcripts["x"].min()+5) * _scale_factor,
+        (transcripts["y"] - transcripts["y"].min()+6) * _scale_factor,
+        s=0.2,
+        c="white"
+    )
+    ax.set_yinverted(False)
+    ax
     return
 
 
@@ -1506,9 +1522,7 @@ def _(
                 keep = _focus_set
             _d = _d[_d["group"].isin(keep)]
         _order = [
-            g
-            for g in _focus
-            if (not _d.empty and g in set(_d["group"]))
+            g for g in _focus if (not _d.empty and g in set(_d["group"]))
         ]
         if _d.empty:
             chart = mo.md("_No distance rows for this landmark / selection._")
