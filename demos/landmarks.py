@@ -10,7 +10,7 @@
 #     "geopandas",
 #     "shapely",
 #     "scipy",
-#     "spatial-rx",
+#     "spatial-rx[demo]",
 # ]
 #
 # [tool.uv.sources]

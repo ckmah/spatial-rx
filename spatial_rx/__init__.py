@@ -3,4 +3,5 @@
 from .gallery import GalleryWidget
 from .landmarks import LandmarksWidget
 
-__all__ = ["GalleryWidget", "LandmarksWidget"]
+__version__ = "0.1.0"
+__all__ = ["GalleryWidget", "LandmarksWidget", "__version__"]

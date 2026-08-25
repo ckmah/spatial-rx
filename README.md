@@ -14,8 +14,16 @@ More widgets and helpers may land here over time.
 
 ## Install
 
+Library only:
+
 ```bash
-uv sync
+pip install spatial-rx
+```
+
+From source (includes demo notebook deps and test tools):
+
+```bash
+uv sync --extra demo --group dev
 ```
 
 ## LandmarksWidget
@@ -62,7 +70,7 @@ idx = w.get_indices(x, y, selection_id="selection 1")
 Project env (recommended while developing this repo):
 
 ```bash
-uv sync
+uv sync --extra demo --group dev
 uv run marimo edit --no-sandbox demos/landmarks.py
 ```
 

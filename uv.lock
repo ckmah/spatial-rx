@@ -2056,43 +2056,53 @@ name = "spatial-rx"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "altair" },
     { name = "anywidget" },
-    { name = "geopandas" },
-    { name = "marimo" },
     { name = "matplotlib" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "traitlets" },
+]
+
+[package.optional-dependencies]
+demo = [
+    { name = "altair" },
+    { name = "geopandas" },
+    { name = "marimo" },
     { name = "pandas" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "shapely" },
     { name = "tifffile", version = "2026.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "tifffile", version = "2026.8.23", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "traitlets" },
+]
+test = [
+    { name = "pytest" },
 ]
 
-[package.optional-dependencies]
-test = [
+[package.dev-dependencies]
+dev = [
     { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "altair", specifier = ">=6.2.2" },
+    { name = "altair", marker = "extra == 'demo'", specifier = ">=6.2.2" },
     { name = "anywidget", specifier = ">=0.9.2" },
-    { name = "geopandas", specifier = ">=1.1.4" },
-    { name = "marimo", specifier = ">=0.24.0" },
+    { name = "geopandas", marker = "extra == 'demo'", specifier = ">=1.1.4" },
+    { name = "marimo", marker = "extra == 'demo'", specifier = ">=0.24.0" },
     { name = "matplotlib", specifier = ">=3.0" },
     { name = "numpy", specifier = ">=1.24" },
-    { name = "pandas", specifier = ">=3.0.5" },
+    { name = "pandas", marker = "extra == 'demo'", specifier = ">=3.0.5" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.3.3" },
-    { name = "scipy", specifier = ">=1.17.1" },
-    { name = "shapely", specifier = ">=2.1.2" },
-    { name = "tifffile", specifier = ">=2026.3.3" },
-    { name = "traitlets" },
+    { name = "scipy", marker = "extra == 'demo'", specifier = ">=1.17.1" },
+    { name = "shapely", marker = "extra == 'demo'", specifier = ">=2.1.2" },
+    { name = "tifffile", marker = "extra == 'demo'", specifier = ">=2026.3.3" },
+    { name = "traitlets", specifier = ">=5.0" },
 ]
-provides-extras = ["test"]
+provides-extras = ["demo", "test"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.3.3" }]
 
 [[package]]
 name = "stack-data"

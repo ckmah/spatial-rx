@@ -8,3 +8,5 @@ build/
 .DS_Store
 .mypy_cache/
 .ruff_cache/
+demos/__marimo__/
+demos/*.lock
