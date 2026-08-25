@@ -1,4 +1,4 @@
-"""spatial-rx: reactive spatial landmarks for matplotlib and marimo."""
+"""spatial-rx: tools for exploring spatial omics data in notebooks."""
 
 from .gallery import GalleryWidget
 from .landmarks import LandmarksWidget

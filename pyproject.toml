@@ -1,7 +1,7 @@
 [project]
 name = "spatial-rx"
 version = "0.1.0"
-description = "Reactive spatial landmarks for matplotlib, WebGL scatter, and marimo"
+description = "Tools for exploring spatial omics data in notebooks"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }

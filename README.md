@@ -1,16 +1,36 @@
 # spatial-rx
 
-Draw **selections** and **landmarks** on a matplotlib chart or an interactive WebGL scatter, then measure them from a notebook.
+Tools for exploring spatial omics data in notebooks — reactive widgets that stay  
+in sync with your Python analysis.
 
-`LandmarksWidget` is an [anywidget](https://anywidget.dev/) with a top tool bar and a left sidebar:
 
-- **Selections** — lasso, polygon, rectangle, rotatable ellipse
+| Tool                | Role                                                                           |
+| ------------------- | ------------------------------------------------------------------------------ |
+| **LandmarksWidget** | Draw selections and landmarks on tissue coordinates; measure from the notebook |
+| **GalleryWidget**   | Compact card gallery (e.g. analysis recipes / use cases)                       |
+
+
+More widgets and helpers may land here over time.
+
+## Install
+
+```bash
+uv sync
+```
+
+## LandmarksWidget
+
+An [anywidget](https://anywidget.dev/) for spatial coordinates: top tool bar, left
+sidebar, drawing-only synced state.
+
+- **Selections** — lasso, rectangle, rotatable ellipse
 - **Landmarks** — point, line, spline, shape
 - **Layer tools** — spline tension; directional buffer on lines/splines (`left` / `both` / `right`)
 
-Synced state is drawing-only. Use `get_mask` / `get_indices(selection_id=...)` to restrict points. Distance, composition, and gradient tables belong in the notebook.
+Use `get_mask` / `get_indices(selection_id=...)` to restrict points. Distance,
+composition, gradient, and other tables belong in the notebook.
 
-## Matplotlib (static figure)
+### Matplotlib (static figure)
 
 ```python
 from spatial_rx import LandmarksWidget
@@ -19,9 +39,11 @@ w = LandmarksWidget(fig)
 idx = w.get_indices(x, y, selection_id="selection 1")
 ```
 
-## Scatter (pan / zoom)
+### Scatter (pan / zoom)
 
-Interactive points use [regl-scatterplot](https://github.com/flekschas/regl-scatterplot) — the same WebGL engine as [jupyter-scatter](https://github.com/flekschas/jupyter-scatter). In **Pan/Zoom** mode, navigate the scatter; switch to lasso / landmark tools to draw.
+Interactive points use [regl-scatterplot](https://github.com/flekschas/regl-scatterplot)
+(same WebGL engine as [jupyter-scatter](https://github.com/flekschas/jupyter-scatter)).
+In **Pan/Zoom** mode, navigate the scatter; switch to lasso / landmark tools to draw.
 
 ```python
 from spatial_rx import LandmarksWidget
@@ -31,25 +53,22 @@ w.set_color(gene_expression)  # update colors without rebuilding
 idx = w.get_indices(x, y, selection_id="selection 1")
 ```
 
-Demos:
-- `demos/landmarks.py` — synthetic matplotlib landmarks
-- `demos/scatter_landmarks.py` — synthetic WebGL scatter landmarks
-- `demos/landmarks_showcase.py` — spatial transcriptomics playground (TIFF/CSV under `demos/data/`)
+## Demos
 
-## Run the showcase notebook
+- `demos/landmarks.py` — spatial transcriptomics playground (TIFF/CSV under `demos/data/`)
 
-From the repo root, either use the **project** env (recommended while developing `spatial-rx`):
+### Showcase notebook
+
+Project env (recommended while developing this repo):
 
 ```bash
 uv sync
-uv run marimo edit demos/landmarks_showcase.py
-# answer n when asked about sandboxing, or:
-uv run marimo edit --no-sandbox demos/landmarks_showcase.py
+uv run marimo edit --no-sandbox demos/landmarks.py
 ```
 
-Or use the notebook’s **sandboxed** env (PEP 723). The header pins local `spatial-rx` via `[tool.uv.sources]`:
+Sandboxed env (PEP 723; local `spatial-rx` via `[tool.uv.sources]`):
 
 ```bash
-uv run marimo edit --sandbox demos/landmarks_showcase.py
+uv run marimo edit --sandbox demos/landmarks.py
 ```
 

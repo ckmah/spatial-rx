@@ -1,6 +1,6 @@
 # Demo data (TIFF + CSV)
 
-Slices used by `demos/landmarks_showcase.py`.
+Slices used by `demos/landmarks.py`.
 
 ## Layout
 

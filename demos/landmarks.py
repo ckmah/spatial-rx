@@ -395,16 +395,45 @@ def _(gpd, np, pd):
         out["density"] = np.where(maxima > 0, out["count"] / maxima, np.nan)
         return out
 
+    def buffer_polygon(lm, ltype, geom):
+        """Band around a line/spline from landmark buffer_width / buffer_side."""
+        if ltype not in ("line", "spline") or geom.geom_type != "LineString":
+            return None
+        width = float(lm.get("buffer_width") or 0)
+        if width <= 0:
+            return None
+        line = geom
+        side = lm.get("buffer_side") or "both"
+        if side == "right":
+            line = LineString(list(line.coords)[::-1])
+            return line.buffer(width, single_sided=True)
+        if side == "left":
+            return line.buffer(width, single_sided=True)
+        return line.buffer(width)
+
+
     def distances(x, y, groups, landmarks, indices):
+        """Distance to landmark centerline; if buffer > 0, only cells inside the band."""
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
         groups = np.asarray(groups)
         indices = np.asarray(indices, dtype=int)
         points = gpd.GeoSeries(gpd.points_from_xy(x, y))
         rows = []
-        for lid, (ltype, geom) in landmark_geoms(landmarks).items():
+        for lm in landmarks:
+            geoms = landmark_geoms([lm])
+            if not geoms:
+                continue
+            lid, (ltype, geom) = next(iter(geoms.items()))
             dist = points.distance(geom).to_numpy()
+            poly = buffer_polygon(lm, ltype, geom)
+            if poly is not None:
+                inside = points.intersects(poly).to_numpy()
+            else:
+                inside = np.ones(len(points), dtype=bool)
             for i in indices:
+                if not inside[i]:
+                    continue
                 rows.append(
                     {
                         "point_index": int(i),
@@ -417,6 +446,7 @@ def _(gpd, np, pd):
         return pd.DataFrame(rows)
 
     def composition(x, y, groups, landmarks, indices):
+        """Composition inside a shape, or inside a line/spline buffer band."""
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
         groups = np.asarray(groups)
@@ -425,10 +455,18 @@ def _(gpd, np, pd):
         cand = np.zeros(len(x), dtype=bool)
         cand[indices] = True
         rows = []
-        for lid, (ltype, geom) in landmark_geoms(landmarks).items():
-            if ltype != "shape":
+        for lm in landmarks:
+            geoms = landmark_geoms([lm])
+            if not geoms:
                 continue
-            mask = cand & points.intersects(geom).to_numpy()
+            lid, (ltype, geom) = next(iter(geoms.items()))
+            if ltype == "shape":
+                region = geom
+            else:
+                region = buffer_polygon(lm, ltype, geom)
+                if region is None:
+                    continue
+            mask = cand & points.intersects(region).to_numpy()
             subset = groups[mask]
             n = int(mask.sum())
             if n == 0:
@@ -571,11 +609,11 @@ def _(gpd, np, pd):
                     )
         return _row_density(pd.DataFrame(rows))
 
-    return LineString, composition, distances, landmark_geoms
+    return buffer_polygon, composition, distances, landmark_geoms
 
 
 @app.cell(hide_code=True)
-def _(LineString, alt, gpd, gut_xy, landmark_geoms, np, pd):
+def _(alt, buffer_polygon, gpd, gut_xy, landmark_geoms, np, pd):
     def altair_theme(chart, theme="dark"):
         if theme == "dark":
             return (
@@ -600,25 +638,33 @@ def _(LineString, alt, gpd, gut_xy, landmark_geoms, np, pd):
         return ("#e5e7eb", "#b91c1c")
 
     def along_positions(x, y, groups, landmarks, indices, radius=None):
+        """Project cells onto line/spline; membership uses buffer when set."""
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
         groups = np.asarray(groups)
         indices = np.asarray(indices, dtype=int)
         points = gpd.GeoSeries(gpd.points_from_xy(x, y))
-        if radius is None:
-            radius = 0.05 * max(
-                float(np.ptp(x) or 1.0), float(np.ptp(y) or 1.0)
-            )
+        default_radius = (
+            float(radius)
+            if radius is not None
+            else 0.05 * max(float(np.ptp(x) or 1.0), float(np.ptp(y) or 1.0))
+        )
         rows = []
-        for lid, (ltype, geom) in landmark_geoms(landmarks).items():
-            if (
-                ltype not in ("line", "spline")
-                or geom.geom_type != "LineString"
-            ):
+        for lm in landmarks:
+            geoms = landmark_geoms([lm])
+            if not geoms:
+                continue
+            lid, (ltype, geom) = next(iter(geoms.items()))
+            if ltype not in ("line", "spline") or geom.geom_type != "LineString":
                 continue
             dist = points.distance(geom).to_numpy()
+            poly = buffer_polygon(lm, ltype, geom)
+            if poly is not None:
+                inside = points.intersects(poly).to_numpy()
+            else:
+                inside = dist <= default_radius
             for i in indices:
-                if dist[i] > radius:
+                if not inside[i]:
                     continue
                 s = float(geom.project(points.iloc[i], normalized=True))
                 rows.append(
@@ -631,20 +677,6 @@ def _(LineString, alt, gpd, gut_xy, landmark_geoms, np, pd):
                 )
         return pd.DataFrame(rows)
 
-    def buffer_polygon(lm, ltype, geom):
-        if ltype not in ("line", "spline") or geom.geom_type != "LineString":
-            return None
-        width = float(lm.get("buffer_width") or 0)
-        if width <= 0:
-            return None
-        line = geom
-        side = lm.get("buffer_side") or "both"
-        if side == "right":
-            line = LineString(list(line.coords)[::-1])
-            return line.buffer(width, single_sided=True)
-        if side == "left":
-            return line.buffer(width, single_sided=True)
-        return line.buffer(width)
 
     def buffer_composition(x, y, groups, landmarks, indices):
         x = np.asarray(x, dtype=float)
@@ -973,12 +1005,13 @@ def _(LineString, alt, gpd, gut_xy, landmark_geoms, np, pd):
                 )
 
         def spline(lid, verts):
+            _buf = 0.05 * max(float(np.ptp(x) or 1.0), float(np.ptp(y) or 1.0))
             return {
                 "id": lid,
                 "type": "spline",
                 "vertices": verts,
                 "tension": 0.0,
-                "buffer_width": 0.0,
+                "buffer_width": _buf,
                 "buffer_side": "both",
             }
 
@@ -1054,7 +1087,7 @@ def _(LineString, alt, gpd, gut_xy, landmark_geoms, np, pd):
 
 
 @app.cell
-def _(LandmarksWidget, gut_xy, matplotlib, plt, theme):
+def _(LandmarksWidget, gut_xy, matplotlib, np, plt, theme):
     CLASS_COLORS = {
         "Epithelial": "#4c78a8",
         "Immune": "#e45756",
@@ -1135,6 +1168,12 @@ def _(LandmarksWidget, gut_xy, matplotlib, plt, theme):
         for _i, _ct in enumerate(_type_order)
     }
 
+    _span = max(
+        float(np.ptp(gut_xy["x"].to_numpy(dtype=float)) or 1.0),
+        float(np.ptp(gut_xy["y"].to_numpy(dtype=float)) or 1.0),
+    )
+    DEFAULT_BUFFER = 0.05 * _span  # ~5% of extent; band used by measures
+
     landmarks = LandmarksWidget.from_points(
         gut_xy["x"],
         gut_xy["y"],
@@ -1148,6 +1187,7 @@ def _(LandmarksWidget, gut_xy, matplotlib, plt, theme):
         background="#0f172a" if theme == "dark" else "#ffffff",
         mode="select",
         stroke_width=4,
+        default_buffer_width=DEFAULT_BUFFER,
     )
     return CLASS_COLORS, FOCUS_TYPES, group_colors, landmarks
 
@@ -1394,19 +1434,16 @@ def _(
     composition,
     distances,
     gene_pick,
-    gpd,
     group_colors,
     gut_expr,
     gut_xy,
     kde_gene_heatmap,
     kde_row_heatmap,
-    landmark_geoms,
     landmark_pick,
     landmarks_ui,
     measure_controls,
     mo,
     np,
-    pd,
     plot_type,
     recipe_gallery_ui,
     selection_pick,
@@ -1479,37 +1516,7 @@ def _(
 
     def _along_positions(x, y, groups, landmarks, indices, radius=None):
         """Project selected cells onto line/spline landmarks → normalized path position s."""
-        x = np.asarray(x, dtype=float)
-        y = np.asarray(y, dtype=float)
-        groups = np.asarray(groups)
-        indices = np.asarray(indices, dtype=int)
-        points = gpd.GeoSeries(gpd.points_from_xy(x, y))
-        if radius is None:
-            radius = 0.05 * max(
-                float(np.ptp(x) or 1.0), float(np.ptp(y) or 1.0)
-            )
-        rows = []
-        for lid, (ltype, geom) in landmark_geoms(landmarks).items():
-            if (
-                ltype not in ("line", "spline")
-                or geom.geom_type != "LineString"
-            ):
-                continue
-            dist = points.distance(geom).to_numpy()
-            for i in indices:
-                if dist[i] > radius:
-                    continue
-                s = float(geom.project(points.iloc[i], normalized=True))
-                rows.append(
-                    {
-                        "landmark_id": lid,
-                        "landmark_type": ltype,
-                        "group": groups[i],
-                        "s": s,
-                        "distance": float(dist[i]),
-                    }
-                )
-        return pd.DataFrame(rows)
+        return along_positions(x, y, groups, landmarks, indices, radius=radius)
 
     if not _lms:
         chart = mo.md("_Add a landmark on the map to unlock measurements._")
