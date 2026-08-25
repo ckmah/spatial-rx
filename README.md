@@ -61,22 +61,18 @@ w.set_color(gene_expression)  # update colors without rebuilding
 idx = w.get_indices(x, y, selection_id="selection 1")
 ```
 
-## Demos
+## Demo
 
-- `demos/landmarks.py` — spatial transcriptomics playground (TIFF/CSV under `demos/data/`)
+Spatial transcriptomics playground (`demos/landmarks.py`; data under `demos/data/`):
 
-### Showcase notebook
+[![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/ckmah/spatial-rx/blob/main/demos/landmarks.py)
 
-Project env (recommended while developing this repo):
-
-```bash
-uv sync --extra demo --group dev
-uv run marimo edit --no-sandbox demos/landmarks.py
-```
-
-Sandboxed env (PEP 723; local `spatial-rx` via `[tool.uv.sources]`):
+Or run locally:
 
 ```bash
-uv run marimo edit --sandbox demos/landmarks.py
+git clone https://github.com/ckmah/spatial-rx.git
+cd spatial-rx
+uv sync --extra demo
+uv run marimo edit demos/landmarks.py
 ```
 
