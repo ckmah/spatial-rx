@@ -17,15 +17,17 @@ One-time setup (trusted publishing — no API tokens in GitHub secrets):
 
 ## Release flow
 
+1. Dry run on TestPyPI first: Actions → **Publish (TestPyPI)** → Run workflow, then:
+
+```bash
+pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ spatial-rx
+```
+
+2. Trigger publish on PyPI:
+
 ```bash
 # bump spatial_rx/__init__.py __version__
 git commit -am "Release 0.1.1"
 git tag v0.1.1
 git push && git push origin v0.1.1   # triggers publish.yml → PyPI
-```
-
-Dry run on TestPyPI first: Actions → **Publish (TestPyPI)** → Run workflow, then:
-
-```bash
-pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ spatial-rx
 ```

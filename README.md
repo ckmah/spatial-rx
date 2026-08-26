@@ -28,6 +28,8 @@ uv sync --extra demo --group dev
 
 ## LandmarksWidget
 
+![Landmarks widget](assets/landmarks_widget.png)
+
 An [anywidget](https://anywidget.dev/) for spatial coordinates: top tool bar, left
 sidebar, drawing-only synced state.
 
@@ -64,10 +66,6 @@ idx = w.get_indices(x, y, selection_id="selection 1")
 ## Demo
 
 Spatial transcriptomics playground (`demos/landmarks.py`; data under `demos/data/`):
-
-[![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/ckmah/spatial-rx/blob/main/demos/landmarks.py)
-
-Or run locally:
 
 ```bash
 git clone https://github.com/ckmah/spatial-rx.git
