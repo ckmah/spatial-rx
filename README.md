@@ -1,26 +1,24 @@
 # spatial-rx
 
-Tools for exploring spatial omics data in notebooks — reactive widgets that stay  
+Tools for exploring spatial omics data in notebooks — reactive widgets that stay
 in sync with your Python analysis.
 
 
-| Tool                | Role                                                                           |
-| ------------------- | ------------------------------------------------------------------------------ |
-| **LandmarksWidget** | Draw selections and landmarks on tissue coordinates; measure from the notebook |
-| **GalleryWidget**   | Compact card gallery (e.g. analysis recipes / use cases)                       |
+| Tool | Role | Demo |
+| ---- | ---- | ---- |
+| **LandmarksWidget** | Draw selections and landmarks on tissue coordinates; measure from the notebook | [![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/ckmah/spatial-rx/blob/main/demos/landmarks.py) |
+| **GalleryWidget** | Compact card gallery (e.g. analysis recipes / use cases) | [![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/ckmah/spatial-rx/blob/main/demos/gallery.py) |
 
 
 More widgets and helpers may land here over time.
 
 ## Install
 
-Library only:
-
 ```bash
 pip install spatial-rx
 ```
 
-From source (includes demo notebook deps and test tools):
+From source:
 
 ```bash
 uv sync --extra demo --group dev
@@ -30,47 +28,11 @@ uv sync --extra demo --group dev
 
 ![Landmarks widget](assets/landmarks_widget.png)
 
-An [anywidget](https://anywidget.dev/) for spatial coordinates: top tool bar, left
-sidebar, drawing-only synced state.
+Draw selections and landmarks on tissue coordinates (lasso, rectangle, ellipse; point,
+line, spline, shape), with buffers and notebook-side masks via `get_indices`.
 
-- **Selections** — lasso, rectangle, rotatable ellipse
-- **Landmarks** — point, line, spline, shape
-- **Layer tools** — spline tension; directional buffer on lines/splines (`left` / `both` / `right`)
+## GalleryWidget
 
-Use `get_mask` / `get_indices(selection_id=...)` to restrict points. Distance,
-composition, gradient, and other tables belong in the notebook.
+![Gallery widget](assets/gallery_widget.png)
 
-### Matplotlib (static figure)
-
-```python
-from spatial_rx import LandmarksWidget
-
-w = LandmarksWidget(fig)
-idx = w.get_indices(x, y, selection_id="selection 1")
-```
-
-### Scatter (pan / zoom)
-
-Interactive points use [regl-scatterplot](https://github.com/flekschas/regl-scatterplot)
-(same WebGL engine as [jupyter-scatter](https://github.com/flekschas/jupyter-scatter)).
-In **Pan/Zoom** mode, navigate the scatter; switch to lasso / landmark tools to draw.
-
-```python
-from spatial_rx import LandmarksWidget
-
-w = LandmarksWidget.from_points(x, y, color=cell_type, width=900, height=900)
-w.set_color(gene_expression)  # update colors without rebuilding
-idx = w.get_indices(x, y, selection_id="selection 1")
-```
-
-## Demo
-
-Spatial transcriptomics playground (`demos/landmarks.py`; data under `demos/data/`):
-
-```bash
-git clone https://github.com/ckmah/spatial-rx.git
-cd spatial-rx
-uv sync --extra demo
-uv run marimo edit demos/landmarks.py
-```
-
+Selectable image cards for recipes or use cases. Synced selection is `selected_index`.
