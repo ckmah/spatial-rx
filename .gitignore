@@ -10,3 +10,4 @@ build/
 .ruff_cache/
 demos/__marimo__/
 demos/*.lock
+frontend/node_modules/
