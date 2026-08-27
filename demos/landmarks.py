@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "marimo",
+#     "marimo>=0.23.3",
 #     "matplotlib",
 #     "numpy",
 #     "pandas",
@@ -11,6 +11,7 @@
 #     "shapely",
 #     "scipy",
 #     "spatial-rx[demo]",
+#     "pyodide-http; sys_platform == 'emscripten'",
 # ]
 #
 # [tool.uv.sources]
@@ -30,7 +31,7 @@ def _(mo):
 
     This notebook walks through multimodal spatial data and interactive landmark measurements.
 
-    We use two public datasets bundled under `demos/data/` as TIFF + CSV:
+    We use two public datasets (TIFF + CSV under `demos/data/` on GitHub):
 
     1. **Cells / nuclei demo** — morphology + nucleus labels + transcripts from a 10x Xenium Prime FFPE Human Cervical Cancer subset [1].
     2. **Mouse ileum MERFISH** — SPF ileum cross-section from Xu *et al.* [2], cell coordinates + a 14-gene expression panel.
@@ -40,7 +41,7 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(mo):
     mo.vstack(
         [
@@ -77,14 +78,14 @@ def _(mo):
 
 
 @app.cell
-def _(DATA_DIR, mo):
+def _(DATA_URL, mo):
     mo.callout(
         mo.vstack(
             [
                 mo.md(
                     "Analogous analysis in geographical sciences ~ spatial transcriptomics [3]:"
                 ),
-                mo.image(str(DATA_DIR / "figure1_spatial_analogy.png")),
+                mo.image(f"{DATA_URL}/figure1_spatial_analogy.png"),
             ]
         ),
         title="Figure 1",
@@ -94,7 +95,14 @@ def _(DATA_DIR, mo):
 
 @app.cell
 def _():
-    from pathlib import Path
+    import sys
+    from io import BytesIO
+    from urllib.request import urlopen
+
+    if sys.platform == "emscripten":
+        import pyodide_http
+
+        pyodide_http.patch_all()
 
     import altair as alt
     import geopandas as gpd
@@ -108,19 +116,30 @@ def _():
 
     alt.data_transformers.disable_max_rows()
 
-    DATA_DIR = Path(__file__).resolve().parent / "data"
+    DATA_URL = (
+        "https://raw.githubusercontent.com/ckmah/spatial-rx/main/demos/data"
+    )
+
+    def fetch_bytes(rel: str) -> bytes:
+        with urlopen(f"{DATA_URL}/{rel}") as resp:
+            return resp.read()
+
+    def fetch_tif(rel: str):
+        return tifffile.imread(BytesIO(fetch_bytes(rel)))
+
     return (
-        DATA_DIR,
+        DATA_URL,
         GalleryWidget,
         LandmarksWidget,
         alt,
+        fetch_bytes,
+        fetch_tif,
         gpd,
         matplotlib,
         mo,
         np,
         pd,
         plt,
-        tifffile,
     )
 
 
@@ -142,12 +161,11 @@ def _(mo):
 
 
 @app.cell
-def _(DATA_DIR, pd, tifffile):
-    _cells = DATA_DIR / "cells"
-    image = tifffile.imread(_cells / "morphology_rgb.tif")
-    masks = tifffile.imread(_cells / "nucleus_labels_rgb.tif")
-    gene_totals = pd.read_csv(_cells / "gene_totals.csv")
-    transcripts = pd.read_csv(_cells / "transcripts.csv")
+def _(DATA_URL, fetch_tif, pd):
+    image = fetch_tif("cells/morphology_rgb.tif")
+    masks = fetch_tif("cells/nucleus_labels_rgb.tif")
+    gene_totals = pd.read_csv(f"{DATA_URL}/cells/gene_totals.csv")
+    transcripts = pd.read_csv(f"{DATA_URL}/cells/transcripts.csv")
     return gene_totals, image, masks, transcripts
 
 
@@ -241,7 +259,7 @@ def _(mo):
 
 
 @app.cell
-def _(DATA_DIR):
+def _():
     RECIPE_SPECS = [
         {
             "id": "Crypt-villus axis",
@@ -272,20 +290,13 @@ def _(DATA_DIR):
             "description": "Villus-axis genes (Apob, Lgr5, chemokines, neuronal markers) change along crypt-to-tip polarity. Tests whether expression tracks anatomical position rather than cell-type averages alone.",
         },
     ]
-
-    RECIPE_DRAWING_ROOT = DATA_DIR / "recipes"
-    RECIPE_DRAWINGS = {
-        spec["kind"]: RECIPE_DRAWING_ROOT / f"{spec['kind']}.svg"
-        for spec in RECIPE_SPECS
-    }
-    return RECIPE_DRAWINGS, RECIPE_SPECS
+    return (RECIPE_SPECS,)
 
 
 @app.cell
-def _(DATA_DIR, pd):
-    _ileum = DATA_DIR / "ileum"
-    gut_xy = pd.read_csv(_ileum / "cells.csv")
-    gut_expr = pd.read_csv(_ileum / "expr.csv")
+def _(DATA_URL, pd):
+    gut_xy = pd.read_csv(f"{DATA_URL}/ileum/cells.csv")
+    gut_expr = pd.read_csv(f"{DATA_URL}/ileum/expr.csv")
     gene_panel = list(gut_expr.columns)
     return gene_panel, gut_expr, gut_xy
 
@@ -1719,14 +1730,13 @@ def _(
 
 
 @app.cell(hide_code=True)
-def _(GalleryWidget, RECIPE_DRAWINGS, RECIPE_SPECS, mo):
+def _(GalleryWidget, RECIPE_SPECS, fetch_bytes, mo):
     from base64 import b64encode as _b64encode
 
     _items = []
     for _spec in RECIPE_SPECS:
-        _path = RECIPE_DRAWINGS[_spec["kind"]]
         _src = "data:image/svg+xml;base64," + _b64encode(
-            _path.read_bytes()
+            fetch_bytes(f"recipes/{_spec['kind']}.svg")
         ).decode("ascii")
         _items.append(
             {
