@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import traitlets
 from anywidget import AnyWidget
+
+
+from spatial_rx._assets import widget_css, widget_esm
 
 
 class GalleryWidget(AnyWidget):
@@ -14,14 +16,14 @@ class GalleryWidget(AnyWidget):
 
     Each item is a dict with:
     - ``title`` (required; shown on the card)
-    - ``description`` (optional; hover tooltip only, not on the card)
+    - ``description`` (optional; shown under the title on the card)
     - ``image`` (optional data URL or http(s) URL)
 
     Synced selection is ``selected_index`` (``-1`` when none).
     """
 
-    _esm = Path(__file__).parent / "static" / "gallery.js"
-    _css = Path(__file__).parent / "static" / "gallery.css"
+    _esm = widget_esm("gallery")
+    _css = widget_css("gallery")
 
     items = traitlets.List(traitlets.Dict(), default_value=[]).tag(sync=True)
     selected_index = traitlets.Int(-1).tag(sync=True)

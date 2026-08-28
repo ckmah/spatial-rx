@@ -17,7 +17,7 @@ def _(mo):
     mo.md(r"""
     # GalleryWidget
 
-    Compact selectable cards (title, optional description tooltip, optional image).
+    Selectable shadcn Item tiles (title, optional description, optional image).
     Synced selection is `selected_index` (`-1` when none).
     """)
     return

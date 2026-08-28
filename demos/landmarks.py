@@ -1098,7 +1098,7 @@ def _(alt, buffer_polygon, gpd, gut_xy, landmark_geoms, np, pd):
 
 
 @app.cell
-def _(LandmarksWidget, gut_xy, matplotlib, np, plt, theme):
+def _(LandmarksWidget, gut_xy, matplotlib, np, plt):
     CLASS_COLORS = {
         "Epithelial": "#4c78a8",
         "Immune": "#e45756",
@@ -1193,9 +1193,8 @@ def _(LandmarksWidget, gut_xy, matplotlib, np, plt, theme):
         legend_title="Cell class",
         width=1100,
         height=600,
-        point_size=2.5,
+        point_size=2.0,
         point_opacity=0.8,
-        background="#0f172a" if theme == "dark" else "#ffffff",
         mode="select",
         stroke_width=4,
         default_buffer_width=DEFAULT_BUFFER,
@@ -1452,11 +1451,9 @@ def _(
     kde_row_heatmap,
     landmark_pick,
     landmarks_ui,
-    measure_controls,
     mo,
     np,
     plot_type,
-    recipe_gallery_ui,
     selection_pick,
     theme,
     use_case,
@@ -1693,43 +1690,15 @@ def _(
                 x_max=1.0,
             ) or mo.md("_No nearby cells in path bins._")
 
-    _map_panel = mo.vstack(
-        [color_controls, landmarks_ui],
-        gap=0.5,
-    )
-    _gallery_col = mo.vstack(
-        [
-            mo.md("**Use cases**"),
-            mo.md("Click a card for the suggested measure."),
-            recipe_gallery_ui,
-        ],
-        gap=0.35,
-    )
-    _params_and_plot = mo.vstack(
-        [measure_controls, chart],
-        gap=0.5,
-    )
-    # align="start" keeps the params column content-height so the plot
-    # sits under the controls instead of stretching to the gallery height.
-    _measure_panel = mo.hstack(
-        [_gallery_col, _params_and_plot],
-        widths=[1, 3],
-        align="start",
-        gap=2,
-    )
-
     mo.vstack(
-        [
-            mo.md("### Spatial measurements"),
-            _map_panel,
-            _measure_panel,
-        ],
-        gap=2,
+           [mo.md("### Spatial measurements"),
+        color_controls, landmarks_ui],
+        gap=0.5,
     )
-    return
+    return (chart,)
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(GalleryWidget, RECIPE_SPECS, fetch_bytes, mo):
     from base64 import b64encode as _b64encode
 
@@ -1746,9 +1715,37 @@ def _(GalleryWidget, RECIPE_SPECS, fetch_bytes, mo):
             }
         )
 
-    recipe_gallery = GalleryWidget(items=_items, selected_index=0, columns=1)
+    recipe_gallery = GalleryWidget(items=_items, selected_index=0, columns=4)
     recipe_gallery_ui = mo.ui.anywidget(recipe_gallery)
     return (recipe_gallery_ui,)
+
+
+@app.cell(hide_code=True)
+def _(chart, measure_controls, mo, recipe_gallery_ui):
+    _gallery_col = mo.vstack(
+        [
+            mo.md("**Use cases**"),
+            mo.md("Click a card for the suggested measure."),
+            recipe_gallery_ui,
+        ],
+        gap=0.35,
+    )
+    _params_and_plot = mo.vstack(
+        [measure_controls, chart],
+        gap=0.5,
+    )
+    # align="start" keeps the params column content-height so the plot
+    # sits under the controls instead of stretching to the gallery height.
+    _measure_panel = mo.vstack(
+        [_gallery_col, _params_and_plot],
+    )
+    _measure_panel
+    return
+
+
+@app.cell
+def _():
+    return
 
 
 if __name__ == "__main__":
