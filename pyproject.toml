@@ -45,6 +45,7 @@ Issues = "https://github.com/ckmah/spatial-rx/issues"
 [dependency-groups]
 dev = [
     "pytest>=8.3.3",
+    "pyyaml>=6.0",
 ]
 
 [build-system]

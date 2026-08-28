@@ -8,8 +8,9 @@ import { defineConfig } from "vite";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.resolve(rootDir, "../spatial_rx/static/bundled");
+const packageRoot = path.resolve(rootDir, "..");
 
-/** One entry per anywidget that uses shadcn/React. */
+/** One entry per anywidget that uses shadcn/React. Vanilla widgets are not built. */
 const widgetEntries = {
   gallery: path.resolve(rootDir, "src/widgets/gallery/index.tsx"),
 };
@@ -20,6 +21,13 @@ export default defineConfig({
     alias: {
       "@": path.resolve(rootDir, "src"),
     },
+  },
+  server: {
+    // Vanilla HMR entries import spatial_rx/static/*.js from outside frontend/.
+    fs: { allow: [packageRoot] },
+  },
+  define: {
+    "process.env.NODE_ENV": JSON.stringify("production"),
   },
   build: {
     outDir,

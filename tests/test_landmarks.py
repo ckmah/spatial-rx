@@ -1,45 +1,21 @@
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 
 
-def _fig():
-    fig, ax = plt.subplots()
-    ax.scatter([0, 1, 2], [0, 1, 0])
-    ax.set_xlim(-1, 3)
-    ax.set_ylim(-1, 2)
-    return fig
-
-
-def test_defaults():
-    from spatial_rx import LandmarksWidget
-
-    fig = _fig()
-    w = LandmarksWidget(fig)
-    plt.close(fig)
-    assert w.mode == "select"
-    assert w.renderer == "matplotlib"
-    assert "spline" in w.modes and "shape" in w.modes
-    assert "lasso" in w.modes
-    assert "polygon" not in w.modes
-    assert not hasattr(w, "active_selection_id")
-    assert not hasattr(w, "distances")
-
-
-def test_from_points_scatter():
+def test_from_points_defaults():
     from spatial_rx import LandmarksWidget
 
     x = np.array([0.0, 1.0, 2.0, 3.0])
     y = np.array([0.0, 1.0, 0.0, 1.0])
     color = np.array(["a", "b", "a", "c"])
     w = LandmarksWidget.from_points(x, y, color=color, width=400, height=400)
-    assert w.renderer == "scatter"
+    assert w.mode == "select"
     assert w.width == 400 and w.height == 400
     assert len(w.point_palette) == 3
     assert w.points_data
     assert w.x_bounds[0] < 0.0 and w.x_bounds[1] > 3.0
+    assert "spline" in w.modes and "shape" in w.modes
+    assert "lasso" in w.modes
+    assert "polygon" not in w.modes
     w.selections = [
         {
             "id": "selection 1",
@@ -102,9 +78,9 @@ def test_gallery_requires_title():
 def test_get_indices_by_selection_id():
     from spatial_rx import LandmarksWidget
 
-    fig = _fig()
-    w = LandmarksWidget(fig)
-    plt.close(fig)
+    x = np.array([0.0, 1.0, 2.0])
+    y = np.array([0.0, 1.0, 0.0])
+    w = LandmarksWidget.from_points(x, y, width=400, height=400)
     w.selections = [
         {
             "id": "selection 1",
@@ -112,8 +88,6 @@ def test_get_indices_by_selection_id():
             "vertices": [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]],
         }
     ]
-    x = np.array([0.0, 1.0, 2.0])
-    y = np.array([0.0, 1.0, 0.0])
     assert set(w.get_indices(x, y).tolist()) == {0, 1, 2}
     assert set(w.get_indices(x, y, selection_id="all").tolist()) == {0, 1, 2}
     assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {0}
@@ -123,9 +97,9 @@ def test_get_indices_by_selection_id():
 def test_get_mask_rectangle():
     from spatial_rx import LandmarksWidget
 
-    fig = _fig()
-    w = LandmarksWidget(fig)
-    plt.close(fig)
+    x = np.array([0.0, 2.0])
+    y = np.array([0.0, 2.0])
+    w = LandmarksWidget.from_points(x, y, width=400, height=400)
     w.selections = [
         {
             "id": "selection 1",
@@ -137,7 +111,5 @@ def test_get_mask_rectangle():
             "angle": 0.0,
         }
     ]
-    x = np.array([0.0, 2.0])
-    y = np.array([0.0, 2.0])
     mask = w.get_mask(x, y, selection_id="selection 1")
     assert mask[0] and not mask[1]

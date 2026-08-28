@@ -1,16 +1,15 @@
-"""LandmarksWidget: draw selections and landmarks on a matplotlib or scatter chart."""
+"""LandmarksWidget: draw selections and landmarks on a deck.gl point scatter."""
 
 from __future__ import annotations
 
 import base64
 import math
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import traitlets
 from anywidget import AnyWidget
 
-from .chart import extract_axes_info, fig_to_base64
+from ._assets import vanilla_css, vanilla_esm
 from .selection import selection_mask
 
 if TYPE_CHECKING:
@@ -110,7 +109,6 @@ def _encode_colors(
     if finite.size == 0:
         return seq, np.zeros(n, dtype=np.float32), [], 0.0, 1.0
     vmin = float(np.nanmin(finite))
-    # Match prior expression maps: scale to ~99th percentile when spread exists.
     vmax = float(np.nanpercentile(finite, 99))
     if not math.isfinite(vmax) or vmax <= vmin:
         vmax = float(np.nanmax(finite))
@@ -122,15 +120,10 @@ def _encode_colors(
 
 
 class LandmarksWidget(AnyWidget):
-    """Draw selections and landmarks on a matplotlib chart or WebGL scatter.
+    """Draw selections and landmarks as deck.gl layers on an orthographic scatter.
 
-    Matplotlib path::
-
-        w = LandmarksWidget(fig)
-
-    Interactive scatter path (regl-scatterplot, same engine as jupyter-scatter)::
-
-        w = LandmarksWidget.from_points(x, y, color=cell_type)
+    ``LandmarksWidget.from_points(x, y, color=...)`` builds a pan/zoom scatter
+    in cartesian tissue coordinates; landmarks and selections are deck.gl layers.
 
     Synced state is UI-only (``landmarks``, ``selections``, edit highlight).
     Use ``get_mask`` / ``get_indices`` with an explicit ``selection_id``
@@ -142,8 +135,8 @@ class LandmarksWidget(AnyWidget):
     ``shapely.LineString(...).buffer(width, single_sided=True)``.
     """
 
-    _esm = Path(__file__).parent / "static" / "landmarks.js"
-    _css = Path(__file__).parent / "static" / "landmarks.css"
+    _esm = vanilla_esm("landmarks")
+    _css = vanilla_css("landmarks")
 
     mode = traitlets.Unicode("select").tag(sync=True)
     modes = traitlets.List(traitlets.Unicode(), default_value=list(_DEFAULT_MODES)).tag(
@@ -171,10 +164,7 @@ class LandmarksWidget(AnyWidget):
 
     width = traitlets.Int(400).tag(sync=True)
     height = traitlets.Int(400).tag(sync=True)
-    chart_base64 = traitlets.Unicode("").tag(sync=True)
 
-    # Scatter backend (regl-scatterplot / jupyter-scatter engine)
-    renderer = traitlets.Unicode("matplotlib").tag(sync=True)
     points_data = traitlets.Unicode("").tag(sync=True)  # base64 float32 Nx4
     point_palette = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
     color_by = traitlets.Unicode("categorical").tag(sync=True)  # categorical | continuous
@@ -182,9 +172,9 @@ class LandmarksWidget(AnyWidget):
     legend_title = traitlets.Unicode("").tag(sync=True)
     color_vmin = traitlets.Float(0.0).tag(sync=True)
     color_vmax = traitlets.Float(1.0).tag(sync=True)
-    point_size = traitlets.Float(3.0).tag(sync=True)
+    point_size = traitlets.Float(2.0).tag(sync=True)
     point_opacity = traitlets.Float(0.75).tag(sync=True)
-    scatter_background = traitlets.Unicode("").tag(sync=True)
+    plot_background = traitlets.Unicode("").tag(sync=True)
 
     landmark_opacity = traitlets.Float(0.28).tag(sync=True)
     stroke_width = traitlets.Int(4).tag(sync=True)
@@ -194,56 +184,8 @@ class LandmarksWidget(AnyWidget):
         ["left", "both", "right"], default_value="both"
     ).tag(sync=True)
 
-    def __init__(
-        self,
-        fig: Any = None,
-        mode: str = "select",
-        modes: list[str] | None = None,
-        landmark_opacity: float = 0.28,
-        stroke_width: int = 4,
-        default_tension: float = 0.0,
-        default_buffer_width: float = 0.0,
-        default_buffer_side: str = "both",
-        **kwargs: Any,
-    ) -> None:
-        if fig is None:
-            raise TypeError(
-                "LandmarksWidget(fig) requires a matplotlib figure; "
-                "use LandmarksWidget.from_points(x, y, ...) for the scatter backend"
-            )
-
-        x_bounds, y_bounds, axes_pixel_bounds, width_px, height_px, x_scale, y_scale = (
-            extract_axes_info(fig)
-        )
-        chart_base64 = fig_to_base64(fig)
-        self._x_scale = x_scale
-        self._y_scale = y_scale
-
-        if x_scale == "log":
-            x_bounds = (math.log10(x_bounds[0]), math.log10(x_bounds[1]))
-        if y_scale == "log":
-            y_bounds = (math.log10(y_bounds[0]), math.log10(y_bounds[1]))
-
-        if modes is None:
-            modes = list(_DEFAULT_MODES)
-
-        super().__init__(
-            mode=mode,
-            modes=modes,
-            x_bounds=x_bounds,
-            y_bounds=y_bounds,
-            axes_pixel_bounds=axes_pixel_bounds,
-            width=width_px,
-            height=height_px,
-            chart_base64=chart_base64,
-            renderer="matplotlib",
-            landmark_opacity=landmark_opacity,
-            stroke_width=stroke_width,
-            default_tension=default_tension,
-            default_buffer_width=default_buffer_width,
-            default_buffer_side=default_buffer_side,
-            **kwargs,
-        )
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise TypeError("Use LandmarksWidget.from_points(x, y, ...)")
 
     @classmethod
     def from_points(
@@ -256,7 +198,7 @@ class LandmarksWidget(AnyWidget):
         continuous_range: tuple[str, str] | None = None,
         width: int = 900,
         height: int = 900,
-        point_size: float = 3.0,
+        point_size: float = 2.0,
         point_opacity: float = 0.75,
         background: str | None = None,
         legend_title: str = "",
@@ -269,15 +211,15 @@ class LandmarksWidget(AnyWidget):
         default_buffer_side: str = "both",
         **kwargs: Any,
     ) -> "LandmarksWidget":
-        """Build a pan/zoom WebGL scatter with the landmark overlay.
-
-        Points are rendered with regl-scatterplot (the engine behind
-        jupyter-scatter). Landmark tools share the same data-coordinate API as
-        the matplotlib-backed widget.
+        """Build a pan/zoom deck.gl scatter with landmark and selection layers.
 
         ``width`` / ``height`` size the widget shell in CSS pixels. The figure
         panel expands to fill the remaining viewport beside the sidebar (not
-        forced square); canvases sync to that laid-out size.
+        forced square); canvases sync to that laid-out size. ``background``
+        defaults to the widget chrome color so the scatter matches the rest of
+        the UI. ``point_size`` is marker radius in the same units as ``x`` /
+        ``y`` (e.g. 2.0 for a 2 µm radius on micron coordinates); screen size
+        scales with zoom and is not clamped to a minimum pixel size.
         """
         import numpy as np
 
@@ -295,7 +237,6 @@ class LandmarksWidget(AnyWidget):
             xmax = xmin + 1.0
         if ymax <= ymin:
             ymax = ymin + 1.0
-        # Small pad so edge points aren't clipped.
         pad_x = 0.02 * (xmax - xmin)
         pad_y = 0.02 * (ymax - ymin)
         xmin, xmax = xmin - pad_x, xmax + pad_x
@@ -334,8 +275,6 @@ class LandmarksWidget(AnyWidget):
             axes_pixel_bounds=(0.0, 0.0, float(width), float(height)),
             width=int(width),
             height=int(height),
-            chart_base64="",
-            renderer="scatter",
             points_data=_encode_f32(points),
             point_palette=list(palette),
             color_by=color_mode,
@@ -345,7 +284,7 @@ class LandmarksWidget(AnyWidget):
             color_vmax=float(vmax if vmax is not None else 1.0),
             point_size=float(point_size),
             point_opacity=float(point_opacity),
-            scatter_background=background or "",
+            plot_background=background or "",
             landmark_opacity=landmark_opacity,
             stroke_width=stroke_width,
             default_tension=default_tension,
@@ -365,9 +304,7 @@ class LandmarksWidget(AnyWidget):
         legend_title: str | None = None,
         continuous_range: tuple[str, str] | None = None,
     ) -> None:
-        """Replace scatter points/colors (scatter renderer only)."""
-        if self.renderer != "scatter":
-            raise RuntimeError("set_points is only available for the scatter renderer")
+        """Replace scatter points/colors."""
         import numpy as np
 
         x_arr = np.asarray(x, dtype=np.float64).ravel()
@@ -409,9 +346,7 @@ class LandmarksWidget(AnyWidget):
         legend_title: str | None = None,
         continuous_range: tuple[str, str] | None = None,
     ) -> None:
-        """Update point colors without changing x/y (scatter renderer only)."""
-        if self.renderer != "scatter":
-            raise RuntimeError("set_color is only available for the scatter renderer")
+        """Update point colors without changing x/y."""
         x = getattr(self, "_data_x", None)
         y = getattr(self, "_data_y", None)
         if x is None or y is None:
@@ -424,13 +359,6 @@ class LandmarksWidget(AnyWidget):
             legend_title=legend_title,
             continuous_range=continuous_range,
         )
-
-    def _to_display(self, x, y):
-        if self._x_scale == "log":
-            x = math.log10(x)
-        if self._y_scale == "log":
-            y = math.log10(y)
-        return x, y
 
     def clear_selections(self) -> None:
         self.selections = []
@@ -447,16 +375,6 @@ class LandmarksWidget(AnyWidget):
     def clear(self) -> None:
         self.clear_selections()
         self.clear_landmarks()
-
-    def _selection_by_id(self, selection_id: str) -> dict | None:
-        from .selection import selection_by_id
-
-        return selection_by_id(list(self.selections), selection_id)
-
-    def _selection_display_vertices(self, selection: dict) -> list[tuple[float, float]]:
-        from .selection import selection_display_vertices
-
-        return selection_display_vertices(selection)
 
     def get_mask(
         self,

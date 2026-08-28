@@ -28,11 +28,11 @@ function Media({ item }: { item: GalleryItem }) {
         src={item.image}
         alt={item.title}
         draggable={false}
-        className="aspect-[16/10] w-full rounded-sm object-cover"
+        className="max-h-28 w-full object-contain"
       />
     );
   }
-  return <div className="aspect-[16/10] w-full rounded-sm bg-muted" />;
+  return <div className="max-h-28 min-h-16 w-full rounded-sm bg-muted" />;
 }
 
 export function GalleryView({
@@ -56,9 +56,9 @@ export function GalleryView({
   ]);
 
   return (
-    <div className={cn("w-full", dark && "dark")}>
+    <div className={cn("min-w-0 w-full overflow-hidden", dark && "dark")}>
       <div
-        className="grid w-full gap-3"
+        className="grid min-w-0 w-full gap-3"
         style={{ gridTemplateColumns: `repeat(${Math.max(1, columns)}, minmax(0, 1fr))` }}
       >
         {items.map((item, index) => {
@@ -68,7 +68,7 @@ export function GalleryView({
               key={`${item.title}-${index}`}
               type="button"
               aria-pressed={selected}
-              className="w-full text-left"
+              className="min-w-0 w-full overflow-hidden text-left"
               onClick={() => {
                 model.set("selected_index", index);
                 model.save_changes();
@@ -77,15 +77,15 @@ export function GalleryView({
               <Item
                 variant={selected ? "muted" : "outline"}
                 className={cn(
-                  "h-full w-full flex-col items-stretch",
+                  "h-full min-w-0 w-full flex-col flex-nowrap items-stretch overflow-hidden",
                   selected && "border-ring ring-[3px] ring-ring/35",
                 )}
               >
-                <ItemHeader>
+                <ItemHeader className="min-w-0 overflow-hidden">
                   <Media item={item} />
                 </ItemHeader>
-                <ItemContent>
-                  <ItemTitle>{item.title}</ItemTitle>
+                <ItemContent className="min-w-0">
+                  <ItemTitle className="max-w-full truncate">{item.title}</ItemTitle>
                   {item.description ? (
                     <ItemDescription>{item.description}</ItemDescription>
                   ) : null}

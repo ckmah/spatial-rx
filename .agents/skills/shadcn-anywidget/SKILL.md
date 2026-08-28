@@ -15,7 +15,10 @@ Vanilla ESM stays the default for canvas-heavy widgets (`landmarks.js`). Use
 this skill for forms, lists, overlays, and other shadcn composition.
 
 shadcn component APIs and composition rules: [../shadcn/SKILL.md](../shadcn/SKILL.md)
-(run CLI from `frontend/`). Architecture for humans: [../../docs/shadcn-frontend.md](../../docs/shadcn-frontend.md).
+(run CLI from `frontend/`). Architecture for humans: [../../docs/shadcn-frontend.md](../../docs/shadcn-frontend.md),
+[../../docs/widget-packaging.md](../../docs/widget-packaging.md),
+[../../docs/widget-scaffold.md](../../docs/widget-scaffold.md).
+Domain language: [../../CONTEXT.md](../../CONTEXT.md).
 
 ## Reference
 
@@ -32,66 +35,60 @@ shadcn component APIs and composition rules: [../shadcn/SKILL.md](../shadcn/SKIL
 
 ## Add a widget
 
+Declare the Python↔browser contract as **named traitlets** (any shape — not
+gallery's `items` / `selected_index` / `columns`). See
+[widget scaffold](../../docs/widget-scaffold.md).
+
 Complete every step.
 
-1. **Add shadcn components** from `frontend/`:
+1. **Write a traitlet spec** (YAML or CLI flags) — e.g. `points:List[Dict]`,
+   `color:Unicode`, `radius:Float`. Do not copy gallery fields unless building a
+   gallery.
+
+2. **Scaffold**:
+
+   ```bash
+   uv run scripts/scaffold_widget.py <kebab-name> --traitlet '...' --demo
+   # or: uv run scripts/scaffold_widget.py --spec widgets/<name>.yaml --demo
+   ```
+
+   See [widget-scaffold.md](../../docs/widget-scaffold.md#run-the-scaffold).
+
+3. **Add shadcn components** from `frontend/` (if needed):
 
    ```bash
    cd frontend
    npx shadcn@latest add button dialog
    ```
 
-   Done when files exist under `frontend/src/components/ui/`.
+4. **Implement `<Name>View.tsx`** — presentation only; read via `useModel(model,
+   [/* spec traitlet names */])`; on user action `model.set(...)` then
+   `model.save_changes()`. Wrap in `useNotebookTheme(hostEl.parentElement)`.
 
-2. **Scaffold** `frontend/src/widgets/<name>/`:
-   - `<Name>.tsx` — React view; import `@/components/ui/*`
-   - `index.tsx` — `export default { render }`; import `@/styles/globals.css`; mount with `createRoot`
+5. **Implement Python validation** in `__init__` if needed (optional; not generated).
 
-   Done when `index.tsx` matches gallery (`render({ model, el })`).
-
-3. **Wire traitlets** with `frontend/src/hooks/use-model.ts`. On user actions: `model.set(...)` then `model.save_changes()`.
-
-4. **Notebook theme** — `use-notebook-theme.ts`; wrap root in `dark` when needed; pass `hostEl` from `el`.
-
-5. **Vite entry** in `frontend/vite.config.ts` → `widgetEntries`:
-
-   ```ts
-   "my-widget": path.resolve(rootDir, "src/widgets/my-widget/index.tsx"),
-   ```
-
-   Done when the key matches the bundle basename (`my-widget.mjs`).
-
-6. **Python class**:
-
-   ```python
-   from spatial_rx._assets import widget_css, widget_esm
-
-   class MyWidget(AnyWidget):
-       _esm = widget_esm("my-widget")
-       _css = widget_css("my-widget")
-   ```
-
-   Traitlets own state; keep business logic in Python unless purely presentational.
-
-7. **Build and verify**:
+6. **Build and verify**:
 
    ```bash
    cd frontend && npm run build
    uv run pytest
    ```
 
-   Done when `spatial_rx/static/bundled/my-widget.mjs` exists and the demo renders.
+   Done when `spatial_rx/static/bundled/<name>.mjs` exists and the demo renders.
 
-8. **Commit** `spatial_rx/static/bundled/*` (shipped in the wheel). CI runs `npm ci && npm run build` before tests.
+7. **Commit** `spatial_rx/static/bundled/*` (shipped in the wheel). See
+   [widget packaging](../../docs/widget-packaging.md).
 
 ## Dev loop (HMR)
 
 ```bash
 cd frontend && npm run dev
-SPATIAL_RX_WIDGET_DEV=<name> uv run --extra demo marimo run demos/<demo>.py
+SPATIAL_RX_WIDGET_DEV=<name> uv run --extra demo marimo edit demos/<demo>.py
 ```
 
-`_assets.py` serves `http://localhost:5173/src/widgets/<name>/index.tsx?anywidget` when `SPATIAL_RX_WIDGET_DEV` matches.
+`_assets.py` serves the Vite entry when `SPATIAL_RX_WIDGET_DEV` matches.
+Vanilla widgets (`landmarks`): same env var, or `ANYWIDGET_HMR=1` with no Vite
+(see `docs/widget-packaging.md`).
 
 ## Do / don't
 
