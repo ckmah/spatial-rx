@@ -1,3 +1,11 @@
+import {
+  neighborhoodFor as neighborhoodForArgs,
+  patchLandmark,
+  patchNeighborhood,
+  setSelected as setSelectedTrait,
+  withHood,
+} from "./landmarks_state.js";
+
 const DECK_VERSION = "9.1.14";
 // esm.sh resolves @deck.gl/core@^9.1.0 to latest 9.3.x (luma 9.3.6). Pin core on layers.
 const DECK_CORE_URL = `https://esm.sh/@deck.gl/core@${DECK_VERSION}`;
@@ -6,6 +14,14 @@ const OVERLAY_GL = { depthCompare: "always", depthWriteEnabled: false };
 
 const COLORS = ["#00e5ff", "#ff2d95", "#b8ff00", "#ffb000", "#7c4dff", "#00ffa3"];
 const SEL_COLORS = ["#94a3b8", "#64748b", "#a8a29e", "#78716c"];
+const NEIGH_COLOR = "#00e5cc";
+const NEIGH_FILL_ALPHA = 0.3;
+const NEIGH_LINE_ALPHA = 0.9;
+const NEIGH_FILL_FALLBACK = "#00453d";
+const SEED_ROLE = 2;
+const NEIGH_ROLE = 1;
+/** Unselected points shrink when a type/selection is focused. */
+const OTHER_SIZE_SCALE = 0.55;
 const BUFFERABLE = ["line", "spline", "gradient"];
 const BUFFER_SIDES = [
   { value: "left", label: "Left", title: "Buffer left of the drawing direction" },
@@ -21,63 +37,17 @@ function decodeF32Base64(b64) {
   return new Float32Array(bytes.buffer);
 }
 
+function decodeI32Base64(b64) {
+  if (!b64) return new Int32Array(0);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Int32Array(bytes.buffer);
+}
+
 /** CSS/Penner easeOutQuart. */
 function easeOutQuart(t) {
   return 1 - (1 - t) ** 4;
-}
-
-function isDarkTheme(node) {
-  let el = node;
-  while (el) {
-    if (el.classList) {
-      if (
-        el.classList.contains("dark") ||
-        el.classList.contains("dark-theme") ||
-        el.classList.contains("theme-dark")
-      ) {
-        return true;
-      }
-      if (
-        el.classList.contains("light") ||
-        el.classList.contains("light-theme") ||
-        el.classList.contains("theme-light")
-      ) {
-        return false;
-      }
-    }
-    const theme = el.getAttribute?.("data-theme") || el.getAttribute?.("data-mode");
-    if (theme === "dark") return true;
-    if (theme === "light") return false;
-    el = el.parentElement;
-  }
-  const root = document.documentElement;
-  const body = document.body;
-  for (const n of [root, body]) {
-    if (!n) continue;
-    if (
-      n.classList.contains("dark") ||
-      n.classList.contains("dark-theme") ||
-      n.getAttribute("data-theme") === "dark" ||
-      n.getAttribute("data-mode") === "dark"
-    ) {
-      return true;
-    }
-    if (
-      n.classList.contains("light") ||
-      n.classList.contains("light-theme") ||
-      n.getAttribute("data-theme") === "light" ||
-      n.getAttribute("data-mode") === "light"
-    ) {
-      return false;
-    }
-  }
-  return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
-}
-
-function syncThemeClass(container) {
-  const dark = isDarkTheme(container.parentElement || container);
-  container.classList.toggle("landmarks--dark", dark);
-  container.classList.toggle("landmarks--light", !dark);
 }
 
 function cssColorToClear(color) {
@@ -91,56 +61,65 @@ function cssColorToClear(color) {
   return [r / 255, g / 255, b / 255, a / 255 || 1];
 }
 
-function render({ model, el }) {
-  const container = document.createElement("div");
-  container.className = "landmarks";
-  syncThemeClass(container);
-  let applyPlotBackground = () => {};
-  const themeObserver = new MutationObserver(() => {
-    syncThemeClass(container);
-    applyPlotBackground();
-  });
-  themeObserver.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["class", "data-theme", "data-mode"],
-  });
-  if (document.body) {
-    themeObserver.observe(document.body, {
-      attributes: true,
-      attributeFilter: ["class", "data-theme", "data-mode"],
-    });
+export function mountEngine({ model, host }) {
+  if (!host) throw new Error("mountEngine: host element is required");
+
+  const container = host.closest(".landmarks");
+  const body = host.closest(".landmarks__body");
+  const main = host.closest(".landmarks__main") || host.parentElement;
+  if (!container || !body || !main) {
+    throw new Error(
+      "mountEngine: host must sit inside .landmarks > .landmarks__body > .landmarks__main",
+    );
   }
-  window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", () => {
-    syncThemeClass(container);
+
+  host.replaceChildren();
+  host.classList.add("landmarks__plot-host");
+  host.style.position = "relative";
+  host.style.flex = "1 1 auto";
+  host.style.minHeight = "0";
+  host.style.width = "100%";
+  host.style.height = "100%";
+
+  const plotStack = document.createElement("div");
+  plotStack.className = "landmarks__plot";
+  const webglCanvas = document.createElement("canvas");
+  webglCanvas.className = "landmarks__webgl";
+  webglCanvas.tabIndex = 0;
+  const legend = document.createElement("div");
+  legend.className = "landmarks__legend";
+  legend.hidden = true;
+  const tooltip = document.createElement("div");
+  tooltip.className = "landmarks__tooltip";
+  tooltip.hidden = true;
+  plotStack.append(webglCanvas, legend);
+  host.append(plotStack, tooltip);
+
+  // React owns theme class apply (dark / landmarks--dark / landmarks--light).
+  // Re-clear the deck when those classes change on the container.
+  let applyPlotBackground = () => { };
+  const themeObserver = new MutationObserver(() => {
+    applyPlotBackground();
+    if (deckgl) setDeckLayers();
+  });
+  themeObserver.observe(container, {
+    attributes: true,
+    attributeFilter: ["class"],
   });
 
-  const icons = {
-    select: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1.5v11M1.5 7h11"/><path d="M7 1.5L5 3.5M7 1.5L9 3.5M7 12.5L5 10.5M7 12.5L9 10.5M1.5 7L3.5 5M1.5 7L3.5 9M12.5 7L10.5 5M12.5 7L10.5 9"/></svg>`,
-    point: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="2.5" fill="currentColor"/></svg>`,
-    line: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 11L12 3"/></svg>`,
-    polygon: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 2L12 6.5L9.5 12H4.5L2 6.5Z"/></svg>`,
-    lasso: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8c0-3 2-5 4-5s4 2 4 5-2 4-4 4c-1.2 0-2.2-.5-3-1.2"/><path d="M3 11l-1 2"/></svg>`,
-    rectangle: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="3.5" width="9" height="7" rx="0.5"/></svg>`,
-    ellipse: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="7" cy="7" rx="5" ry="3.5"/></svg>`,
-    spline: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 11C4 11 5 3 7 3s3 8 5 8"/><path d="M10 8l2 0 0-2" stroke-linejoin="round"/></svg>`,
-    shape: `<svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 2c2 1 4 3 4 5.5S9 12 7 12 3 10 3 7.5 5 3 7 2z"/></svg>`,
-  };
-  const eyeIcon = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 7s2.2-3.5 5.5-3.5S12.5 7 12.5 7 10.3 10.5 7 10.5 1.5 7 1.5 7z"/><circle cx="7" cy="7" r="1.6"/></svg>`;
-  const eyeOffIcon = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 2l10 10"/><path d="M5.8 3.4C6.2 3.2 6.6 3.1 7 3.1c3.3 0 5.5 3.9 5.5 3.9-.3.5-.8 1.2-1.4 1.8"/><path d="M9.5 9.6C8.8 10.1 7.9 10.5 7 10.5 3.7 10.5 1.5 7 1.5 7c.4-.7 1-1.5 1.8-2.2"/></svg>`;
-  const zoomInIcon = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M7 3v8M3 7h8"/></svg>`;
-  const zoomOutIcon = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 7h8"/></svg>`;
-  const zoomResetIcon = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5.5V2.5H5.5M11.5 5.5V2.5H8.5M11.5 8.5v3H8.5M2.5 8.5v3H5.5"/></svg>`;
-  const LABELS = {
-    select: "Pan/Zoom",
-    lasso: "Lasso",
-    polygon: "Polygon",
-    rectangle: "Rectangle",
-    ellipse: "Ellipse",
-    point: "Point",
-    line: "Line",
-    spline: "Spline",
-    shape: "Shape",
-  };
+  function placeTooltip(text, clientX, clientY) {
+    tooltip.textContent = text;
+    tooltip.hidden = false;
+    const rect = host.getBoundingClientRect();
+    tooltip.style.left = `${clientX - rect.left + 12}px`;
+    tooltip.style.top = `${clientY - rect.top + 12}px`;
+  }
+  function hideTooltip() {
+    tooltip.hidden = true;
+  }
+
+  legend.addEventListener("mousedown", (e) => e.stopPropagation());
+  legend.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
 
   const availableModes = model.get("modes") || [];
   const SELECT_MODES = ["select", "lasso"].filter((m) =>
@@ -150,231 +129,9 @@ function render({ model, el }) {
     availableModes.includes(m)
   );
   const modes = [...SELECT_MODES, ...LANDMARK_MODES];
-  const modeButtons = {};
   let currentMode = model.get("mode") || "select";
   if (!modes.includes(currentMode)) currentMode = modes[0] || "select";
 
-  function placeTooltip(text, clientX, clientY) {
-    tooltip.textContent = text;
-    tooltip.hidden = false;
-    const rect = container.getBoundingClientRect();
-    tooltip.style.left = `${clientX - rect.left + 12}px`;
-    tooltip.style.top = `${clientY - rect.top + 12}px`;
-  }
-  function hideTooltip() {
-    tooltip.hidden = true;
-  }
-
-  function makeToolBtn(mode) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "landmarks__tool-btn";
-    btn.dataset.mode = mode;
-    btn.innerHTML = `<span class="landmarks__icon">${icons[mode]}</span>`;
-    btn.setAttribute("aria-label", LABELS[mode]);
-    btn.addEventListener("click", () => setMode(mode));
-    btn.addEventListener("mouseenter", (e) => placeTooltip(LABELS[mode], e.clientX, e.clientY));
-    btn.addEventListener("mousemove", (e) => placeTooltip(LABELS[mode], e.clientX, e.clientY));
-    btn.addEventListener("mouseleave", hideTooltip);
-    modeButtons[mode] = btn;
-    return btn;
-  }
-
-  function makeSep() {
-    const sep = document.createElement("span");
-    sep.className = "landmarks__topbar-sep";
-    sep.setAttribute("aria-hidden", "true");
-    return sep;
-  }
-
-  function makeToolGroup(title, modes) {
-    const group = document.createElement("div");
-    group.className = "landmarks__tool-group";
-    const label = document.createElement("span");
-    label.className = "landmarks__tool-group-title";
-    label.textContent = title;
-    group.appendChild(label);
-    const tools = document.createElement("div");
-    tools.className = "landmarks__tool-group-tools";
-    modes.forEach((m) => tools.appendChild(makeToolBtn(m)));
-    group.appendChild(tools);
-    return group;
-  }
-
-  const topbar = document.createElement("div");
-  topbar.className = "landmarks__topbar";
-  topbar.setAttribute("role", "toolbar");
-  topbar.setAttribute("aria-label", "Drawing tools");
-
-  const modesBar = document.createElement("div");
-  modesBar.className = "landmarks__topbar-modes";
-  const toolGroups = [];
-  if (SELECT_MODES.length) toolGroups.push(makeToolGroup("Select", SELECT_MODES));
-  if (LANDMARK_MODES.length) toolGroups.push(makeToolGroup("Landmarks", LANDMARK_MODES));
-  toolGroups.forEach((group, i) => {
-    if (i) modesBar.appendChild(makeSep());
-    modesBar.appendChild(group);
-  });
-  topbar.appendChild(modesBar);
-
-  const body = document.createElement("div");
-  body.className = "landmarks__body";
-
-  const sidebar = document.createElement("aside");
-  sidebar.className = "landmarks__sidebar";
-
-  function makeSection(title) {
-    const section = document.createElement("div");
-    section.className = "landmarks__section";
-    const h = document.createElement("div");
-    h.className = "landmarks__section-title";
-    h.textContent = title;
-    section.appendChild(h);
-    return section;
-  }
-
-  function makeSectionSep() {
-    const sep = document.createElement("div");
-    sep.className = "landmarks__section-sep";
-    sep.setAttribute("aria-hidden", "true");
-    return sep;
-  }
-
-  const selSection = makeSection("Selections");
-  const selList = document.createElement("div");
-  selList.className = "landmarks__list";
-  selSection.appendChild(selList);
-  sidebar.appendChild(selSection);
-  sidebar.appendChild(makeSectionSep());
-
-  const lmSection = makeSection("Landmarks");
-  const lmList = document.createElement("div");
-  lmList.className = "landmarks__list";
-  lmSection.appendChild(lmList);
-  sidebar.appendChild(lmSection);
-  sidebar.appendChild(makeSectionSep());
-
-  const toolsSection = makeSection("Layer tools");
-  toolsSection.classList.add("landmarks__section--tools");
-  const toolsHint = document.createElement("div");
-  toolsHint.className = "landmarks__hint";
-  toolsHint.textContent = "Select a landmark to edit its parameters.";
-  toolsSection.appendChild(toolsHint);
-  const toolsFor = document.createElement("div");
-  toolsFor.className = "landmarks__hint";
-  toolsFor.hidden = true;
-  toolsSection.appendChild(toolsFor);
-
-  function makeTitledControl(titleText) {
-    const wrap = document.createElement("div");
-    wrap.className = "landmarks__side-control";
-    wrap.hidden = true;
-    const title = document.createElement("span");
-    title.className = "landmarks__side-control-title";
-    title.textContent = titleText;
-    wrap.appendChild(title);
-    return { wrap, title };
-  }
-
-  const { wrap: paramWrap } = makeTitledControl("tension");
-  const paramInput = document.createElement("input");
-  paramInput.type = "range";
-  paramInput.min = "0";
-  paramInput.max = "1";
-  paramInput.step = "any";
-  paramInput.value = "0";
-  paramWrap.appendChild(paramInput);
-  const paramValue = document.createElement("span");
-  paramValue.className = "landmarks__param-value";
-  paramValue.textContent = "0";
-  paramWrap.appendChild(paramValue);
-  toolsSection.appendChild(paramWrap);
-
-  const { wrap: bufferSideWrap } = makeTitledControl("buffer");
-  const seg = document.createElement("div");
-  seg.className = "landmarks__seg";
-  seg.setAttribute("role", "group");
-  seg.setAttribute("aria-label", "Buffer side");
-  const segButtons = {};
-  BUFFER_SIDES.forEach(({ value, label, title }) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "landmarks__seg-btn";
-    btn.textContent = label;
-    btn.title = title;
-    btn.addEventListener("click", () => updateSelectedLandmark({ buffer_side: value }));
-    segButtons[value] = btn;
-    seg.appendChild(btn);
-  });
-  bufferSideWrap.appendChild(seg);
-  toolsSection.appendChild(bufferSideWrap);
-
-  const { wrap: bufferWidthWrap } = makeTitledControl("width");
-  const bufferInput = document.createElement("input");
-  bufferInput.type = "range";
-  bufferInput.min = "0";
-  bufferInput.step = "any";
-  bufferInput.value = "0";
-  bufferWidthWrap.appendChild(bufferInput);
-  const bufferValue = document.createElement("span");
-  bufferValue.className = "landmarks__param-value";
-  bufferValue.textContent = "0";
-  bufferWidthWrap.appendChild(bufferValue);
-  toolsSection.appendChild(bufferWidthWrap);
-  sidebar.appendChild(toolsSection);
-
-  const main = document.createElement("div");
-  main.className = "landmarks__main";
-  const plotStack = document.createElement("div");
-  plotStack.className = "landmarks__plot";
-  const webglCanvas = document.createElement("canvas");
-  webglCanvas.className = "landmarks__webgl";
-  webglCanvas.tabIndex = 0;
-  const tooltip = document.createElement("div");
-  tooltip.className = "landmarks__tooltip";
-  tooltip.hidden = true;
-  plotStack.appendChild(webglCanvas);
-  const legend = document.createElement("div");
-  legend.className = "landmarks__legend";
-  legend.hidden = true;
-  legend.addEventListener("mousedown", (e) => e.stopPropagation());
-  legend.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
-  plotStack.appendChild(legend);
-  const zoomCtl = document.createElement("div");
-  zoomCtl.className = "landmarks__zoom";
-  zoomCtl.addEventListener("mousedown", (e) => e.stopPropagation());
-  zoomCtl.addEventListener("dblclick", (e) => e.stopPropagation());
-  zoomCtl.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
-  function makeZoomBtn(title, svg, onClick) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "landmarks__zoom-btn";
-    btn.title = title;
-    btn.setAttribute("aria-label", title);
-    btn.innerHTML = `<span class="landmarks__icon">${svg}</span>`;
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      onClick();
-    });
-    return btn;
-  }
-  let zoomBy = () => {};
-  let resetZoom = () => {};
-  zoomCtl.appendChild(makeZoomBtn("Zoom in", zoomInIcon, () => zoomBy(1)));
-  zoomCtl.appendChild(makeZoomBtn("Zoom out", zoomOutIcon, () => zoomBy(-1)));
-  zoomCtl.appendChild(makeZoomBtn("Reset view", zoomResetIcon, () => resetZoom()));
-  plotStack.appendChild(zoomCtl);
-  main.appendChild(plotStack);
-  main.classList.add("landmarks__main--plot");
-  const figure = document.createElement("div");
-  figure.className = "landmarks__figure";
-  figure.appendChild(topbar);
-  figure.appendChild(main);
-  body.appendChild(sidebar);
-  body.appendChild(figure);
-  container.appendChild(body);
-  container.appendChild(tooltip);
-  el.appendChild(container);
 
   let deckgl = null;
   let deckModules = null;
@@ -386,6 +143,63 @@ function render({ model, el }) {
   let fitZoom = null;
   let lastGridStep = null;
   let pointsCache = { key: "", data: [] };
+  let pointRoles = null;
+  let pointRoleMode = false;
+  let hoodEdges = [];
+  let zoomBy = () => { };
+  let resetZoom = () => { };
+  let categoryCodes = null;
+  let neighborGraph = null;
+
+  function refreshCategoryCodes() {
+    const b64 = model.get("category_codes") || "";
+    categoryCodes = b64 ? decodeI32Base64(b64) : null;
+  }
+  refreshCategoryCodes();
+
+  function refreshNeighborGraph() {
+    const indptr = decodeI32Base64(model.get("neighbor_indptr") || "");
+    const indices = decodeI32Base64(model.get("neighbor_indices") || "");
+    const distances = decodeF32Base64(model.get("neighbor_distances") || "");
+    if (!indptr.length) {
+      neighborGraph = null;
+      return;
+    }
+    neighborGraph = {
+      indptr,
+      indices,
+      distances,
+      radiusMax: Number(model.get("neighbor_radius_max")) || 0,
+      kMax: Number(model.get("neighbor_k_max")) || 64,
+    };
+  }
+  refreshNeighborGraph();
+
+  function maxNeighborhoodRadius() {
+    const r = Number(model.get("neighbor_radius_max")) || 0;
+    return r > 0 ? r : maxBufferWidth();
+  }
+
+  function maxNeighborhoodK() {
+    const k = Number(model.get("neighbor_k_max")) || 64;
+    return Math.max(1, k);
+  }
+
+  function activeCategoryIndex() {
+    const cols = model.get("category_columns") || [];
+    const active = model.get("active_category") || "";
+    return cols.findIndex((c) => c.name === active);
+  }
+
+  function categoryCodeAt(i) {
+    const cols = model.get("category_columns") || [];
+    const ci = activeCategoryIndex();
+    const pts = getPointsData();
+    if (ci < 0 || !categoryCodes || !pts.length) {
+      return Math.round(pts[i]?.valueA || 0);
+    }
+    return categoryCodes[ci * pts.length + i];
+  }
   let zoomInterpolator = null;
   let draft = [];
   let isDragging = false;
@@ -490,7 +304,6 @@ function render({ model, el }) {
   }
 
   function updatePointLegend() {
-    const legend = plotStack.querySelector(".landmarks__legend");
     if (!legend) return;
     const mode = model.get("color_by") || "categorical";
     const title = model.get("legend_title") || "";
@@ -526,24 +339,8 @@ function render({ model, el }) {
       return;
     }
 
-    if (mode === "categorical" && labels.length) {
-      const list = document.createElement("div");
-      list.className = "landmarks__legend-cats";
-      labels.forEach((label, i) => {
-        const row = document.createElement("div");
-        row.className = "landmarks__legend-row";
-        const swatch = document.createElement("span");
-        swatch.className = "landmarks__legend-swatch";
-        swatch.style.background = palette[i % palette.length] || "#888";
-        const text = document.createElement("span");
-        text.className = "landmarks__legend-label";
-        text.textContent = label;
-        row.appendChild(swatch);
-        row.appendChild(text);
-        list.appendChild(row);
-      });
-      legend.appendChild(list);
-      legend.hidden = false;
+    if (mode === "categorical") {
+      legend.hidden = true;
       return;
     }
 
@@ -555,9 +352,9 @@ function render({ model, el }) {
     const full =
       h.length === 3
         ? h
-            .split("")
-            .map((c) => c + c)
-            .join("")
+          .split("")
+          .map((c) => c + c)
+          .join("")
         : h.padEnd(6, "0").slice(0, 6);
     const n = Number.parseInt(full, 16);
     return [
@@ -569,21 +366,47 @@ function render({ model, el }) {
   }
 
   function fillColorForPoint(d) {
-    const palette = model.get("point_palette") || ["#60a5fa"];
     const opacity = model.get("point_opacity") ?? 0.75;
     const mode = model.get("color_by") || "categorical";
-    if (mode === "continuous" && palette.length > 1) {
-      const t = Math.max(0, Math.min(1, d.valueA));
-      const idx = t * (palette.length - 1);
-      const lo = Math.floor(idx);
-      const hi = Math.min(palette.length - 1, lo + 1);
-      const frac = idx - lo;
-      const c0 = hexToRgbaBytes(palette[lo], opacity);
-      const c1 = hexToRgbaBytes(palette[hi], opacity);
-      return c0.map((v, i) => Math.round(v + (c1[i] - v) * frac));
+    let rgba;
+    if (mode === "continuous") {
+      const palette = model.get("point_palette") || ["#60a5fa"];
+      if (palette.length > 1) {
+        const t = Math.max(0, Math.min(1, d.valueA));
+        const idx = t * (palette.length - 1);
+        const lo = Math.floor(idx);
+        const hi = Math.min(palette.length - 1, lo + 1);
+        const frac = idx - lo;
+        const c0 = hexToRgbaBytes(palette[lo], opacity);
+        const c1 = hexToRgbaBytes(palette[hi], opacity);
+        rgba = c0.map((v, i) => Math.round(v + (c1[i] - v) * frac));
+      } else {
+        rgba = hexToRgbaBytes(palette[0], opacity);
+      }
+    } else {
+      const cols = model.get("category_columns") || [];
+      const ci = activeCategoryIndex();
+      const col = ci >= 0 ? cols[ci] : null;
+      const palette = (col && col.palette) || model.get("point_palette") || ["#60a5fa"];
+      const code = col ? categoryCodeAt(d.i) : Math.round(d.valueA);
+      rgba = hexToRgbaBytes(palette[((code % palette.length) + palette.length) % palette.length], opacity);
     }
-    const idx = Math.round(d.valueA) % palette.length;
-    return hexToRgbaBytes(palette[(idx + palette.length) % palette.length], opacity);
+    if (!pointRoleMode || !pointRoles) return rgba;
+    const role = pointRoles[d.i] || 0;
+    if (role === SEED_ROLE || role === NEIGH_ROLE) {
+      rgba[3] = 255;
+      return rgba;
+    }
+    rgba[3] = Math.round((rgba[3] || 255) * 0.28);
+    return rgba;
+  }
+
+  function radiusForPoint(d) {
+    const size = model.get("point_size") ?? 2;
+    if (!pointRoleMode || !pointRoles) return size;
+    const role = pointRoles[d.i] || 0;
+    if (role === SEED_ROLE || role === NEIGH_ROLE) return size;
+    return size * OTHER_SIZE_SCALE;
   }
 
   function asPath(points) {
@@ -674,6 +497,7 @@ function render({ model, el }) {
     for (let i = 0; i < n; i++) {
       const o = i * 4;
       data[i] = {
+        i,
         x: xMin + ((raw[o] + 1) / 2) * (xMax - xMin),
         y: yMin + ((raw[o + 1] + 1) / 2) * (yMax - yMin),
         valueA: raw[o + 2],
@@ -748,9 +572,12 @@ function render({ model, el }) {
         ],
       });
     }
-    const border = getComputedStyle(container).getPropertyValue("--lm-border").trim() || "#3a3a3a";
-    const [r, g, bl] = cssColorToClear(border);
-    const color = [Math.round(r * 255), Math.round(g * 255), Math.round(bl * 255), 140];
+    const grid =
+      getComputedStyle(container).getPropertyValue("--lm-grid").trim() ||
+      getComputedStyle(container).getPropertyValue("--lm-border").trim() ||
+      "#94a3b8";
+    const [r, g, bl] = cssColorToClear(grid);
+    const color = [Math.round(r * 255), Math.round(g * 255), Math.round(bl * 255), 160];
     return new PathLayer({
       id: "landmarks-grid",
       data: paths,
@@ -769,24 +596,39 @@ function render({ model, el }) {
     if (!data.length) return null;
     // point_size is radius in the same units as x/y (µm for micron data).
     const size = model.get("point_size") ?? 2;
-    return new ScatterplotLayer({
-      id: "landmarks-points",
-      data,
-      getPosition: (d) => [d.x, d.y, 0],
-      getFillColor: (d) => fillColorForPoint(d),
-      getRadius: size,
-      radiusUnits: "common",
-      radiusMinPixels: 0,
-      pickable: false,
-      updateTriggers: {
-        getFillColor: [
-          model.get("point_palette"),
-          model.get("point_opacity"),
-          model.get("color_by"),
-        ],
-        getRadius: [size],
-      },
-    });
+    const roleTrigger = [
+      size,
+      pointRoleMode,
+      model.get("selected_kind"),
+      model.get("selected_index"),
+      model.get("type_neighborhoods"),
+      model.get("selections"),
+      model.get("active_category"),
+    ];
+    const fillTriggers = [
+      model.get("point_palette"),
+      model.get("point_opacity"),
+      model.get("color_by"),
+      ...roleTrigger,
+    ];
+    return [
+      new ScatterplotLayer({
+        id: "landmarks-points",
+        data,
+        getPosition: (d) => [d.x, d.y, 0],
+        getFillColor: (d) => fillColorForPoint(d),
+        getRadius: (d) => radiusForPoint(d),
+        radiusUnits: "common",
+        radiusMinPixels: 0,
+        stroked: false,
+        filled: true,
+        pickable: false,
+        updateTriggers: {
+          getFillColor: fillTriggers,
+          getRadius: roleTrigger,
+        },
+      }),
+    ];
   }
 
   function buildSelectionLayers() {
@@ -794,18 +636,18 @@ function render({ model, el }) {
     const { PolygonLayer } = deckModules;
     const kind = model.get("selected_kind");
     const selectedIdx = model.get("selected_index");
-    const opacity = model.get("landmark_opacity") || 0.25;
+    const selStroke =
+      getComputedStyle(container).getPropertyValue("--lm-sel-stroke").trim() || "#64748b";
     const data = [];
     (model.get("selections") || []).forEach((sel, i) => {
       const polygon = selectionPolygonData(sel);
       if (polygon.length < 3) return;
-      const hex = SEL_COLORS[i % SEL_COLORS.length];
       const selected = kind === "selection" && i === selectedIdx;
       data.push({
         polygon,
-        fill: hexToRgbaBytes(hex, opacity),
-        line: hexToRgbaBytes(hex, 1),
-        width: selected ? 3 : 1.5,
+        fill: hexToRgbaBytes(selStroke, selected ? 0.08 : 0.04),
+        line: hexToRgbaBytes(selStroke, selected ? 1 : 0.85),
+        width: selected ? 2.5 : 2,
         kind: "selection",
         index: i,
       });
@@ -833,11 +675,13 @@ function render({ model, el }) {
     const { PathLayer, PolygonLayer, ScatterplotLayer } = deckModules;
     const kind = model.get("selected_kind");
     const selectedIdx = model.get("selected_index");
-    const stroke = model.get("stroke_width") || 4;
+    const stroke = model.get("stroke_width") || 2;
     const opacity = model.get("landmark_opacity") || 0.25;
     const polys = [];
     const paths = [];
     const markers = [];
+    const arrows = [];
+    const arrowWorld = pixelsToWorld(14);
     (model.get("landmarks") || []).forEach((lm, i) => {
       if (lm.hidden) return;
       const hex = COLORS[i % COLORS.length];
@@ -852,7 +696,7 @@ function render({ model, el }) {
         markers.push({
           position: [v[0], v[1], 0],
           fill: line,
-          radius: selected ? 6 : 5,
+          radius: selected ? 7 : 6,
           ...pick,
         });
         return;
@@ -880,19 +724,24 @@ function render({ model, el }) {
       if (buffer) {
         polys.push({
           polygon: asPath(buffer),
-          fill: hexToRgbaBytes(hex, opacity * 0.7),
-          line,
-          width: Math.max(1, lw * 0.5),
+          fill: hexToRgbaBytes(NEIGH_COLOR, NEIGH_FILL_ALPHA),
+          line: hexToRgbaBytes(NEIGH_COLOR, NEIGH_LINE_ALPHA),
+          width: 1.5,
           ...pick,
         });
       }
       if (pathPts.length >= 2) {
+        const path = asPath(pathPts);
         paths.push({
-          path: asPath(pathPts),
+          path,
           color: line,
           width: lw,
           ...pick,
         });
+        if (["line", "spline", "gradient"].includes(lm.type)) {
+          const head = arrowHeadPolygon(path, arrowWorld);
+          if (head) arrows.push({ polygon: head, fill: line, line, width: 1, ...pick });
+        }
         (lm.vertices || []).forEach(([x, y]) => {
           markers.push({
             position: [x, y, 0],
@@ -904,11 +753,11 @@ function render({ model, el }) {
       }
     });
     const layers = [];
-    if (polys.length) {
+    if (polys.length || arrows.length) {
       layers.push(
         new PolygonLayer({
           id: "landmark-polygons",
-          data: polys,
+          data: [...polys, ...arrows],
           getPolygon: (d) => d.polygon,
           getFillColor: (d) => d.fill,
           getLineColor: (d) => d.line,
@@ -933,7 +782,7 @@ function render({ model, el }) {
           jointRounded: true,
           capRounded: true,
           pickable: true,
-          widthMinPixels: 2,
+          widthMinPixels: 1,
           parameters: OVERLAY_GL,
         })
       );
@@ -1042,10 +891,155 @@ function render({ model, el }) {
     return layers;
   }
 
+  function pixelsToWorld(px) {
+    const vp = deckgl?.isInitialized ? deckgl.getViewports()?.[0] : null;
+    if (!vp?.unproject) return px;
+    const [x0] = vp.unproject([0, 0]);
+    const [x1] = vp.unproject([px, 0]);
+    return Math.max(Math.abs(x1 - x0), 1e-9);
+  }
+
+  function arrowHeadPolygon(path, size) {
+    if (!path || path.length < 2 || !(size > 0)) return null;
+    const a = path[path.length - 2];
+    const b = path[path.length - 1];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const ux = (b[0] - a[0]) / len;
+    const uy = (b[1] - a[1]) / len;
+    const px = -uy;
+    const py = ux;
+    const tip = [b[0] + ux * size * 0.15, b[1] + uy * size * 0.15];
+    const base = [b[0] - ux * size, b[1] - uy * size];
+    return [
+      tip,
+      [base[0] + px * size * 0.55, base[1] + py * size * 0.55],
+      [base[0] - px * size * 0.55, base[1] - py * size * 0.55],
+    ];
+  }
+
+  function lookupRadiusNeighbors(seedIdxs, r, roles) {
+    // True Euclidean ball — independent of the knn CSR / k_max horizon.
+    if (!(r > 0) || !seedIdxs.length) return;
+    const pts = getPointsData();
+    const r2 = r * r;
+    for (let j = 0; j < pts.length; j++) {
+      if (roles[j] === SEED_ROLE) continue;
+      const pj = pts[j];
+      for (let s = 0; s < seedIdxs.length; s++) {
+        const ps = pts[seedIdxs[s]];
+        const dx = pj.x - ps.x;
+        const dy = pj.y - ps.y;
+        if (dx * dx + dy * dy <= r2) {
+          roles[j] = NEIGH_ROLE;
+          break;
+        }
+      }
+    }
+  }
+
+  function lookupKnnNeighbors(pts, seedIdxs, k) {
+    const edges = [];
+    const neighbors = [];
+    if (!neighborGraph || !seedIdxs.length) return { edges, neighbors };
+    const take = Math.max(1, Math.min(k | 0, neighborGraph.kMax | 0));
+    const { indptr, indices } = neighborGraph;
+    const seen = new Set();
+    for (const si of seedIdxs) {
+      const start = indptr[si] | 0;
+      const end = Math.min(indptr[si + 1] | 0, start + take);
+      const s = pts[si];
+      for (let p = start; p < end; p++) {
+        const j = indices[p] | 0;
+        if (!seen.has(j)) {
+          seen.add(j);
+          neighbors.push(j);
+        }
+        edges.push({
+          path: [
+            [s.x, s.y],
+            [pts[j].x, pts[j].y],
+          ],
+        });
+      }
+    }
+    return { edges, neighbors };
+  }
+
+  function neighHaloFillColor() {
+    const fill =
+      getComputedStyle(container).getPropertyValue("--lm-neigh-fill").trim() ||
+      NEIGH_FILL_FALLBACK;
+    return hexToRgbaBytes(fill, 1);
+  }
+
+  function buildNeighborhoodLayers() {
+    if (!deckModules) return [];
+    const focus = cellLayerFocus();
+    const hood = neighborhoodFor(focus);
+    if (!focus || !hood || hood.neighborhood === "off") return [];
+    const pts = getPointsData();
+    const layers = [];
+    const { PathLayer, ScatterplotLayer } = deckModules;
+    const pick = { kind: focus.kind, index: focus.index };
+    if (hood.neighborhood === "radius") {
+      const r = Number(hood.neighborhood_radius) || 0;
+      if (r <= 0) return [];
+      const centers = [];
+      if (pointRoles) {
+        for (let i = 0; i < pts.length; i++) {
+          if (pointRoles[i] === SEED_ROLE) centers.push({ x: pts[i].x, y: pts[i].y, ...pick });
+        }
+      }
+      if (!centers.length) return [];
+      const rMax = maxNeighborhoodRadius();
+      const radius = rMax > 0 ? Math.min(r, rMax) : r;
+      layers.push(
+        new ScatterplotLayer({
+          id: "neighborhood-radius",
+          data: centers,
+          getPosition: (d) => [d.x, d.y, 0],
+          getRadius: radius,
+          radiusUnits: "common",
+          radiusMinPixels: 0,
+          radiusMaxPixels: 1e7,
+          getFillColor: neighHaloFillColor(),
+          stroked: false,
+          filled: true,
+          pickable: true,
+          // Opaque dim fill (alpha 255) — blend only so circle AA doesn't leave a hard rim.
+          parameters: {
+            ...OVERLAY_GL,
+            depthTest: false,
+            blend: true,
+          },
+          updateTriggers: { getRadius: radius },
+        }),
+      );
+    }
+    if (hood.neighborhood === "knn") {
+      if (!hoodEdges.length) return [];
+      layers.push(
+        new PathLayer({
+          id: "neighborhood-knn",
+          data: hoodEdges.map((e) => ({ ...e, ...pick })),
+          getPath: (d) => d.path,
+          getColor: hexToRgbaBytes(NEIGH_COLOR, 0.45),
+          getWidth: 1.25,
+          widthUnits: "pixels",
+          pickable: true,
+          parameters: OVERLAY_GL,
+        })
+      );
+    }
+    return layers;
+  }
+
   function buildDeckLayers() {
+    prepareFocusGeom();
     return [
       buildGridLayer(),
-      buildPointsLayer(),
+      ...buildNeighborhoodLayers(),
+      ...buildPointsLayer(),
       ...buildSelectionLayers(),
       ...buildLandmarkLayers(),
       ...buildDraftLayers(),
@@ -1145,7 +1139,7 @@ function render({ model, el }) {
     webglCanvas.style.background = bg;
     if (!deckgl) return;
     deckgl.setProps({
-      parameters: { clearColor: cssColorToClear(bg) },
+      parameters: { clearColor: cssColorToClear(bg),  },
       ...(currentViewState ? { viewState: currentViewState } : {}),
     });
     if (typeof deckgl.redraw === "function") deckgl.redraw(true);
@@ -1155,7 +1149,7 @@ function render({ model, el }) {
     if (!deckgl) return;
     const bg = resolvePlotBackground();
     deckgl.setProps({
-      parameters: { clearColor: cssColorToClear(bg) },
+      parameters: { clearColor: cssColorToClear(bg),  },
       ...props,
       ...(currentViewState ? { viewState: currentViewState } : {}),
     });
@@ -1173,8 +1167,8 @@ function render({ model, el }) {
   async function loadDeckModules() {
     if (deckModules) return deckModules;
     // Load core first so luma initializes once at 9.1.x before layers imports.
-    const core = await import(DECK_CORE_URL);
-    const layers = await import(DECK_LAYERS_URL);
+    const core = await import(/* @vite-ignore */ DECK_CORE_URL);
+    const layers = await import(/* @vite-ignore */ DECK_LAYERS_URL);
     deckModules = {
       Deck: core.Deck,
       OrthographicView: core.OrthographicView,
@@ -1221,37 +1215,25 @@ function render({ model, el }) {
         onViewStateChange: ({ viewState }) => {
           currentViewState = viewState;
           deckgl.setProps({ viewState });
-          // World-sized points follow zoom in the GPU; only rebuild when the
-          // nice grid step bucket changes so button/wheel zoom stays smooth.
           maybeRefreshGrid();
         },
         onClick: (info) => {
           if (currentMode !== "select") return;
           const obj = info?.object;
-          if (obj?.kind === "landmark" || obj?.kind === "selection") {
+          if (obj?.kind === "landmark" || obj?.kind === "selection" || obj?.kind === "type") {
             setSelected(obj.kind, obj.index);
           } else {
             setSelected("", -1);
           }
         },
-        onHover: (info, evt) => {
+        onHover: (info) => {
           const obj = info?.object;
-          if (obj?.kind === "landmark" || obj?.kind === "selection") {
+          if (obj?.kind === "landmark" || obj?.kind === "selection" || obj?.kind === "type") {
             webglCanvas.style.cursor = "pointer";
-            const items =
-              obj.kind === "landmark" ? model.get("landmarks") : model.get("selections");
-            const name = items?.[obj.index]?.id;
-            const src = evt?.srcEvent || evt;
-            if (name && src?.clientX != null) {
-              placeTooltip(String(name), src.clientX, src.clientY);
-              return;
-            }
-          } else if (currentMode === "select") {
-            webglCanvas.style.cursor = "grab";
-          } else {
-            webglCanvas.style.cursor = "crosshair";
+            return;
           }
-          if (currentMode === "select") hideTooltip();
+          if (currentMode === "select") webglCanvas.style.cursor = "grab";
+          else webglCanvas.style.cursor = "crosshair";
         },
         onLoad: () => {
           updatePointLegend();
@@ -1377,15 +1359,129 @@ function render({ model, el }) {
     return [...offsetPathData(points, width), ...offsetPathData(points, -width).reverse()];
   }
 
-  function updateSelectedLandmark(patch) {
-    if (model.get("selected_kind") !== "landmark") return;
-    const idx = model.get("selected_index");
-    model.set(
-      "landmarks",
-      (model.get("landmarks") || []).map((lm, i) => (i === idx ? { ...lm, ...patch } : lm))
+  function cellLayerFocus() {
+    const kind = model.get("selected_kind");
+    const index = model.get("selected_index");
+    if (kind === "type" || kind === "selection") return { kind, index };
+    return null;
+  }
+
+  function landmarkFocus() {
+    if (model.get("selected_kind") === "landmark") {
+      return { kind: "landmark", index: model.get("selected_index") };
+    }
+    return null;
+  }
+
+  function neighborhoodFor(focus) {
+    if (!focus) return null;
+    return neighborhoodForArgs(
+      focus.kind,
+      focus.index,
+      model.get("selections") || [],
+      model.get("type_neighborhoods") || [],
+      model.get("legend_labels") || [],
+      model.get("active_category") || "",
     );
-    model.save_changes();
-    updateUI();
+  }
+
+  function activeNeighborhood() {
+    return neighborhoodFor(cellLayerFocus());
+  }
+
+  function focusedLandmark() {
+    const focus = landmarkFocus();
+    if (!focus) return null;
+    const landmarks = model.get("landmarks") || [];
+    return focus.index >= 0 && focus.index < landmarks.length ? landmarks[focus.index] : null;
+  }
+
+  function updateActiveNeighborhood(patch) {
+    const focus = cellLayerFocus();
+    if (!focus) return;
+    patchNeighborhood(
+      model,
+      focus.kind,
+      focus.index,
+      patch,
+      model.get("selections") || [],
+      model.get("type_neighborhoods") || [],
+      model.get("legend_labels") || [],
+      model.get("active_category") || "",
+    );
+    setDeckLayers();
+  }
+
+  function seedIndicesFor(focus) {
+    const pts = getPointsData();
+    if (!focus) return [];
+    if (focus.kind === "type") {
+      return pts.reduce((acc, _p, i) => {
+        if (categoryCodeAt(i) === focus.index) acc.push(i);
+        return acc;
+      }, []);
+    }
+    if (focus.kind === "selection") {
+      const sel = (model.get("selections") || [])[focus.index];
+      const poly = selectionPolygonData(sel || {});
+      if (poly.length < 3) return [];
+      return pts.reduce((acc, p, i) => {
+        if (pointInRing(p, poly)) acc.push(i);
+        return acc;
+      }, []);
+    }
+    return [];
+  }
+
+  function pointInRing(p, ring) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      const hit =
+        yi > p.y !== yj > p.y && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi + 1e-12) + xi;
+      if (hit) inside = !inside;
+    }
+    return inside;
+  }
+
+  function prepareFocusGeom() {
+    const pts = getPointsData();
+    pointRoles = new Uint8Array(pts.length);
+    pointRoleMode = false;
+    hoodEdges = [];
+    const focus = cellLayerFocus();
+    if (!focus) return;
+    const seeds = seedIndicesFor(focus);
+    if (!seeds.length) {
+      pointRoleMode = true;
+      return;
+    }
+    pointRoleMode = true;
+    for (const i of seeds) pointRoles[i] = SEED_ROLE;
+    const hood = neighborhoodFor(focus);
+    if (!hood || hood.neighborhood === "off") return;
+    if (hood.neighborhood === "radius") {
+      let r = Number(hood.neighborhood_radius) || 0;
+      const rMax = maxNeighborhoodRadius();
+      if (rMax > 0) r = Math.min(r, rMax);
+      if (r > 0) lookupRadiusNeighbors(seeds, r, pointRoles);
+      return;
+    }
+    if (hood.neighborhood === "knn") {
+      let k = Number(hood.neighborhood_k) || 12;
+      k = Math.min(k, maxNeighborhoodK());
+      const result = lookupKnnNeighbors(pts, seeds, k);
+      hoodEdges = result.edges;
+      for (const i of result.neighbors) {
+        if (pointRoles[i] !== SEED_ROLE) pointRoles[i] = NEIGH_ROLE;
+      }
+    }
+  }
+
+  function updateSelectedLandmark(patch) {
+    const focus = landmarkFocus();
+    if (!focus) return;
+    patchLandmark(model, focus.index, patch, model.get("landmarks") || []);
     setDeckLayers();
   }
 
@@ -1397,246 +1493,13 @@ function render({ model, el }) {
     return { kind: obj.kind, index: obj.index };
   }
 
-  function setMode(mode) {
-    currentMode = mode;
-    model.set("mode", mode);
-    model.save_changes();
-    resetDraft();
-    updateModeButtons();
-    updateUI();
-    syncInteractionMode();
-    setDeckLayers();
-  }
-  function updateModeButtons() {
-    modes.forEach((mode) => {
-      if (modeButtons[mode]) modeButtons[mode].classList.toggle("active", mode === currentMode);
-    });
-  }
   function setSelected(kind, index) {
-    model.set("selected_kind", kind || "");
-    model.set("selected_index", index);
-    model.save_changes();
-    updateUI();
+    setSelectedTrait(model, kind, index);
     setDeckLayers();
-  }
-
-  function commitLayerRename(kind, index, nextName, fallback) {
-    const name = String(nextName || "").trim() || fallback;
-    if (kind === "selection") {
-      model.set(
-        "selections",
-        (model.get("selections") || []).map((sel, i) =>
-          i === index ? { ...sel, id: name } : sel
-        )
-      );
-    } else {
-      model.set(
-        "landmarks",
-        (model.get("landmarks") || []).map((lm, i) =>
-          i === index ? { ...lm, id: name } : lm
-        )
-      );
-    }
-    model.save_changes();
-    updateUI();
-    setDeckLayers();
-  }
-
-  function startLayerRename(kind, index, labelEl) {
-    const items =
-      kind === "selection" ? model.get("selections") || [] : model.get("landmarks") || [];
-    const item = items[index];
-    if (!item || !labelEl || labelEl.dataset.editing === "1") return;
-    const prev = String(item.id ?? "");
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "landmarks__label-input";
-    input.value = prev;
-    input.setAttribute("aria-label", "Rename layer");
-    labelEl.dataset.editing = "1";
-    labelEl.replaceWith(input);
-    input.focus();
-    input.select();
-    let done = false;
-    const finish = (commit) => {
-      if (done) return;
-      done = true;
-      if (commit) commitLayerRename(kind, index, input.value, prev);
-      else updateUI();
-    };
-    input.addEventListener("keydown", (e) => {
-      e.stopPropagation();
-      if (e.key === "Enter") {
-        e.preventDefault();
-        finish(true);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        finish(false);
-      }
-    });
-    input.addEventListener("blur", () => finish(true));
-    input.addEventListener("click", (e) => e.stopPropagation());
-    input.addEventListener("mousedown", (e) => e.stopPropagation());
-    input.addEventListener("dblclick", (e) => e.stopPropagation());
-  }
-
-  function rebuildLists() {
-    const kind = model.get("selected_kind") || "";
-    const idx = model.get("selected_index");
-    selList.innerHTML = "";
-    (model.get("selections") || []).forEach((sel, i) => {
-      const color = SEL_COLORS[i % SEL_COLORS.length];
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "landmarks__row" + (kind === "selection" && i === idx ? " landmarks__row--active" : "");
-      const icon = document.createElement("span");
-      icon.className = "landmarks__icon";
-      icon.style.color = color;
-      icon.innerHTML = icons[sel.type] || icons.polygon;
-      const label = document.createElement("span");
-      label.className = "landmarks__label";
-      label.textContent = sel.id;
-      label.title = "Double-click to rename";
-      label.addEventListener("dblclick", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        startLayerRename("selection", i, label);
-      });
-      const del = document.createElement("span");
-      del.className = "landmarks__row-delete";
-      del.textContent = "x";
-      del.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const next = (model.get("selections") || []).filter((_, j) => j !== i);
-        model.set("selections", next);
-        if (kind === "selection" && idx === i) {
-          model.set("selected_kind", "");
-          model.set("selected_index", -1);
-        } else if (kind === "selection" && idx > i) {
-          model.set("selected_index", idx - 1);
-        }
-        model.save_changes();
-        updateUI();
-        setDeckLayers();
-      });
-      row.appendChild(icon);
-      row.appendChild(label);
-      row.appendChild(del);
-      row.addEventListener("click", () => setSelected("selection", i));
-      selList.appendChild(row);
-    });
-    lmList.innerHTML = "";
-    (model.get("landmarks") || []).forEach((lm, i) => {
-      const color = COLORS[i % COLORS.length];
-      const t = lm.type === "gradient" ? "spline" : lm.type;
-      const hidden = !!lm.hidden;
-      const row = document.createElement("div");
-      row.className =
-        "landmarks__row landmarks__row--static" +
-        (hidden ? " landmarks__row--hidden" : "") +
-        (kind === "landmark" && i === idx ? " landmarks__row--active" : "");
-      const hideBtn = document.createElement("button");
-      hideBtn.type = "button";
-      hideBtn.className = "landmarks__row-hide";
-      hideBtn.innerHTML = hidden ? eyeOffIcon : eyeIcon;
-      hideBtn.setAttribute("aria-label", hidden ? "Show landmark" : "Hide landmark");
-      hideBtn.title = hidden ? "Show" : "Hide";
-      hideBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        model.set(
-          "landmarks",
-          (model.get("landmarks") || []).map((item, j) =>
-            j === i ? { ...item, hidden: !item.hidden } : item
-          )
-        );
-        model.save_changes();
-        updateUI();
-        setDeckLayers();
-      });
-      const icon = document.createElement("span");
-      icon.className = "landmarks__icon";
-      icon.style.color = color;
-      icon.innerHTML = icons[t] || icons.point;
-      const label = document.createElement("span");
-      label.className = "landmarks__label";
-      label.textContent = lm.id;
-      label.title = "Double-click to rename";
-      label.addEventListener("dblclick", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        startLayerRename("landmark", i, label);
-      });
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "landmarks__row-delete";
-      del.textContent = "x";
-      del.setAttribute("aria-label", "Delete landmark");
-      del.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const next = (model.get("landmarks") || []).filter((_, j) => j !== i);
-        model.set("landmarks", next);
-        if (kind === "landmark") {
-          model.set("selected_kind", "");
-          model.set("selected_index", -1);
-        }
-        model.save_changes();
-        updateUI();
-        setDeckLayers();
-      });
-      row.appendChild(hideBtn);
-      row.appendChild(icon);
-      row.appendChild(label);
-      row.appendChild(del);
-      row.addEventListener("click", () => setSelected("landmark", i));
-      lmList.appendChild(row);
-    });
-  }
-
-  function selectedLandmark() {
-    if (model.get("selected_kind") !== "landmark") return null;
-    const idx = model.get("selected_index");
-    const landmarks = model.get("landmarks") || [];
-    return idx >= 0 && idx < landmarks.length ? landmarks[idx] : null;
   }
 
   function updateUI() {
-    rebuildLists();
-    const selected = selectedLandmark();
-    const usesTension =
-      !!selected && ["spline", "shape", "gradient"].includes(selected.type);
-    const usesBuffer = !!selected && BUFFERABLE.includes(selected.type);
-
-    paramWrap.hidden = !usesTension;
-    bufferSideWrap.hidden = !usesBuffer;
-    bufferWidthWrap.hidden = !usesBuffer;
-    toolsHint.hidden = usesTension || usesBuffer;
-    toolsFor.hidden = !selected;
-    if (selected) toolsFor.textContent = `for ${selected.id}`;
-    if (selected && !usesTension && !usesBuffer) {
-      toolsHint.hidden = false;
-      toolsHint.textContent = "No parameters for this landmark.";
-    } else if (!selected) {
-      toolsHint.textContent = "Select a landmark to edit its parameters.";
-    }
-
-    if (usesTension) {
-      paramWrap.title = "Tension: 0 = smooth (Catmull-Rom), 1 = straight";
-      const val = Number(selected.tension ?? model.get("default_tension") ?? 0);
-      paramInput.value = String(val);
-      paramValue.textContent = val.toPrecision(3);
-    }
-    if (usesBuffer) {
-      const side = selected.buffer_side || "both";
-      Object.entries(segButtons).forEach(([value, btn]) =>
-        btn.classList.toggle("active", value === side)
-      );
-      const max = maxBufferWidth();
-      const val = Math.min(Number(selected.buffer_width || 0), max);
-      bufferInput.max = String(max);
-      bufferInput.step = String(max / 200);
-      bufferInput.value = String(val);
-      bufferValue.textContent = val ? val.toPrecision(3) : "off";
-    }
+    updatePointLegend();
   }
 
   function finishVertexDraft() {
@@ -1650,11 +1513,11 @@ function render({ model, el }) {
     }
     if (currentMode === "polygon") {
       const selections = [...(model.get("selections") || [])];
-      selections.push({
+      selections.push(withHood({
         id: nextSelectionId(selections),
         type: "polygon",
         vertices: draft.map((p) => [p.x, p.y]),
-      });
+      }));
       draft = [];
       model.set("selections", selections);
       model.set("selected_kind", "selection");
@@ -1808,11 +1671,11 @@ function render({ model, el }) {
       isLassoing = false;
       if (lassoPath.length >= 3) {
         const selections = [...(model.get("selections") || [])];
-        selections.push({
+        selections.push(withHood({
           id: nextSelectionId(selections),
           type: "lasso",
           vertices: lassoPath.map((p) => [p.x, p.y]),
-        });
+        }));
         model.set("selections", selections);
         model.set("selected_kind", "selection");
         model.set("selected_index", selections.length - 1);
@@ -1832,9 +1695,9 @@ function render({ model, el }) {
         if (width > 1e-6 && height > 1e-6) {
           const selections = [...(model.get("selections") || [])];
           if (currentMode === "rectangle") {
-            selections.push({ id: nextSelectionId(selections), type: "rectangle", cx, cy, width, height, angle: 0 });
+            selections.push(withHood({ id: nextSelectionId(selections), type: "rectangle", cx, cy, width, height, angle: 0 }));
           } else {
-            selections.push({ id: nextSelectionId(selections), type: "ellipse", cx, cy, rx: width / 2, ry: height / 2, angle: 0 });
+            selections.push(withHood({ id: nextSelectionId(selections), type: "ellipse", cx, cy, rx: width / 2, ry: height / 2, angle: 0 }));
           }
           model.set("selections", selections);
           model.set("selected_kind", "selection");
@@ -1885,56 +1748,87 @@ function render({ model, el }) {
     }
   }
 
-  paramInput.addEventListener("input", () => {
-    const selected = selectedLandmark();
-    if (!selected) return;
-    const idx = model.get("selected_index");
-    const val = parseFloat(paramInput.value) || 0;
-    paramValue.textContent = val.toPrecision(3);
-    model.set(
-      "landmarks",
-      (model.get("landmarks") || []).map((lm, i) => (i === idx ? { ...lm, tension: val } : lm))
-    );
-    model.save_changes();
-    setDeckLayers();
-  });
+  const abort = new AbortController();
+  const { signal } = abort;
 
-  bufferInput.addEventListener("input", () => {
-    const val = parseFloat(bufferInput.value) || 0;
-    bufferValue.textContent = val ? val.toPrecision(3) : "off";
-    updateSelectedLandmark({ buffer_width: val });
-  });
+  webglCanvas.addEventListener(
+    "wheel",
+    (e) => {
+      if (!e.shiftKey) return;
+      const lm = focusedLandmark();
+      if (lm && BUFFERABLE.includes(lm.type)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const max = maxBufferWidth();
+        const step = max / 40;
+        const w = Math.max(
+          0,
+          Math.min(max, (Number(lm.buffer_width) || 0) + (e.deltaY > 0 ? -step : step))
+        );
+        updateSelectedLandmark({ buffer_width: w });
+        return;
+      }
+      const hood = activeNeighborhood();
+      if (!hood) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (hood.neighborhood === "knn") {
+        const kMax = maxNeighborhoodK();
+        const k = Math.max(
+          1,
+          Math.min(kMax, (Number(hood.neighborhood_k) || 12) + (e.deltaY > 0 ? -1 : 1))
+        );
+        updateActiveNeighborhood({ neighborhood: "knn", neighborhood_k: k });
+        return;
+      }
+      const max = maxNeighborhoodRadius();
+      const step = max / 40;
+      const r = Math.max(
+        0,
+        Math.min(max, (Number(hood.neighborhood_radius) || 0) + (e.deltaY > 0 ? -step : step))
+      );
+      updateActiveNeighborhood({ neighborhood: "radius", neighborhood_radius: r });
+    },
+    { capture: true, passive: false, signal }
+  );
 
-  webglCanvas.addEventListener("mousedown", handleMouseDown);
-  webglCanvas.addEventListener("mousemove", handleMouseMove);
-  webglCanvas.addEventListener("mouseup", handleMouseUp);
-  webglCanvas.addEventListener("mouseleave", handleMouseLeave);
-  webglCanvas.addEventListener("dblclick", handleDblClick);
-  webglCanvas.addEventListener("keydown", handleKeyDown);
+  webglCanvas.addEventListener("mousedown", handleMouseDown, { signal });
+  webglCanvas.addEventListener("mousemove", handleMouseMove, { signal });
+  webglCanvas.addEventListener("mouseup", handleMouseUp, { signal });
+  webglCanvas.addEventListener("mouseleave", handleMouseLeave, { signal });
+  webglCanvas.addEventListener("dblclick", handleDblClick, { signal });
+  webglCanvas.addEventListener("keydown", handleKeyDown, { signal });
 
-  ["landmarks", "selections", "selected_index", "selected_kind"].forEach((k) => {
-    model.on(`change:${k}`, () => {
+  const unsubs = [];
+  function onChange(key, fn) {
+    const event = `change:${key}`;
+    model.on(event, fn);
+    unsubs.push(() => model.off?.(event, fn));
+  }
+
+  ["landmarks", "selections", "type_neighborhoods", "selected_index", "selected_kind"].forEach((k) => {
+    onChange(k, () => {
       setDeckLayers();
       updateUI();
     });
   });
-  model.on("change:mode", () => {
+  onChange("mode", () => {
     currentMode = model.get("mode");
-    updateModeButtons();
+    resetDraft();
     syncInteractionMode();
     setDeckLayers();
   });
-  model.on("change:width", () => {
+  onChange("width", () => {
     applyViewportSize();
     syncCanvasBuffer();
     setDeckLayers();
   });
-  model.on("change:height", () => {
+  onChange("height", () => {
     applyViewportSize();
     syncCanvasBuffer();
     setDeckLayers();
   });
-  model.on("change:points_data", () => {
+  onChange("points_data", () => {
     pointsCache = { key: "", data: [] };
     if (!deckgl) {
       initDeck();
@@ -1944,36 +1838,73 @@ function render({ model, el }) {
     updatePointLegend();
   });
   ["point_palette", "point_size", "point_opacity", "color_by", "legend_labels", "legend_title", "color_vmin", "color_vmax"].forEach((k) => {
-    model.on(`change:${k}`, () => {
+    onChange(k, () => {
       if (deckgl) setDeckLayers();
       updatePointLegend();
     });
   });
   ["stroke_width", "landmark_opacity"].forEach((k) => {
-    model.on(`change:${k}`, () => {
+    onChange(k, () => {
       setDeckLayers();
     });
   });
-  model.on("change:plot_background", () => applyPlotBackground());
+  onChange("category_codes", () => {
+    refreshCategoryCodes();
+    setDeckLayers();
+  });
+  ["neighbor_indptr", "neighbor_indices", "neighbor_distances", "neighbor_radius_max", "neighbor_k_max"].forEach((k) => {
+    onChange(k, () => {
+      refreshNeighborGraph();
+      if (deckgl) setDeckLayers();
+    });
+  });
+  ["category_columns", "active_category"].forEach((k) => {
+    onChange(k, () => {
+      updateUI();
+      setDeckLayers();
+    });
+  });
+  onChange("plot_background", () => applyPlotBackground());
 
-  updateModeButtons();
   updateUI();
   applyViewportSize();
+  let resizeObserver = null;
+  let startRaf = 0;
+  let destroyed = false;
   const start = () => {
+    if (destroyed) return;
     const w = main.clientWidth;
     const h = main.clientHeight;
     if (w <= 1 || h <= 1) {
-      requestAnimationFrame(start);
+      startRaf = requestAnimationFrame(start);
       return;
     }
-    requestAnimationFrame(async () => {
+    startRaf = requestAnimationFrame(async () => {
       await initDeck();
+      if (destroyed) {
+        if (deckgl && typeof deckgl.finalize === "function") deckgl.finalize();
+        deckgl = null;
+        return;
+      }
       setDeckLayers();
-      const ro = new ResizeObserver(() => resizeDeck());
-      ro.observe(main);
+      resizeObserver = new ResizeObserver(() => resizeDeck());
+      resizeObserver.observe(main);
     });
   };
-  requestAnimationFrame(start);
-}
+  startRaf = requestAnimationFrame(start);
 
-export default { render };
+  function destroy() {
+    destroyed = true;
+    abort.abort();
+    unsubs.forEach((fn) => fn());
+    themeObserver.disconnect();
+    resizeObserver?.disconnect();
+    if (startRaf) cancelAnimationFrame(startRaf);
+    if (layerRaf) cancelAnimationFrame(layerRaf);
+    if (deckgl && typeof deckgl.finalize === "function") deckgl.finalize();
+    deckgl = null;
+    host.replaceChildren();
+  }
+
+  return { zoomBy: (d) => zoomBy(d), resetZoom: () => resetZoom(), destroy };
+}

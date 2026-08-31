@@ -10,8 +10,8 @@ See also: [shadcn frontend](./shadcn-frontend.md),
 | Role | Toolchain | Gets |
 | ---- | --------- | ---- |
 | Widget consumer | Python only | Pre-built bundles in the wheel |
-| Python contributor | Python only | Vanilla widgets (`landmarks.js`) and Python modules |
-| Widget author | Python + Node | `frontend/` source, Vite build, HMR dev loop |
+| Python contributor | Python only | Python modules; UI changes need Node |
+| Widget author | Python + Node | `frontend/` source, Vite build, file-watch HMR |
 
 A **widget consumer** installs the package and embeds widgets in marimo or Jupyter.
 All React widget assets are already inside the wheel.
@@ -25,7 +25,8 @@ A **widget author** edits `frontend/`, runs the build, and commits the output un
 spatial_rx/static/
 ├── bundled/{name}.mjs    one ESM entry per React widget
 ├── bundled/widgets.css   shared Tailwind + shadcn theme (all React widgets)
-└── landmarks.js          vanilla widget (no build step)
+├── landmarks.js          canvas engine imported by the landmarks bundle
+└── landmarks_state.js    shared traitlet write recipes (engine + React chrome)
 ```
 
 Hatch includes `spatial_rx/static/*` as build artifacts. The installed package is
@@ -67,45 +68,39 @@ that touch only Python; see [ADR 0001](./adr/0001-prebuilt-bundles-node-free-ins
 
 ## Dev loop (widget authors)
 
-### React / shadcn widgets
+Reload uses **anywidget's file watcher**, not the Vite dev server.
 
-Vite HMR without rebuilding on every save:
-
-```bash
-cd frontend && npm run dev
-SPATIAL_RX_WIDGET_DEV=<name> uv run --extra demo marimo edit demos/<demo>.py
-```
-
-`_assets.py` serves the Vite entry (`frontend/src/widgets/<name>/index.tsx`) when
-`SPATIAL_RX_WIDGET_DEV` matches the widget name. Restart the Python process after
-changing the env var (it is read at import time).
-
-### Vanilla widgets (`landmarks.js`)
-
-Two options; pick one.
-
-**A. anywidget native HMR (no Vite)** — best for CSS/JS tweaks on Path-backed
-widgets. Edits to `spatial_rx/static/landmarks.{js,css}` hot-swap in the open
-notebook without remounting:
+`_esm` / `_css` are `pathlib.Path` objects pointing at
+`spatial_rx/static/bundled/`. Vite rewrites those files on save; anywidget
+detects the mtime change and hot-swaps the widget over the notebook Comm
+channel.
 
 ```bash
-ANYWIDGET_HMR=1 uv run --extra demo marimo edit demos/landmarks.py
+# terminal 1 — rebuild the bundle you are editing
+cd frontend && npm run watch:landmarks
+# or: npm run watch:gallery
+
+# terminal 2 — ANYWIDGET_HMR must be set before Python starts
+ANYWIDGET_HMR=1 uv run --extra demo marimo edit demos/neighbors.py
 ```
 
-**B. Same Vite loop as React** — useful when you already have `npm run dev`
-running, or want one workflow for every widget:
+Requirements:
 
-```bash
-cd frontend && npm run dev
-SPATIAL_RX_WIDGET_DEV=landmarks uv run --extra demo marimo edit demos/landmarks.py
-```
+1. `_esm` is a `Path` (never `.read_text()`, never a `http://localhost:5173` URL)
+2. `ANYWIDGET_HMR=1` on the marimo/Python process
+3. `watchfiles` installed (in the `dev` dependency group)
+4. The watched file's mtime actually changes when you save (Vite `--watch` running)
 
-This serves `frontend/src/widgets/landmarks/index.js`, which re-exports the
-vanilla static files. Production still ships `spatial_rx/static/landmarks.*`
-directly (no bundle step).
+Do not use `npm run dev` / `@anywidget/vite` for the normal loop. That path needs
+a Vite websocket from the notebook origin and is easy to leave half-wired. Prefer
+`build --watch` + Path + `ANYWIDGET_HMR=1` ([anywidget getting started](https://anywidget.dev/en/getting-started/),
+[bundling](https://anywidget.dev/en/bundling/)).
 
-You do not need marimo specifically — JupyterLab / VS Code notebooks work the
-same with `ANYWIDGET_HMR=1` or `SPATIAL_RX_WIDGET_DEV`.
+Vanilla engine source (`spatial_rx/static/landmarks.js`) is imported into the
+landmarks Vite entry. Canvas CSS lives at
+`frontend/src/widgets/landmarks/landmarks.css` and ships inside `widgets.css`.
+With `ANYWIDGET_HMR=1`, editing the engine JS hot-swaps after the next bundle
+rewrite from `npm run watch:landmarks`.
 
 ## Adding a React widget
 

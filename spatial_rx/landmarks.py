@@ -9,8 +9,15 @@ from typing import TYPE_CHECKING, Any
 import traitlets
 from anywidget import AnyWidget
 
-from ._assets import vanilla_css, vanilla_esm
-from .selection import selection_mask
+from spatial_rx._assets import widget_css, widget_esm
+from .categories import (
+    as_polars,
+    detect_category_columns,
+    encode_category_bundle,
+    encode_single_category,
+)
+from .neighbors import DEFAULT_K_MAX, NeighborhoodIndex, default_radius_max
+from .selection import neighborhood_expand, neighborhood_params, selection_mask
 
 if TYPE_CHECKING:
     import numpy as np
@@ -125,9 +132,17 @@ class LandmarksWidget(AnyWidget):
     ``LandmarksWidget.from_points(x, y, color=...)`` builds a pan/zoom scatter
     in cartesian tissue coordinates; landmarks and selections are deck.gl layers.
 
-    Synced state is UI-only (``landmarks``, ``selections``, edit highlight).
+    Synced state includes UI geometry (``landmarks``, ``selections``,
+    ``type_neighborhoods``) and a precomputed neighbor graph
+    (``neighbor_*`` CSR from pynndescent) for browser expand lookup.
+    Categorical ``color`` labels are intrinsic type layers — they are not
+    created by clicking. A spatial selection or type layer can expand with
+    ``neighborhood`` ``off`` / ``radius`` / ``knn`` the same way a line
+    landmark takes a buffer.
+
     Use ``get_mask`` / ``get_indices`` with an explicit ``selection_id``
-    (or ``\"all\"`` for every point). Measurement tables belong in the notebook.
+    (or ``\"all\"`` for every point). ``get_type_mask`` / ``get_type_indices``
+    cover a categorical label. Measurement tables belong in the notebook.
 
     Line and spline landmarks carry ``buffer_width`` (data units, ``0`` = off)
     and ``buffer_side`` (``\"left\"``/``\"both\"``/``\"right\"``, relative to the
@@ -135,8 +150,8 @@ class LandmarksWidget(AnyWidget):
     ``shapely.LineString(...).buffer(width, single_sided=True)``.
     """
 
-    _esm = vanilla_esm("landmarks")
-    _css = vanilla_css("landmarks")
+    _esm = widget_esm("landmarks")
+    _css = widget_css()
 
     mode = traitlets.Unicode("select").tag(sync=True)
     modes = traitlets.List(traitlets.Unicode(), default_value=list(_DEFAULT_MODES)).tag(
@@ -177,15 +192,26 @@ class LandmarksWidget(AnyWidget):
     plot_background = traitlets.Unicode("").tag(sync=True)
 
     landmark_opacity = traitlets.Float(0.28).tag(sync=True)
-    stroke_width = traitlets.Int(4).tag(sync=True)
+    stroke_width = traitlets.Int(2).tag(sync=True)
     default_tension = traitlets.Float(0.0).tag(sync=True)
     default_buffer_width = traitlets.Float(0.0).tag(sync=True)
     default_buffer_side = traitlets.Enum(
         ["left", "both", "right"], default_value="both"
     ).tag(sync=True)
+    type_neighborhoods = traitlets.List(traitlets.Dict(), default_value=[]).tag(sync=True)
+    category_columns = traitlets.List(traitlets.Dict(), default_value=[]).tag(sync=True)
+    category_codes = traitlets.Unicode("").tag(sync=True)  # base64 int32, col-major
+    active_category = traitlets.Unicode("").tag(sync=True)
+
+    # Precomputed neighbor graph (pynndescent CSR) for client-side expand lookup.
+    neighbor_indptr = traitlets.Unicode("").tag(sync=True)  # base64 int32
+    neighbor_indices = traitlets.Unicode("").tag(sync=True)  # base64 int32
+    neighbor_distances = traitlets.Unicode("").tag(sync=True)  # base64 float32
+    neighbor_radius_max = traitlets.Float(0.0).tag(sync=True)
+    neighbor_k_max = traitlets.Int(DEFAULT_K_MAX).tag(sync=True)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        raise TypeError("Use LandmarksWidget.from_points(x, y, ...)")
+        raise TypeError("Use LandmarksWidget.from_points(...) or from_frame(...)")
 
     @classmethod
     def from_points(
@@ -205,10 +231,12 @@ class LandmarksWidget(AnyWidget):
         mode: str = "select",
         modes: list[str] | None = None,
         landmark_opacity: float = 0.28,
-        stroke_width: int = 4,
+        stroke_width: int = 2,
         default_tension: float = 0.0,
         default_buffer_width: float = 0.0,
         default_buffer_side: str = "both",
+        k_max: int = DEFAULT_K_MAX,
+        neighbor_radius_max: float | None = None,
         **kwargs: Any,
     ) -> "LandmarksWidget":
         """Build a pan/zoom deck.gl scatter with landmark and selection layers.
@@ -220,6 +248,9 @@ class LandmarksWidget(AnyWidget):
         the UI. ``point_size`` is marker radius in the same units as ``x`` /
         ``y`` (e.g. 2.0 for a 2 µm radius on micron coordinates); screen size
         scales with zoom and is not clamped to a minimum pixel size.
+
+        ``k_max`` / ``neighbor_radius_max`` control the precomputed neighbor
+        graph (pynndescent) synced for browser radius/k-NN lookup.
         """
         import numpy as np
 
@@ -261,11 +292,36 @@ class LandmarksWidget(AnyWidget):
         if modes is None:
             modes = list(_DEFAULT_MODES)
 
+        r_max = (
+            float(neighbor_radius_max)
+            if neighbor_radius_max is not None
+            else default_radius_max(x_arr, y_arr)
+        )
+        neigh = NeighborhoodIndex.build(
+            x_arr, y_arr, k_max=int(k_max), radius_max=r_max
+        )
+        neigh_sync = neigh.to_sync()
+
         self = cls.__new__(cls)
         self._x_scale = "linear"
         self._y_scale = "linear"
         self._data_x = x_arr
         self._data_y = y_arr
+        self._neighbor_index = neigh
+        cat_meta: list[dict] = []
+        cat_codes = ""
+        cat_labels: dict[str, Any] = {}
+        active_cat = ""
+        if color_mode == "categorical" and labels:
+            cat_name = legend_title or "category"
+            cat_meta, cat_codes, cat_labels = encode_single_category(
+                color,
+                name=cat_name,
+                color_map=color_map,
+            )
+            active_cat = cat_name
+        self._data_label_arrays = cat_labels
+        self._data_labels = cat_labels.get(active_cat)
         AnyWidget.__init__(
             self,
             mode=mode,
@@ -290,9 +346,108 @@ class LandmarksWidget(AnyWidget):
             default_tension=default_tension,
             default_buffer_width=default_buffer_width,
             default_buffer_side=default_buffer_side,
+            category_columns=cat_meta,
+            category_codes=cat_codes,
+            active_category=active_cat,
+            **neigh_sync,
             **kwargs,
         )
         return self
+
+    @classmethod
+    def from_frame(
+        cls,
+        frame: Any,
+        *,
+        x: str = "x",
+        y: str = "y",
+        color: str | None = None,
+        color_maps: dict[str, dict[str, str]] | None = None,
+        continuous_range: tuple[str, str] | None = None,
+        width: int = 900,
+        height: int = 900,
+        point_size: float = 2.0,
+        point_opacity: float = 0.75,
+        background: str | None = None,
+        mode: str = "select",
+        modes: list[str] | None = None,
+        landmark_opacity: float = 0.28,
+        stroke_width: int = 2,
+        default_tension: float = 0.0,
+        default_buffer_width: float = 0.0,
+        default_buffer_side: str = "both",
+        k_max: int = DEFAULT_K_MAX,
+        neighbor_radius_max: float | None = None,
+        **kwargs: Any,
+    ) -> "LandmarksWidget":
+        """Build from a polars/pandas table; auto-detect categorical columns.
+
+        ``color`` selects the active category column (default: first detected, or
+        a continuous numeric column name). Category codes are packed from
+        Arrow-backed polars columns for the browser.
+        """
+        import numpy as np
+
+        df = as_polars(frame)
+        if x not in df.columns or y not in df.columns:
+            raise ValueError(f"frame must contain columns {x!r} and {y!r}")
+        x_arr = df[x].to_numpy().astype(np.float64, copy=False)
+        y_arr = df[y].to_numpy().astype(np.float64, copy=False)
+        cat_names = detect_category_columns(df, skip={x, y})
+        color_maps = color_maps or {}
+        cat_meta, cat_codes, cat_labels = encode_category_bundle(
+            df, cat_names, color_maps=color_maps
+        )
+
+        active = color or (cat_names[0] if cat_names else "")
+        color_arg: Any = None
+        cmap_arg: dict[str, str] | None = None
+        legend = ""
+        if active and active in cat_labels:
+            color_arg = cat_labels[active]
+            cmap_arg = color_maps.get(active)
+            legend = active
+        elif color and color in df.columns:
+            color_arg = df[color].to_numpy()
+            legend = color
+
+        w = cls.from_points(
+            x_arr,
+            y_arr,
+            color=color_arg,
+            color_map=cmap_arg,
+            continuous_range=continuous_range,
+            width=width,
+            height=height,
+            point_size=point_size,
+            point_opacity=point_opacity,
+            background=background,
+            legend_title=legend,
+            mode=mode,
+            modes=modes,
+            landmark_opacity=landmark_opacity,
+            stroke_width=stroke_width,
+            default_tension=default_tension,
+            default_buffer_width=default_buffer_width,
+            default_buffer_side=default_buffer_side,
+            k_max=k_max,
+            neighbor_radius_max=neighbor_radius_max,
+            **kwargs,
+        )
+        if cat_meta:
+            w.category_columns = cat_meta
+            w.category_codes = cat_codes
+            w.active_category = active if active in cat_labels else cat_meta[0]["name"]
+            w._data_label_arrays = cat_labels
+            w._data_labels = cat_labels.get(w.active_category)
+            active_meta = next(
+                (c for c in cat_meta if c["name"] == w.active_category), cat_meta[0]
+            )
+            w.point_palette = list(active_meta["palette"])
+            w.legend_labels = list(active_meta["labels"])
+            w.color_by = "categorical"
+            w.legend_title = w.active_category
+        return w
 
     def set_points(
         self,
@@ -329,6 +484,13 @@ class LandmarksWidget(AnyWidget):
         points = np.column_stack([nx, ny, value_a, np.zeros(n, dtype=np.float32)])
         self._data_x = x_arr
         self._data_y = y_arr
+        self._data_labels = (
+            np.asarray(color).astype(str).ravel()
+            if color is not None
+            and not isinstance(color, str)
+            and np.asarray(color).dtype.kind in "UOS"
+            else None
+        )
         self.point_palette = list(palette)
         self.color_by = color_mode
         self.legend_labels = list(labels)
@@ -337,6 +499,7 @@ class LandmarksWidget(AnyWidget):
         self.color_vmin = float(vmin if vmin is not None else 0.0)
         self.color_vmax = float(vmax if vmax is not None else 1.0)
         self.points_data = _encode_f32(points)
+        self._rebuild_neighbor_index()
 
     def set_color(
         self,
@@ -376,14 +539,45 @@ class LandmarksWidget(AnyWidget):
         self.clear_selections()
         self.clear_landmarks()
 
+    def _rebuild_neighbor_index(
+        self,
+        *,
+        k_max: int | None = None,
+        neighbor_radius_max: float | None = None,
+    ) -> None:
+        x = getattr(self, "_data_x", None)
+        y = getattr(self, "_data_y", None)
+        if x is None or y is None:
+            return
+        km = int(k_max if k_max is not None else (self.neighbor_k_max or DEFAULT_K_MAX))
+        r_max = (
+            float(neighbor_radius_max)
+            if neighbor_radius_max is not None
+            else float(self.neighbor_radius_max or 0.0) or default_radius_max(x, y)
+        )
+        neigh = NeighborhoodIndex.build(x, y, k_max=km, radius_max=r_max)
+        self._neighbor_index = neigh
+        sync = neigh.to_sync()
+        self.neighbor_indptr = sync["neighbor_indptr"]
+        self.neighbor_indices = sync["neighbor_indices"]
+        self.neighbor_distances = sync["neighbor_distances"]
+        self.neighbor_radius_max = sync["neighbor_radius_max"]
+        self.neighbor_k_max = sync["neighbor_k_max"]
+
     def get_mask(
         self,
         x_arr: Any,
         y_arr: Any,
         selection_id: str | None = "all",
+        *,
+        expand: bool = True,
     ) -> "np.ndarray":
-        """Boolean mask for points inside ``selection_id`` (all-True for ``\"all\"``/None)."""
-        return selection_mask(
+        """Boolean mask for points inside ``selection_id`` (all-True for ``\"all\"``/None).
+
+        When ``expand`` is true and the selection has ``neighborhood`` ``radius``
+        or ``knn``, neighbors of the seed cells are included.
+        """
+        mask = selection_mask(
             list(self.selections),
             x_arr,
             y_arr,
@@ -391,14 +585,97 @@ class LandmarksWidget(AnyWidget):
             x_scale=self._x_scale,
             y_scale=self._y_scale,
         )
+        if not expand or selection_id is None or selection_id == "all":
+            return mask
+        from .selection import selection_by_id
+
+        sel = selection_by_id(list(self.selections), str(selection_id))
+        method, radius, k = neighborhood_params(sel)
+        if method == "off":
+            return mask
+        return mask | neighborhood_expand(
+            mask,
+            x_arr,
+            y_arr,
+            method,
+            radius=radius,
+            k=k,
+            index=getattr(self, "_neighbor_index", None),
+        )
 
     def get_indices(
         self,
         x_arr: Any,
         y_arr: Any,
         selection_id: str | None = "all",
+        *,
+        expand: bool = True,
     ) -> "np.ndarray":
         """Indices of points inside ``selection_id`` (all indices for ``\"all\"``/None)."""
         import numpy as np
 
-        return np.where(self.get_mask(x_arr, y_arr, selection_id=selection_id))[0]
+        return np.where(
+            self.get_mask(x_arr, y_arr, selection_id=selection_id, expand=expand)
+        )[0]
+
+    def get_type_mask(
+        self,
+        type_label: str,
+        *,
+        expand: bool = True,
+        column: str | None = None,
+    ) -> "np.ndarray":
+        """Boolean mask for a categorical label (optional neighborhood)."""
+        import numpy as np
+
+        arrays = getattr(self, "_data_label_arrays", None) or {}
+        col = column or self.active_category or ""
+        labels = arrays.get(col)
+        if labels is None:
+            labels = getattr(self, "_data_labels", None)
+        if labels is None:
+            raise RuntimeError(
+                "no categorical columns; call from_frame or from_points with labels"
+            )
+        seed = np.asarray(labels).astype(str) == str(type_label)
+        if not expand:
+            return seed
+        row = next(
+            (
+                item
+                for item in (self.type_neighborhoods or [])
+                if str(item.get("id")) == str(type_label)
+                and (
+                    not item.get("column")
+                    or str(item.get("column")) == str(col)
+                )
+            ),
+            None,
+        )
+        method, radius, k = neighborhood_params(row)
+        if method == "off":
+            return seed
+        x = getattr(self, "_data_x", None)
+        y = getattr(self, "_data_y", None)
+        if x is None or y is None:
+            raise RuntimeError("internal point cache missing; call set_points first")
+        return seed | neighborhood_expand(
+            seed,
+            x,
+            y,
+            method,
+            radius=radius,
+            k=k,
+            index=getattr(self, "_neighbor_index", None),
+        )
+
+    def get_type_indices(
+        self,
+        type_label: str,
+        *,
+        expand: bool = True,
+    ) -> "np.ndarray":
+        """Indices for a categorical color label (optional neighborhood)."""
+        import numpy as np
+
+        return np.where(self.get_type_mask(type_label, expand=expand))[0]

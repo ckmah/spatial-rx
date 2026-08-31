@@ -1,17 +1,13 @@
 import "@/styles/globals.css";
+import "./landmarks.css";
 
 import { createRoot, type Root } from "react-dom/client";
 
-import { GalleryView } from "./Gallery";
+import { LandmarksView } from "./LandmarksView";
+import type { AnyModel } from "./helpers";
 
 type RenderContext = {
-  model: {
-    get(key: string): unknown;
-    set(key: string, value: unknown): void;
-    save_changes(): void;
-    on(event: string, callback: () => void): void;
-    off?(event: string, callback: () => void): void;
-  };
+  model: AnyModel;
   el: HTMLElement;
 };
 
@@ -25,7 +21,7 @@ function render({ model, el }: RenderContext) {
   }
   const root = createRoot(el);
   roots.set(el, root);
-  root.render(<GalleryView model={model} hostEl={el} />);
+  root.render(<LandmarksView model={model} hostEl={el} />);
   return () => {
     root.unmount();
     if (roots.get(el) === root) roots.delete(el);

@@ -23,7 +23,7 @@ class GalleryWidget(AnyWidget):
     """
 
     _esm = widget_esm("gallery")
-    _css = widget_css("gallery")
+    _css = widget_css()
 
     items = traitlets.List(traitlets.Dict(), default_value=[]).tag(sync=True)
     selected_index = traitlets.Int(-1).tag(sync=True)
