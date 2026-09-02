@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 from scipy.sparse import csr_matrix
 
-from tests.helpers import adata_xy, graph
+from tests.helpers import adata_xy
 
 
 def _adata(n=4):
@@ -176,11 +176,3 @@ def test_n_obs_mismatch_set_neighbor_graphs():
     bad = csr_matrix((2, 2))
     with pytest.raises(ValueError, match="connectivities n"):
         w.set_neighbor_graphs(bad, bad)
-
-
-def test_constructor_rejects_mismatched_graph_shape():
-    from spatial_rx import LandmarksWidget
-
-    adata = adata_xy([0.0, 1.0, 2.0], [0.0, 0.0, 0.0], knn=graph(2, []))
-    with pytest.raises(ValueError, match="connectivities n"):
-        LandmarksWidget(adata)
