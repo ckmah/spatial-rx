@@ -1,0 +1,11 @@
+{
+  "name": "spatial-rx",
+  "install": "curl -LsSf https://astral.sh/uv/install.sh | sh && \"$HOME/.local/bin/uv\" sync --extra demo --group dev",
+  "terminals": [
+    {
+      "name": "marimo-landmarks",
+      "command": "export PATH=\"$HOME/.local/bin:$PATH\" && uv run marimo edit demos/landmarks.py --headless --no-sandbox --no-token --host 0.0.0.0 -p 2718"
+    }
+  ],
+  "ports": [2718]
+}
