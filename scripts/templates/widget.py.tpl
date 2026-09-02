@@ -14,7 +14,7 @@ class {{ class_name }}(AnyWidget):
     """{{ docstring }}."""
 
     _esm = widget_esm("{{ kebab_name }}")
-    _css = widget_css("{{ kebab_name }}")
+    _css = widget_css()
 
 {{ traitlet_declarations }}
 

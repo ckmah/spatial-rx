@@ -20,6 +20,8 @@ dependencies = [
     "anywidget>=0.9.2",
     "matplotlib>=3.0",
     "numpy>=1.24",
+    "polars>=1.0",
+    "pynndescent>=0.5.13",
     "traitlets>=5.0",
 ]
 
@@ -46,6 +48,7 @@ Issues = "https://github.com/ckmah/spatial-rx/issues"
 dev = [
     "pytest>=8.3.3",
     "pyyaml>=6.0",
+    "watchfiles>=1.2.0",
 ]
 
 [build-system]

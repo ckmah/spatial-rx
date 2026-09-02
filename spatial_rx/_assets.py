@@ -1,30 +1,23 @@
-"""Resolve anywidget frontend assets (bundled React or vanilla static)."""
+"""Resolve anywidget frontend assets (bundled React).
+
+Authoring reload uses anywidget's file watcher, not the Vite dev server:
+
+1. ``npm run watch`` (or ``npm run watch:landmarks``) rewrites the bundle on save
+2. ``ANYWIDGET_HMR=1`` on the Python/marimo process watches that Path and swaps ESM
+
+``_esm`` / ``_css`` must stay as ``pathlib.Path`` (never ``.read_text()``) so
+anywidget can watch them. See https://anywidget.dev/en/getting-started/
+"""
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-_STATIC_DIR = Path(__file__).parent / "static"
-_BUNDLED_DIR = _STATIC_DIR / "bundled"
-_DEV_SERVER = os.environ.get("SPATIAL_RX_WIDGET_DEV_SERVER", "http://localhost:5173")
-_DEV_WIDGET = os.environ.get("SPATIAL_RX_WIDGET_DEV")
-
-# Vanilla widgets have a thin Vite entry under frontend/src/widgets/<name>/index.js
-# that re-exports spatial_rx/static/<name>.{js,css} for HMR only.
-_VANILLA_WIDGETS = frozenset({"landmarks"})
+_BUNDLED_DIR = Path(__file__).parent / "static" / "bundled"
 
 
-def _dev_esm_url(name: str) -> str:
-    if name in _VANILLA_WIDGETS:
-        return f"{_DEV_SERVER}/src/widgets/{name}/index.js?anywidget"
-    return f"{_DEV_SERVER}/src/widgets/{name}/index.tsx?anywidget"
-
-
-def widget_esm(name: str) -> Path | str:
-    """Return bundled React ESM path, or a Vite dev-server URL when enabled."""
-    if _DEV_WIDGET == name:
-        return _dev_esm_url(name)
+def widget_esm(name: str) -> Path:
+    """Return bundled React ESM path (anywidget-HMR-friendly)."""
     path = _BUNDLED_DIR / f"{name}.mjs"
     if not path.exists():
         msg = (
@@ -35,10 +28,8 @@ def widget_esm(name: str) -> Path | str:
     return path
 
 
-def widget_css(name: str) -> Path | str:
-    """Return shared bundled CSS. Empty in Vite dev mode (styles are injected)."""
-    if _DEV_WIDGET == name:
-        return ""
+def widget_css() -> Path:
+    """Return shared bundled CSS path (Tailwind + all React widget styles)."""
     path = _BUNDLED_DIR / "widgets.css"
     if not path.exists():
         msg = (
@@ -46,24 +37,4 @@ def widget_css(name: str) -> Path | str:
             f"Run: cd frontend && npm install && npm run build"
         )
         raise FileNotFoundError(msg)
-    return path
-
-
-def vanilla_esm(name: str) -> Path | str:
-    """Return vanilla widget ESM Path (ANYWIDGET_HMR-friendly), or Vite URL."""
-    if _DEV_WIDGET == name:
-        return _dev_esm_url(name)
-    path = _STATIC_DIR / f"{name}.js"
-    if not path.exists():
-        raise FileNotFoundError(f"Missing vanilla widget ESM at {path}")
-    return path
-
-
-def vanilla_css(name: str) -> Path | str:
-    """Return vanilla widget CSS Path, or empty string in Vite dev mode."""
-    if _DEV_WIDGET == name:
-        return ""
-    path = _STATIC_DIR / f"{name}.css"
-    if not path.exists():
-        raise FileNotFoundError(f"Missing vanilla widget CSS at {path}")
     return path

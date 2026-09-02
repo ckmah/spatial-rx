@@ -12,6 +12,10 @@ def test_from_points_defaults():
     assert w.width == 400 and w.height == 400
     assert len(w.point_palette) == 3
     assert w.points_data
+    assert w.neighbor_indptr and w.neighbor_indices and w.neighbor_distances
+    assert w.neighbor_k_max >= 1
+    assert w.neighbor_radius_max > 0
+    assert getattr(w, "_neighbor_index", None) is not None
     assert w.x_bounds[0] < 0.0 and w.x_bounds[1] > 3.0
     assert "spline" in w.modes and "shape" in w.modes
     assert "lasso" in w.modes
@@ -113,3 +117,98 @@ def test_get_mask_rectangle():
     ]
     mask = w.get_mask(x, y, selection_id="selection 1")
     assert mask[0] and not mask[1]
+
+
+def _box_around(x0, y0, half=0.25):
+    return {
+        "id": "selection 1",
+        "type": "polygon",
+        "vertices": [
+            [x0 - half, y0 - half],
+            [x0 + half, y0 - half],
+            [x0 + half, y0 + half],
+            [x0 - half, y0 + half],
+        ],
+    }
+
+
+def test_neighborhood_radius_expands_selection():
+    from spatial_rx import LandmarksWidget
+
+    x = np.array([0.0, 1.0, 8.0])
+    y = np.array([0.0, 0.0, 0.0])
+    w = LandmarksWidget.from_points(x, y, width=400, height=400)
+    w.selections = [
+        {
+            **_box_around(0.0, 0.0),
+            "neighborhood": "radius",
+            "neighborhood_radius": 1.1,
+            "neighborhood_k": 12,
+        }
+    ]
+    assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {0, 1}
+    assert set(
+        w.get_indices(x, y, selection_id="selection 1", expand=False).tolist()
+    ) == {0}
+    assert set(w.get_indices(x, y).tolist()) == {0, 1, 2}
+
+
+def test_neighborhood_knn_expands_selection():
+    from spatial_rx import LandmarksWidget
+
+    x = np.array([0.0, 1.0, 8.0])
+    y = np.array([0.0, 0.0, 0.0])
+    w = LandmarksWidget.from_points(x, y, width=400, height=400)
+    w.selections = [
+        {
+            **_box_around(0.0, 0.0),
+            "neighborhood": "knn",
+            "neighborhood_radius": 0,
+            "neighborhood_k": 1,
+        }
+    ]
+    assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {0, 1}
+
+
+def test_neighborhood_off_does_not_expand():
+    from spatial_rx import LandmarksWidget
+
+    x = np.array([0.0, 1.0])
+    y = np.array([0.0, 0.0])
+    w = LandmarksWidget.from_points(x, y, width=400, height=400)
+    w.selections = [
+        {
+            **_box_around(0.0, 0.0),
+            "neighborhood": "off",
+            "neighborhood_radius": 5.0,
+            "neighborhood_k": 1,
+        }
+    ]
+    assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {0}
+
+
+def test_get_type_mask_neighborhood():
+    from spatial_rx import LandmarksWidget
+
+    x = np.array([0.0, 10.0, 0.4])
+    y = np.array([0.0, 0.0, 0.0])
+    color = np.array(["Stem", "Stem", "Immune"])
+    w = LandmarksWidget.from_points(
+        x, y, color=color, width=400, height=400, neighbor_radius_max=50.0
+    )
+    assert set(w.get_type_indices("Stem", expand=False).tolist()) == {0, 1}
+    w.type_neighborhoods = [
+        {
+            "id": "Stem",
+            "neighborhood": "radius",
+            "neighborhood_radius": 1.0,
+            "neighborhood_k": 12,
+        }
+    ]
+    assert set(w.get_type_indices("Stem").tolist()) == {0, 1, 2}
+    assert set(w.get_type_indices("Stem", expand=False).tolist()) == {0, 1}
+    # Same graph as UI expand path
+    assert w._neighbor_index is not None
+    seed = np.asarray(w._data_labels).astype(str) == "Stem"
+    via_index = seed | w._neighbor_index.expand(seed, "radius", radius=1.0)
+    assert np.array_equal(via_index, w.get_type_mask("Stem"))

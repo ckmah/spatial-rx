@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@source "..";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -25,9 +27,33 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
 }
 
-:root {
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+/*
+ * Theme tokens are scoped to widget roots. This CSS is injected into notebook
+ * pages — never set :root/.dark/body here or the host UI inherits our palette.
+ */
+.spatial-rx-widget {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -47,9 +73,10 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
+  color: var(--foreground);
 }
 
-.dark {
+.spatial-rx-widget.dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -71,11 +98,7 @@
 }
 
 @layer base {
-  * {
+  .spatial-rx-widget * {
     @apply border-border outline-ring/50;
-  }
-
-  body {
-    @apply bg-background text-foreground;
   }
 }

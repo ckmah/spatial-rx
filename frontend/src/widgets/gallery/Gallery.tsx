@@ -56,7 +56,7 @@ export function GalleryView({
   ]);
 
   return (
-    <div className={cn("min-w-0 w-full overflow-hidden", dark && "dark")}>
+    <div className={cn("spatial-rx-widget min-w-0 w-full overflow-hidden", dark && "dark")}>
       <div
         className="grid min-w-0 w-full gap-3"
         style={{ gridTemplateColumns: `repeat(${Math.max(1, columns)}, minmax(0, 1fr))` }}

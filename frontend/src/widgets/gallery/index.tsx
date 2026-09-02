@@ -18,12 +18,18 @@ type RenderContext = {
 const roots = new WeakMap<HTMLElement, Root>();
 
 function render({ model, el }: RenderContext) {
-  let root = roots.get(el);
-  if (!root) {
-    root = createRoot(el);
-    roots.set(el, root);
+  const existing = roots.get(el);
+  if (existing) {
+    existing.unmount();
+    roots.delete(el);
   }
+  const root = createRoot(el);
+  roots.set(el, root);
   root.render(<GalleryView model={model} hostEl={el} />);
+  return () => {
+    root.unmount();
+    if (roots.get(el) === root) roots.delete(el);
+  };
 }
 
 export default { render };

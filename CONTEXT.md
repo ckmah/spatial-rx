@@ -7,6 +7,11 @@ typed fields.
 Point scatter, landmarks, selections, and drafts use deck.gl orthographic
 layers via `LandmarksWidget.from_points(...)`.
 
+Neighbor expand uses a **pynndescent-built CSR graph** synced as analysis state
+(`neighbor_indptr` / `neighbor_indices` / `neighbor_distances`). The browser
+looks up neighbors and draws radius neighborhoods as scatter disks (max blend);
+union polygons are not used.
+
 ## Language
 
 **Widget**:
