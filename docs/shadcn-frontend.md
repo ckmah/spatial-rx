@@ -10,7 +10,7 @@ Agent workflow:
 
 ```
 frontend/                          npm package (UI source of truth)
-├── components.json                shadcn CLI config
+├── components.json                shadcn CLI config (+ @reui registry)
 ├── src/
 │   ├── styles/globals.css         theme tokens + Tailwind
 │   ├── components/ui/             `npx shadcn@latest add …`
@@ -25,6 +25,25 @@ spatial_rx/static/
 ```
 
 Build: `cd frontend && npm install && npm run build`.
+
+### Registries
+
+`components.json` includes the [ReUI](https://reui.io/docs/registry) namespace:
+
+```json
+"registries": {
+  "@reui": "https://reui.io/r/{style}/{name}.json"
+}
+```
+
+From `frontend/`:
+
+```bash
+npx shadcn@latest search @reui
+npx shadcn@latest add @reui/c-alert-1
+```
+
+Free ReUI components use the `c-*` prefix.
 
 Authoring reload (anywidget file watcher, not Vite `dev`):
 

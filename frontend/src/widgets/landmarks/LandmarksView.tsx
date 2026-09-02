@@ -10,7 +10,6 @@ import { useLandmarksModel } from "./use-landmarks-model";
 import { useWidgetFullscreen } from "./use-widget-fullscreen";
 
 const SHELL_HEIGHT = 700;
-const MIN_WIDTH = 640;
 const MIN_HEIGHT = 400;
 const MAX_HEIGHT = 1400;
 
@@ -26,8 +25,9 @@ export function LandmarksView({
   const plotHostRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EngineHandle | null>(null);
-  const [pinnedWidth, setPinnedWidth] = useState<number | null>(null);
   const [shellHeight, setShellHeight] = useState(SHELL_HEIGHT);
+  const savedHeightRef = useRef<number | null>(null);
+  const wasFullscreenRef = useRef(false);
 
   const syncEngineLayout = useCallback(() => {
     engineRef.current?.resize();
@@ -37,6 +37,18 @@ export function LandmarksView({
     rootRef,
     syncEngineLayout,
   );
+
+  useEffect(() => {
+    if (isFullscreen && !wasFullscreenRef.current) {
+      savedHeightRef.current = shellHeight;
+    }
+    if (!isFullscreen && wasFullscreenRef.current && savedHeightRef.current != null) {
+      setShellHeight(savedHeightRef.current);
+      savedHeightRef.current = null;
+      syncEngineLayout();
+    }
+    wasFullscreenRef.current = isFullscreen;
+  }, [isFullscreen, shellHeight, syncEngineLayout]);
 
   useEffect(() => {
     hostEl.style.width = "100%";
@@ -61,26 +73,13 @@ export function LandmarksView({
     (event: React.PointerEvent<HTMLButtonElement>) => {
       event.preventDefault();
       event.stopPropagation();
-      const root = rootRef.current;
-      if (!root) return;
-      const rect = root.getBoundingClientRect();
-      const parent = hostEl.parentElement?.getBoundingClientRect();
-      const maxW = parent && parent.width > 0 ? parent.width : rect.width;
       const maxH = Math.min(window.innerHeight * 0.9, MAX_HEIGHT);
       const start = {
-        x: event.clientX,
         y: event.clientY,
-        w: rect.width,
-        h: rect.height,
-        maxW,
+        h: shellHeight,
         maxH,
       };
       const move = (ev: PointerEvent) => {
-        setPinnedWidth(
-          Math.round(
-            Math.min(start.maxW, Math.max(MIN_WIDTH, start.w + (ev.clientX - start.x))),
-          ),
-        );
         setShellHeight(
           Math.round(
             Math.min(start.maxH, Math.max(MIN_HEIGHT, start.h + (ev.clientY - start.y))),
@@ -95,7 +94,7 @@ export function LandmarksView({
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
     },
-    [hostEl, syncEngineLayout],
+    [shellHeight, syncEngineLayout],
   );
 
   return (
@@ -105,13 +104,9 @@ export function LandmarksView({
         "spatial-rx-widget landmarks relative min-w-0 w-full",
         dark && "dark landmarks--dark",
         !dark && "landmarks--light",
+        isFullscreen && "landmarks--fs",
         overlay && "landmarks--overlay-fs",
       )}
-      style={
-        isFullscreen || pinnedWidth == null
-          ? undefined
-          : { width: pinnedWidth }
-      }
     >
       <div
         className="landmarks__body"
@@ -124,7 +119,7 @@ export function LandmarksView({
             onMode={(mode) => lm.setMode(mode)}
             fullscreen={isFullscreen}
             onToggleFullscreen={() => {
-              void toggle();
+              toggle();
             }}
           />
           <div className="landmarks__main landmarks__main--plot">
@@ -137,17 +132,17 @@ export function LandmarksView({
               onZoomOut={() => engineRef.current?.zoomBy(-1)}
               onReset={() => engineRef.current?.resetZoom()}
             />
-            {isFullscreen ? null : (
-              <button
-                type="button"
-                className="landmarks__resize"
-                aria-label="Resize widget"
-                title="Resize"
-                onPointerDown={onResizePointerDown}
-              />
-            )}
           </div>
         </div>
+        {isFullscreen ? null : (
+          <button
+            type="button"
+            className="landmarks__resize"
+            aria-label="Resize height"
+            title="Resize height"
+            onPointerDown={onResizePointerDown}
+          />
+        )}
       </div>
       <div className="landmarks__chrome">
         <div
