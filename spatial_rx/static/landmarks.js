@@ -370,28 +370,12 @@ export function mountEngine({ model, host }) {
     if (deckgl) deckgl.setProps({ controller: controllerProps() });
   }
 
-  function applyViewportSize() {
-    const w = Math.max(1, Number(model.get("width")) || 400);
-    const h = Math.max(1, Number(model.get("height")) || 400);
-    // Size the widget shell; figure panel flex-fills the remaining viewport
-    // (not forced square).
-    container.style.width = `${w}px`;
-    container.style.maxWidth = "100%";
-    body.style.height = `${h}px`;
-    main.style.width = "";
-    main.style.height = "";
-    main.style.maxWidth = "";
-    main.style.aspectRatio = "";
-  }
-
   function syncCanvasBuffer() {
-    const w = Math.max(1, Math.round(main.clientWidth || model.get("width") || 400));
-    const h = Math.max(1, Math.round(main.clientHeight || model.get("height") || 400));
+    const w = Math.max(1, Math.round(main.clientWidth || 1));
+    const h = Math.max(1, Math.round(main.clientHeight || 1));
     plotW = w;
     plotH = h;
-    if (webglCanvas.width !== w) webglCanvas.width = w;
-    if (webglCanvas.height !== h) webglCanvas.height = h;
-    if (deckgl) deckgl.setProps({ width: w, height: h });
+    if (deckgl) deckgl.setProps({ width: w, height: h, useDevicePixels: true });
     const bounds = model.get("axes_pixel_bounds") || [0, 0, w, h];
     if (bounds[2] !== w || bounds[3] !== h) {
       model.set("axes_pixel_bounds", [0, 0, w, h]);
@@ -1254,7 +1238,6 @@ export function mountEngine({ model, host }) {
 
   async function initDeck() {
     if (deckgl) return;
-    applyViewportSize();
     const { w, h } = syncCanvasBuffer();
     webglCanvas.style.display = "block";
     applyPlotBackground();
@@ -1273,6 +1256,7 @@ export function mountEngine({ model, host }) {
         canvas: webglCanvas,
         width: w,
         height: h,
+        useDevicePixels: true,
         views: new OrthographicView(),
         controller: controllerProps(),
         initialViewState: vs,
@@ -1902,14 +1886,10 @@ export function mountEngine({ model, host }) {
     setDeckLayers();
   });
   onChange("width", () => {
-    applyViewportSize();
-    syncCanvasBuffer();
-    setDeckLayers();
+    resizeDeck();
   });
   onChange("height", () => {
-    applyViewportSize();
-    syncCanvasBuffer();
-    setDeckLayers();
+    resizeDeck();
   });
   onChange("points_data", () => {
     pointsCache = { key: "", data: [] };
@@ -1961,7 +1941,6 @@ export function mountEngine({ model, host }) {
   onChange("plot_background", () => applyPlotBackground());
 
   updateUI();
-  applyViewportSize();
   let resizeObserver = null;
   let startRaf = 0;
   let destroyed = false;
@@ -2000,5 +1979,10 @@ export function mountEngine({ model, host }) {
     host.replaceChildren();
   }
 
-  return { zoomBy: (d) => zoomBy(d), resetZoom: () => resetZoom(), destroy };
+  return {
+    zoomBy: (d) => zoomBy(d),
+    resetZoom: () => resetZoom(),
+    resize: () => resizeDeck(),
+    destroy,
+  };
 }

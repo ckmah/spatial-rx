@@ -2,6 +2,7 @@ import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRightIcon,
   CircleIcon,
+  ExpandIcon,
   EyeIcon,
   EyeOffIcon,
   LassoIcon,
@@ -10,6 +11,7 @@ import {
   MoveIcon,
   PentagonIcon,
   PlusIcon,
+  ShrinkIcon,
   ShapesIcon,
   SplineIcon,
   SquareIcon,
@@ -152,10 +154,14 @@ export function Topbar({
   modes,
   mode,
   onMode,
+  fullscreen,
+  onToggleFullscreen,
 }: {
   modes: string[];
   mode: string;
   onMode: (mode: string) => void;
+  fullscreen: boolean;
+  onToggleFullscreen: () => void;
 }) {
   const selectModes = modes.filter((m) => SELECT_MODE_IDS.includes(m));
   const landmarkModes = modes.filter((m) => LANDMARK_MODE_IDS.includes(m));
@@ -180,6 +186,19 @@ export function Topbar({
           <ModeToggle modes={landmarkModes} value={mode} onChange={onMode} />
         </div>
       ) : null}
+      <div className="ml-auto">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          title={fullscreen ? "Exit full screen" : "Full screen"}
+          aria-label={fullscreen ? "Exit full screen" : "Full screen"}
+          aria-pressed={fullscreen}
+          onClick={onToggleFullscreen}
+        >
+          {fullscreen ? <ShrinkIcon /> : <ExpandIcon />}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -1127,7 +1146,7 @@ export function ZoomControls({
 }) {
   return (
     <div
-      className="absolute right-2 bottom-2 z-10 overflow-hidden rounded-md border border-border bg-card text-card-foreground shadow-sm"
+      className="absolute right-5 bottom-5 z-10 overflow-hidden rounded-md border border-border bg-card text-card-foreground shadow-sm"
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
