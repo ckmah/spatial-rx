@@ -3,6 +3,8 @@ import pandas as pd
 import pytest
 from scipy.sparse import csr_matrix
 
+from tests.helpers import adata_xy, graph
+
 
 def _adata(n=4):
     import anndata as ad
@@ -20,7 +22,9 @@ def _adata(n=4):
     adata.obsm["spatial"] = np.column_stack(
         [np.arange(n, dtype=float), np.zeros(n)]
     )
-    adata.uns["cell_type_colors"] = ["#111111", "#222222", "#333333"][: len(obs["cell_type"].cat.categories)]
+    adata.uns["cell_type_colors"] = ["#111111", "#222222", "#333333"][
+        : len(obs["cell_type"].cat.categories)
+    ]
     adata.uns["cell_class_colors"] = ["#aaaaaa", "#bbbbbb"]
     pairs = [(i, i + 1) for i in range(n - 1)] + [(i + 1, i) for i in range(n - 1)]
     rows, cols = zip(*pairs)
@@ -31,27 +35,25 @@ def _adata(n=4):
     return adata
 
 
-def test_from_anndata_requires_graphs():
+def test_constructor_requires_graphs():
     from spatial_rx import LandmarksWidget
 
     adata = _adata()
     del adata.obsp["spatial_knn_connectivities"]
     with pytest.raises(ValueError, match="spatial_knn_connectivities"):
-        LandmarksWidget.from_anndata(adata, color="cell_type")
+        LandmarksWidget(adata, color="cell_type")
 
     adata = _adata()
     del adata.obsp["spatial_radius_connectivities"]
     with pytest.raises(ValueError, match="spatial_radius_connectivities"):
-        LandmarksWidget.from_anndata(adata, color="cell_type")
+        LandmarksWidget(adata, color="cell_type")
 
 
-def test_from_anndata_packs_obs_palette_and_genes():
+def test_constructor_packs_obs_palette_and_genes():
     from spatial_rx import LandmarksWidget
 
     adata = _adata()
-    w = LandmarksWidget.from_anndata(
-        adata, color="cell_type", genes=["g1"], width=400, height=400
-    )
+    w = LandmarksWidget(adata, color="cell_type", genes=["g1"])
     assert w.legend_title == "cell_type"
     assert w.legend_labels == ["a", "b", "c"]
     assert w.point_palette[0].lower() == "#111111"
@@ -63,24 +65,37 @@ def test_from_anndata_packs_obs_palette_and_genes():
     assert w._knn_index is not None
     assert w._radius_index is not None
     assert w._knn_index.n == 4
+    assert w.width == 1100 and w.height == 700
+    assert w.point_opacity == 0.8
+    assert w.stroke_width == 2
+    assert w.mode == "select"
 
 
-def test_from_points_does_not_build_graph():
+def test_empty_graphs_do_not_build_neighbors():
     from spatial_rx import LandmarksWidget
 
-    x = np.array([0.0, 1.0, 2.0])
-    y = np.zeros(3)
-    w = LandmarksWidget.from_points(x, y, width=400, height=400)
+    adata = adata_xy([0.0, 1.0, 2.0], [0.0, 0.0, 0.0])
+    w = LandmarksWidget(adata)
     assert w._knn_index.n == 3
     assert int(w._knn_index.indptr[-1]) == 0
     assert int(w._radius_index.indptr[-1]) == 0
+
+
+def test_chrome_kwargs_rejected():
+    from spatial_rx import LandmarksWidget
+
+    adata = adata_xy([0.0, 1.0], [0.0, 0.0])
+    with pytest.raises(TypeError):
+        LandmarksWidget(adata, width=400)
+    with pytest.raises(TypeError):
+        LandmarksWidget(adata, point_size=2.0)
 
 
 def test_get_obs_names_and_subset_join():
     from spatial_rx import LandmarksWidget, write_obs
 
     adata = _adata()
-    w = LandmarksWidget.from_anndata(adata, color="cell_type", width=400, height=400)
+    w = LandmarksWidget(adata, color="cell_type")
     w.selections = [
         {
             "id": "selection 1",
@@ -119,7 +134,7 @@ def test_expand_knn_vs_radius_graphs():
     from spatial_rx import LandmarksWidget
 
     adata = _adata()
-    w = LandmarksWidget.from_anndata(adata, color="cell_type", width=400, height=400)
+    w = LandmarksWidget(adata, color="cell_type")
     x = adata.obsm["spatial"][:, 0]
     y = adata.obsm["spatial"][:, 1]
     box = {
@@ -157,7 +172,15 @@ def test_n_obs_mismatch_set_neighbor_graphs():
     from spatial_rx import LandmarksWidget
 
     adata = _adata()
-    w = LandmarksWidget.from_anndata(adata, color="cell_type", width=400, height=400)
+    w = LandmarksWidget(adata, color="cell_type")
     bad = csr_matrix((2, 2))
     with pytest.raises(ValueError, match="connectivities n"):
         w.set_neighbor_graphs(bad, bad)
+
+
+def test_constructor_rejects_mismatched_graph_shape():
+    from spatial_rx import LandmarksWidget
+
+    adata = adata_xy([0.0, 1.0, 2.0], [0.0, 0.0, 0.0], knn=graph(2, []))
+    with pytest.raises(ValueError, match="connectivities n"):
+        LandmarksWidget(adata)

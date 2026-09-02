@@ -61,15 +61,7 @@ def _(np, pd, sq):
 @app.cell
 def _(CLUSTER, LandmarksWidget, adata):
     genes = [str(g) for g in adata.var_names[:8]]
-    widget = LandmarksWidget.from_anndata(
-        adata,
-        color=CLUSTER,
-        genes=genes,
-        width=1100,
-        height=700,
-        point_size=0.01,
-        point_opacity=0.8,
-    )
+    widget = LandmarksWidget(adata, color=CLUSTER, genes=genes)
     widget
     return
 

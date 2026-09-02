@@ -103,8 +103,7 @@ def _(np, pd, plt, sq):
         adata, coord_type="generic", radius=radius, key_added="spatial_radius"
     )
     gene_panel = [str(g) for g in adata.var_names[:12]]
-    DEFAULT_BUFFER = radius
-    return CLUSTER, DEFAULT_BUFFER, adata, gene_panel
+    return CLUSTER, adata, gene_panel
 
 
 @app.cell
@@ -151,19 +150,8 @@ def _():
 
 
 @app.cell
-def _(CLUSTER, DEFAULT_BUFFER, LandmarksWidget, adata, gene_panel):
-    landmarks = LandmarksWidget.from_anndata(
-        adata,
-        color=CLUSTER,
-        genes=gene_panel,
-        width=1100,
-        height=900,
-        point_size=0.01,
-        point_opacity=0.8,
-        mode="select",
-        stroke_width=4,
-        default_buffer_width=DEFAULT_BUFFER,
-    )
+def _(CLUSTER, LandmarksWidget, adata, gene_panel):
+    landmarks = LandmarksWidget(adata, color=CLUSTER, genes=gene_panel)
     return (landmarks,)
 
 

@@ -29,8 +29,9 @@ uv sync --extra demo --group dev
 ![Landmarks widget](assets/landmarks_widget.png)
 
 Draw selections and landmarks on tissue coordinates (lasso, rectangle, ellipse; point,
-line, spline, shape). Load an `AnnData` with `obsm["spatial"]` and squidpy
-neighbor graphs, then use `from_anndata` / `get_obs_names`.
+line, spline, shape). Format data as `AnnData` with `obsm["spatial"]` and squidpy
+neighbor graphs, then `LandmarksWidget(adata, color=..., genes=...)`. Persist
+hits with `get_obs_names`.
 
 ## GalleryWidget
 

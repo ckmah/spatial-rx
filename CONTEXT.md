@@ -5,9 +5,10 @@ logic; the browser owns presentation. State crosses the boundary through named,
 typed fields.
 
 Point scatter, landmarks, selections, and drafts use deck.gl orthographic
-layers via `LandmarksWidget.from_anndata(...)` (or `from_points` /
-`from_frame`). AnnData is the analysis object: coordinates in
-`obsm["spatial"]`, labels in `obs`, expression in `X`.
+layers via `LandmarksWidget(adata, color=..., genes=...)`. AnnData is the
+analysis object: coordinates in `obsm["spatial"]`, labels in `obs`,
+expression in `X`. Chrome size, marker radius, opacity, and default buffer
+are fixed or derived from the spatial extent.
 
 k-NN and radius neighbor graphs are computed **before** the widget with
 `squidpy.gr.spatial_neighbors` (two `key_added` values) as k_max / r_max
