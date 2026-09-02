@@ -7,8 +7,9 @@ typed fields.
 Point scatter, landmarks, selections, and drafts use deck.gl orthographic
 layers via `LandmarksWidget(adata, color=..., genes=...)`. AnnData is the
 analysis object: coordinates in `obsm["spatial"]`, labels in `obs`,
-expression in `X`. Chrome size, marker radius, opacity, and default buffer
-are fixed or derived from the spatial extent.
+expression in `X`. Chrome follows the notebook cell width. Marker radius is derived from
+median nearest-neighbor distance; opacity and default buffer are fixed
+or computed from spatial extent.
 
 k-NN and radius neighbor graphs are computed **before** the widget with
 `squidpy.gr.spatial_neighbors` (two `key_added` values) as k_max / r_max

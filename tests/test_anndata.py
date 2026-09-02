@@ -65,10 +65,12 @@ def test_constructor_packs_obs_palette_and_genes():
     assert w._knn_index is not None
     assert w._radius_index is not None
     assert w._knn_index.n == 4
-    assert w.width == 1100 and w.height == 700
+    assert w.height == 700
+    assert w.n_points == 4
     assert w.point_opacity == 0.8
     assert w.stroke_width == 2
     assert w.mode == "select"
+    assert w.point_size == pytest.approx(0.4)
 
 
 def test_empty_graphs_do_not_build_neighbors():

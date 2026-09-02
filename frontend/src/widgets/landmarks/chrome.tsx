@@ -69,6 +69,7 @@ import {
   formatLegendValue,
   formatParam,
   maxBufferWidth,
+  spatialDiag,
 } from "./helpers";
 import type { LandmarksModel } from "./use-landmarks-model";
 
@@ -911,6 +912,115 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
               ) : (
                 <FieldDescription>No landmarks yet.</FieldDescription>
               )}
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function InspectPanel({ lm }: { lm: LandmarksModel }) {
+  const diag = spatialDiag(lm.x_bounds, lm.y_bounds);
+  const radiusMax = Math.max(diag * 0.05, lm.point_size * 5, 1e-6);
+  const radius = Math.min(Math.max(lm.point_size, 0), radiusMax);
+  const extent = `${formatParam(diag, "0")} across`;
+
+  return (
+    <Card className="pointer-events-auto shrink-0 gap-1 overflow-hidden py-2 shadow-md">
+      <CardHeader className={cn("shrink-0 py-0", PANEL_INSET)}>
+        <CardTitle className="text-sm font-semibold tracking-tight">Inspect</CardTitle>
+      </CardHeader>
+      <CardContent className={cn("min-h-0 overflow-hidden pb-2", PANEL_INSET)}>
+        <Accordion type="multiple" defaultValue={["style"]}>
+          <AccordionItem value="style" className="border-b">
+            <AccordionTrigger className="px-0 py-1.5 text-left text-xs font-semibold hover:no-underline">
+              Style
+            </AccordionTrigger>
+            <AccordionContent className="px-0 pb-2">
+              <FieldGroup className="gap-2">
+                <Field>
+                  <FieldLabel>Point radius</FieldLabel>
+                  <Slider
+                    min={0}
+                    max={radiusMax}
+                    step={radiusMax / 200}
+                    value={[radius]}
+                    onValueChange={(v) => lm.setPointSize(v[0] ?? 0)}
+                  />
+                  <FieldDescription>{formatParam(lm.point_size, "0")}</FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel>Point opacity</FieldLabel>
+                  <Slider
+                    min={0.05}
+                    max={1}
+                    step={0.01}
+                    value={[lm.point_opacity]}
+                    onValueChange={(v) => lm.setPointOpacity(v[0] ?? 0.8)}
+                  />
+                  <FieldDescription>{lm.point_opacity.toFixed(2)}</FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel>Landmark opacity</FieldLabel>
+                  <Slider
+                    min={0.05}
+                    max={1}
+                    step={0.01}
+                    value={[lm.landmark_opacity]}
+                    onValueChange={(v) => lm.setLandmarkOpacity(v[0] ?? 0.28)}
+                  />
+                  <FieldDescription>{lm.landmark_opacity.toFixed(2)}</FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel>Stroke</FieldLabel>
+                  <Slider
+                    min={1}
+                    max={8}
+                    step={1}
+                    value={[lm.stroke_width]}
+                    onValueChange={(v) => lm.setStrokeWidth(v[0] ?? 2)}
+                  />
+                  <FieldDescription>{String(lm.stroke_width)} px</FieldDescription>
+                </Field>
+              </FieldGroup>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="stats">
+            <AccordionTrigger className="px-0 py-1.5 text-left text-xs font-semibold hover:no-underline">
+              Stats
+            </AccordionTrigger>
+            <AccordionContent className="px-0 pb-2">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                <dt className="text-muted-foreground">Points</dt>
+                <dd className="text-right font-medium tabular-nums">{lm.n_points}</dd>
+                <dt className="text-muted-foreground">Categories</dt>
+                <dd className="text-right font-medium tabular-nums">
+                  {lm.category_columns.length}
+                </dd>
+                <dt className="text-muted-foreground">Genes</dt>
+                <dd className="text-right font-medium tabular-nums">
+                  {lm.gene_columns.length}
+                </dd>
+                <dt className="text-muted-foreground">Selections</dt>
+                <dd className="text-right font-medium tabular-nums">
+                  {lm.selections.length}
+                </dd>
+                <dt className="text-muted-foreground">Landmarks</dt>
+                <dd className="text-right font-medium tabular-nums">
+                  {lm.landmarks.length}
+                </dd>
+                <dt className="text-muted-foreground">Color</dt>
+                <dd className="truncate text-right font-medium">{lm.color_by}</dd>
+                <dt className="text-muted-foreground">k max</dt>
+                <dd className="text-right font-medium tabular-nums">{lm.neighbor_k_max}</dd>
+                <dt className="text-muted-foreground">r max</dt>
+                <dd className="text-right font-medium tabular-nums">
+                  {formatParam(lm.neighbor_radius_max, "0")}
+                </dd>
+                <dt className="text-muted-foreground">Extent</dt>
+                <dd className="truncate text-right font-medium">{extent}</dd>
+              </dl>
             </AccordionContent>
           </AccordionItem>
         </Accordion>

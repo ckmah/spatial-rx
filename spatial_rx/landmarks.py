@@ -182,15 +182,43 @@ def _index_for_method(widget: "LandmarksWidget", method: str) -> NeighborhoodInd
     return None
 
 
-_SHELL_WIDTH = 1100
 _SHELL_HEIGHT = 700
 _POINT_OPACITY = 0.8
 _LANDMARK_OPACITY = 0.28
 _STROKE_WIDTH = 2
+_NN_RADIUS_FRAC = 0.4
 
 
-def _spatial_metrics(x_arr: "np.ndarray", y_arr: "np.ndarray"):
-    """Padded bounds, marker radius, and default landmark buffer from xy extent."""
+def _median_nn_distance(knn: NeighborhoodIndex | None) -> float | None:
+    """Median first-neighbor distance from a distance-sorted k-NN CSR."""
+    if knn is None or knn.n == 0 or int(knn.indptr[-1]) == 0:
+        return None
+    import numpy as np
+
+    first: list[float] = []
+    for i in range(int(knn.n)):
+        start = int(knn.indptr[i])
+        end = int(knn.indptr[i + 1])
+        if end <= start:
+            continue
+        dist = float(knn.distances[start])
+        if math.isfinite(dist) and dist > 0.0:
+            first.append(dist)
+    if not first:
+        return None
+    return float(np.median(np.asarray(first, dtype=np.float64)))
+
+
+def _spatial_metrics(
+    x_arr: "np.ndarray",
+    y_arr: "np.ndarray",
+    knn: NeighborhoodIndex | None = None,
+):
+    """Padded bounds, marker radius, and default landmark buffer from xy extent.
+
+    Marker radius is ``0.4 * median`` nearest-neighbor distance so disks do not
+    cover neighbors at fit zoom. Empty graphs fall back to ``0.01 * diagonal``.
+    """
     xmin, xmax = float(x_arr.min()), float(x_arr.max())
     ymin, ymax = float(y_arr.min()), float(y_arr.max())
     if xmax <= xmin:
@@ -200,12 +228,14 @@ def _spatial_metrics(x_arr: "np.ndarray", y_arr: "np.ndarray"):
     diag = math.hypot(xmax - xmin, ymax - ymin)
     pad_x = 0.02 * (xmax - xmin)
     pad_y = 0.02 * (ymax - ymin)
+    nn = _median_nn_distance(knn)
+    point_size = _NN_RADIUS_FRAC * nn if nn is not None else 0.01 * diag
     return (
         xmin - pad_x,
         xmax + pad_x,
         ymin - pad_y,
         ymax + pad_y,
-        0.01 * diag,
+        float(point_size),
         0.05 * diag,
     )
 
@@ -216,8 +246,8 @@ class LandmarksWidget(AnyWidget):
     ``LandmarksWidget(adata, color=..., genes=...)`` is the only constructor.
     Put coordinates in ``obsm["spatial"]`` and k-max / radius-max graphs in
     ``obsp`` (``spatial_knn_*`` / ``spatial_radius_*``) before constructing.
-    Chrome size, marker radius, opacity, and default buffer are fixed or
-    derived from the spatial extent.
+    Chrome follows the notebook cell width; height starts at 700px and is
+    resizable. Marker radius comes from median nearest-neighbor distance.
 
     Analysis state on the widget: ``landmarks``, ``selections``,
     ``type_neighborhoods``. Persist hits with ``get_obs_names`` /
@@ -252,7 +282,8 @@ class LandmarksWidget(AnyWidget):
     ).tag(sync=True)
 
     width = traitlets.Int(400).tag(sync=True)
-    height = traitlets.Int(400).tag(sync=True)
+    height = traitlets.Int(_SHELL_HEIGHT).tag(sync=True)
+    n_points = traitlets.Int(0).tag(sync=True)
 
     points_data = traitlets.Unicode("").tag(sync=True)  # base64 float32 Nx4
     point_palette = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
@@ -346,7 +377,24 @@ class LandmarksWidget(AnyWidget):
 
         x_arr = xy[:, 0]
         y_arr = xy[:, 1]
-        xmin, xmax, ymin, ymax, point_size, buffer_width = _spatial_metrics(x_arr, y_arr)
+        knn_dist = _obsp_key(knn_key, "distances")
+        radius_dist = _obsp_key(radius_key, "distances")
+        pts = np.column_stack([x_arr, y_arr])
+        knn_idx = NeighborhoodIndex.from_sparse(
+            obsp[knn_conn],
+            obsp[knn_dist] if knn_dist in obsp else None,
+            n=n,
+            points=pts,
+        )
+        radius_idx = NeighborhoodIndex.from_sparse(
+            obsp[radius_conn],
+            obsp[radius_dist] if radius_dist in obsp else None,
+            n=n,
+            points=pts,
+        )
+        xmin, xmax, ymin, ymax, point_size, buffer_width = _spatial_metrics(
+            x_arr, y_arr, knn=knn_idx
+        )
         nx = (2.0 * (x_arr - xmin) / (xmax - xmin) - 1.0).astype(np.float32)
         ny = (2.0 * (y_arr - ymin) / (ymax - ymin) - 1.0).astype(np.float32)
 
@@ -402,22 +450,6 @@ class LandmarksWidget(AnyWidget):
             color_mode = "continuous"
         points = np.column_stack([nx, ny, value_a, np.zeros(n, dtype=np.float32)])
 
-        knn_dist = _obsp_key(knn_key, "distances")
-        radius_dist = _obsp_key(radius_key, "distances")
-        pts = np.column_stack([x_arr, y_arr])
-        knn_idx = NeighborhoodIndex.from_sparse(
-            obsp[knn_conn],
-            obsp[knn_dist] if knn_dist in obsp else None,
-            n=n,
-            points=pts,
-        )
-        radius_idx = NeighborhoodIndex.from_sparse(
-            obsp[radius_conn],
-            obsp[radius_dist] if radius_dist in obsp else None,
-            n=n,
-            points=pts,
-        )
-
         self._x_scale = "linear"
         self._y_scale = "linear"
         self._data_x = x_arr
@@ -444,9 +476,9 @@ class LandmarksWidget(AnyWidget):
             modes=list(_DEFAULT_MODES),
             x_bounds=(xmin, xmax),
             y_bounds=(ymin, ymax),
-            axes_pixel_bounds=(0.0, 0.0, float(_SHELL_WIDTH), float(_SHELL_HEIGHT)),
-            width=_SHELL_WIDTH,
+            axes_pixel_bounds=(0.0, 0.0, 100.0, float(_SHELL_HEIGHT)),
             height=_SHELL_HEIGHT,
+            n_points=n,
             points_data=_encode_f32(points),
             point_palette=list(palette),
             color_by=color_mode,
@@ -563,6 +595,7 @@ class LandmarksWidget(AnyWidget):
                 256, low=seq_low, high=seq_high
             )
         self.points_data = _encode_f32(points)
+        self.n_points = n
 
     def set_expression(self, expr: Any) -> None:
         """Pack a gene-expression table for the Layers Genes section."""

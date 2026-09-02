@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNotebookTheme } from "@/hooks/use-notebook-theme";
 import { cn } from "@/lib/utils";
 
-import { LayersPanel, ToolsPanel, Topbar, ZoomControls } from "./chrome";
+import { InspectPanel, LayersPanel, ToolsPanel, Topbar, ZoomControls } from "./chrome";
 import { mountEngine, type EngineHandle } from "./engine";
 import type { AnyModel } from "./helpers";
 import { useLandmarksModel } from "./use-landmarks-model";
@@ -158,10 +158,11 @@ export function LandmarksView({
           <LayersPanel lm={lm} />
         </div>
         <div
-          className="absolute top-12 right-2.5 flex w-56 max-h-[calc(100%-3.25rem)] flex-col p-2 -m-1"
+          className="absolute top-12 right-2.5 flex w-56 max-h-[calc(100%-3.25rem)] flex-col gap-2 overflow-y-auto p-2 -m-1"
           onMouseDown={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
         >
+          <InspectPanel lm={lm} />
           <ToolsPanel lm={lm} />
         </div>
       </div>

@@ -726,7 +726,7 @@ export function mountEngine({ model, host }) {
         getFillColor: (d) => fillColorForPoint(d),
         getRadius: (d) => radiusForPoint(d),
         radiusUnits: "common",
-        radiusMinPixels: 0,
+        radiusMinPixels: 1.5,
         stroked: false,
         filled: true,
         pickable: false,

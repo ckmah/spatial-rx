@@ -22,6 +22,10 @@ import {
   setGeneLog1p as setGeneLog1pTrait,
   setGeneScaleMode as setGeneScaleModeTrait,
   setMode as setModeTrait,
+  setPointSize as setPointSizeTrait,
+  setPointOpacity as setPointOpacityTrait,
+  setLandmarkOpacity as setLandmarkOpacityTrait,
+  setStrokeWidth as setStrokeWidthTrait,
   setSelected,
   toggleLandmarkHidden as toggleLandmarkHiddenTrait,
 } from "./state";
@@ -48,6 +52,11 @@ export type LandmarksState = {
   neighbor_k_max: number;
   x_bounds: number[];
   y_bounds: number[];
+  n_points: number;
+  point_size: number;
+  point_opacity: number;
+  landmark_opacity: number;
+  stroke_width: number;
 };
 
 const MODEL_KEYS: (keyof LandmarksState)[] = [
@@ -72,6 +81,11 @@ const MODEL_KEYS: (keyof LandmarksState)[] = [
   "neighbor_k_max",
   "x_bounds",
   "y_bounds",
+  "n_points",
+  "point_size",
+  "point_opacity",
+  "landmark_opacity",
+  "stroke_width",
 ];
 
 export type LandmarksModel = LandmarksState & {
@@ -89,6 +103,10 @@ export type LandmarksModel = LandmarksState & {
   renameSelection(index: number, name: string): void;
   renameLandmark(index: number, name: string): void;
   toggleLandmarkHidden(index: number): void;
+  setPointSize(value: number): void;
+  setPointOpacity(value: number): void;
+  setLandmarkOpacity(value: number): void;
+  setStrokeWidth(value: number): void;
   activeNeighborhood(): ReturnType<typeof neighborhoodFor>;
   selectedLandmark(): LandmarkItem | null;
 };
@@ -165,6 +183,18 @@ export function useLandmarksModel(model: AnyModel): LandmarksModel {
     },
     toggleLandmarkHidden(index) {
       toggleLandmarkHiddenTrait(model, index, state.landmarks);
+    },
+    setPointSize(value) {
+      setPointSizeTrait(model, value);
+    },
+    setPointOpacity(value) {
+      setPointOpacityTrait(model, value);
+    },
+    setLandmarkOpacity(value) {
+      setLandmarkOpacityTrait(model, value);
+    },
+    setStrokeWidth(value) {
+      setStrokeWidthTrait(model, value);
     },
     activeNeighborhood() {
       return neighborhoodFor(
