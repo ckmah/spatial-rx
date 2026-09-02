@@ -196,7 +196,8 @@ class LandmarksWidget(AnyWidget):
     to list genes under Layers; clicking a gene colors the scatter continuously.
     A spatial selection or type layer can expand with
     ``neighborhood`` ``off`` / ``radius`` / ``knn`` using those precomputed
-    graphs (computed with squidpy before ``from_anndata``).
+    graphs. k and radius sliders subset the ingested k_max / r_max CSRs;
+    they cannot exceed stored neighbors.
 
     Use ``get_mask`` / ``get_indices`` / ``get_obs_names`` with an explicit
     ``selection_id`` (or ``\"all\"`` for every point). ``get_type_mask`` /
@@ -567,10 +568,11 @@ class LandmarksWidget(AnyWidget):
     ) -> "LandmarksWidget":
         """Build from AnnData. Requires k-NN and radius graphs already in ``obsp``.
 
-        Run ``squidpy.gr.spatial_neighbors`` twice first::
+        Run ``squidpy.gr.spatial_neighbors`` twice first (k_max and r_max
+        supersets; widget sliders subset)::
 
-            sq.gr.spatial_neighbors(adata, coord_type="generic", n_neighs=12, key_added="spatial_knn")
-            sq.gr.spatial_neighbors(adata, coord_type="generic", radius=r, key_added="spatial_radius")
+            sq.gr.spatial_neighbors(adata, coord_type="generic", n_neighs=64, key_added="spatial_knn")
+            sq.gr.spatial_neighbors(adata, coord_type="generic", radius=r_max, key_added="spatial_radius")
         """
         import numpy as np
 
@@ -657,16 +659,28 @@ class LandmarksWidget(AnyWidget):
         knn_distances: Any | None = None,
         radius_distances: Any | None = None,
     ) -> None:
-        """Ingest k-NN and radius sparse connectivities (squidpy ``obsp``)."""
+        """Ingest k-NN and radius sparse connectivities (squidpy ``obsp``).
+
+        Graphs should be k_max / r_max supersets. Widget sliders subset them.
+        """
+        import numpy as np
+
         n = int(getattr(self, "_data_x").shape[0])
-        knn_idx = NeighborhoodIndex.from_sparse(knn, knn_distances, n=n)
-        radius_idx = NeighborhoodIndex.from_sparse(radius, radius_distances, n=n)
+        pts = np.column_stack(
+            [np.asarray(self._data_x, dtype=np.float64), np.asarray(self._data_y, dtype=np.float64)]
+        )
+        knn_idx = NeighborhoodIndex.from_sparse(knn, knn_distances, n=n, points=pts)
+        radius_idx = NeighborhoodIndex.from_sparse(
+            radius, radius_distances, n=n, points=pts
+        )
         self._knn_index = knn_idx
         self._radius_index = radius_idx
         for key, val in knn_idx.to_sync(prefix="neighbor").items():
             setattr(self, key, val)
         for key, val in radius_idx.to_sync(prefix="radius").items():
             setattr(self, key, val)
+        self.neighbor_k_max = int(knn_idx.k_max)
+        self.neighbor_radius_max = float(radius_idx.radius_max)
 
     def set_points(
         self,

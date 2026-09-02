@@ -901,7 +901,13 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
 }
 
 export function ToolsPanel({ lm }: { lm: LandmarksModel }) {
-  const { default_tension, x_bounds, y_bounds } = lm;
+  const {
+    default_tension,
+    neighbor_radius_max,
+    neighbor_k_max,
+    x_bounds,
+    y_bounds,
+  } = lm;
 
   const selectedLm = lm.selectedLandmark();
   const usesTension = !!selectedLm && TENSION_TYPES.includes(selectedLm.type);
@@ -909,6 +915,9 @@ export function ToolsPanel({ lm }: { lm: LandmarksModel }) {
   const hood = lm.activeNeighborhood();
   const usesHood = !!hood;
   const bufMax = Math.max(maxBufferWidth(x_bounds, y_bounds), 1);
+  const rMax = neighbor_radius_max > 0 ? neighbor_radius_max : bufMax;
+  const kMax = Math.max(1, neighbor_k_max || 64);
+  const radiusValue = Math.min(Number(hood?.neighborhood_radius || 0), rMax);
 
   return (
     <Card className="pointer-events-auto max-h-full gap-1 overflow-hidden py-2 shadow-md">
@@ -963,8 +972,55 @@ export function ToolsPanel({ lm }: { lm: LandmarksModel }) {
                           <ToggleGroupItem value="knn">k-NN</ToggleGroupItem>
                         </ToggleGroup>
                       </Field>
+                      {hood.neighborhood === "radius" ? (
+                        <Field>
+                          <FieldLabel>Radius</FieldLabel>
+                          <Slider
+                            min={0}
+                            max={rMax}
+                            step={rMax / 200 || 1}
+                            value={[radiusValue]}
+                            onValueChange={(v) => {
+                              const next = Math.min(Math.max(v[0] ?? 0, 0), rMax);
+                              lm.patchNeighborhood({
+                                neighborhood: "radius",
+                                neighborhood_radius: next,
+                              });
+                            }}
+                          />
+                          <FieldDescription>
+                            {formatParam(radiusValue, "0")}
+                            {rMax > 0 ? ` / ${formatParam(rMax, "0")}` : ""}
+                          </FieldDescription>
+                        </Field>
+                      ) : null}
+                      {hood.neighborhood === "knn" ? (
+                        <Field>
+                          <FieldLabel>k</FieldLabel>
+                          <Slider
+                            min={1}
+                            max={kMax}
+                            step={1}
+                            value={[
+                              Math.min(Number(hood.neighborhood_k || 12), kMax),
+                            ]}
+                            onValueChange={(v) =>
+                              lm.patchNeighborhood({
+                                neighborhood: "knn",
+                                neighborhood_k: v[0] ?? 12,
+                              })
+                            }
+                          />
+                          <FieldDescription>
+                            {String(
+                              Math.min(Number(hood.neighborhood_k || 12), kMax),
+                            )}
+                          </FieldDescription>
+                        </Field>
+                      ) : null}
                       <FieldDescription>
-                        Uses the k-NN or radius graph computed before the widget.
+                        Sliders subset the precomputed k-max / radius-max graphs.
+                        Shift+wheel sizes the neighborhood.
                       </FieldDescription>
                     </>
                   ) : (

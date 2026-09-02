@@ -152,6 +152,7 @@ def test_neighborhood_radius_expands_selection():
         {
             **_box_around(0.0, 0.0),
             "neighborhood": "radius",
+            "neighborhood_radius": 1.5,
         }
     ]
     assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {0, 1}
@@ -211,10 +212,11 @@ def test_get_type_mask_neighborhood():
         {
             "id": "Stem",
             "neighborhood": "radius",
+            "neighborhood_radius": 1.0,
         }
     ]
     assert set(w.get_type_indices("Stem").tolist()) == {0, 1, 2}
     assert set(w.get_type_indices("Stem", expand=False).tolist()) == {0, 1}
     seed = np.asarray(w._data_labels).astype(str) == "Stem"
-    via_index = seed | w._radius_index.expand(seed, "radius")
+    via_index = seed | w._radius_index.expand(seed, "radius", radius=1.0)
     assert np.array_equal(via_index, w.get_type_mask("Stem"))

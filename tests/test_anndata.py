@@ -58,6 +58,8 @@ def test_from_anndata_packs_obs_palette_and_genes():
     assert [g["name"] for g in w.gene_columns] == ["g1"]
     assert w.neighbor_indptr
     assert w.radius_indptr
+    assert w.neighbor_k_max >= 1
+    assert w.neighbor_radius_max > 0
     assert w._knn_index is not None
     assert w._radius_index is not None
     assert w._knn_index.n == 4
@@ -126,9 +128,9 @@ def test_expand_knn_vs_radius_graphs():
         "vertices": [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]],
     }
     w.selections = [{**box, "neighborhood": "knn"}]
-    # knn chain 0-1-2-3; seed 0 expands to 1
+    # knn chain 0-1-2-3; seed 0 expands to 1 (k default 12)
     assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {0, 1}
-    w.selections = [{**box, "neighborhood": "radius"}]
+    w.selections = [{**box, "neighborhood": "radius", "neighborhood_radius": 1.5}]
     # radius graph is only 0-1; same seed expands to 1
     assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {0, 1}
 
@@ -137,10 +139,14 @@ def test_expand_knn_vs_radius_graphs():
         "type": "polygon",
         "vertices": [[1.5, -0.5], [2.5, -0.5], [2.5, 0.5], [1.5, 0.5]],
     }
-    w.selections = [{**box2, "neighborhood": "knn"}]
-    # seed cell 2 (x=2) has knn neighbors 1 and 3
+    w.selections = [{**box2, "neighborhood": "knn", "neighborhood_k": 1}]
+    # seed cell 2 (x=2); k=1 keeps nearer of 1 (d=1) and 3 (d=1) — both d=1, one neighbor
+    knn1 = set(w.get_indices(x, y, selection_id="selection 1").tolist())
+    assert 2 in knn1 and len(knn1) == 2
+    w.selections = [{**box2, "neighborhood": "knn", "neighborhood_k": 2}]
+    # seed cell 2 has knn neighbors 1 and 3
     assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {1, 2, 3}
-    w.selections = [{**box2, "neighborhood": "radius"}]
+    w.selections = [{**box2, "neighborhood": "radius", "neighborhood_radius": 1.5}]
     # radius graph has no edge at cell 2
     assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {2}
     w.selections = [{**box, "neighborhood": "off"}]

@@ -30,10 +30,10 @@ def _(mo):
     # seqFISH landmarks
 
     Lohoff et al. mouse gastrulation seqFISH via `squidpy.datasets.seqfish()`.
-    Spatial neighbors are computed **before** the widget (k-NN and radius graphs).
-    Draw landmarks, then measure along a path, distance from a structure, or
-    composition inside a shape. Results write back to `adata.obs` keyed by
-    `obs_names`.
+    Spatial neighbors are computed **before** the widget (k-max and radius-max
+    graphs). Sliders subset those graphs. Draw landmarks, then measure along a
+    path, distance from a structure, or composition inside a shape. Results
+    write back to `adata.obs` keyed by `obs_names`.
     """)
     return
 
@@ -97,7 +97,7 @@ def _(np, pd, plt, sq):
     span = float(np.hypot(np.ptp(xy[:, 0]), np.ptp(xy[:, 1])))
     radius = 0.05 * span
     sq.gr.spatial_neighbors(
-        adata, coord_type="generic", n_neighs=12, key_added="spatial_knn"
+        adata, coord_type="generic", n_neighs=64, key_added="spatial_knn"
     )
     sq.gr.spatial_neighbors(
         adata, coord_type="generic", radius=radius, key_added="spatial_radius"
@@ -157,8 +157,8 @@ def _(CLUSTER, DEFAULT_BUFFER, LandmarksWidget, adata, gene_panel):
         color=CLUSTER,
         genes=gene_panel,
         width=1100,
-        height=600,
-        point_size=3.0,
+        height=900,
+        point_size=0.01,
         point_opacity=0.8,
         mode="select",
         stroke_width=4,
@@ -297,7 +297,7 @@ def _(gene_pick, landmark_pick, mo, plot_type, selection_pick):
 
 
 @app.cell
-def _(alt, np, pd, theme):
+def _(alt, np, pd):
     def altair_theme(chart, theme="dark"):
         if theme == "dark":
             return (
@@ -484,7 +484,6 @@ def _(
     landmark_pick,
     landmarks_ui,
     mo,
-    np,
     plot_type,
     selection_pick,
     theme,

@@ -44,16 +44,65 @@ def empty_graph(n: int) -> "NeighborhoodIndex":
     )
 
 
+def _as_csr(mat: Any):
+    from scipy.sparse import csr_matrix, issparse
+
+    if not issparse(mat):
+        mat = csr_matrix(mat)
+    else:
+        mat = mat.tocsr()
+    mat = mat.astype(np.float32, copy=False)
+    mat.setdiag(0)
+    mat.eliminate_zeros()
+    return mat
+
+
+def _edge_euclidean(indptr: np.ndarray, indices: np.ndarray, points: np.ndarray) -> np.ndarray:
+    dist = np.zeros(indices.shape[0], dtype=np.float32)
+    n = int(indptr.shape[0] - 1)
+    for i in range(n):
+        start = int(indptr[i])
+        end = int(indptr[i + 1])
+        if end <= start:
+            continue
+        delta = points[indices[start:end]] - points[i]
+        dist[start:end] = np.hypot(delta[:, 0], delta[:, 1]).astype(np.float32)
+    return dist
+
+
+def _sort_rows_by_distance(
+    indptr: np.ndarray, indices: np.ndarray, distances: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Stable-sort each CSR row by distance ascending (in place copies)."""
+    out_idx = np.empty_like(indices)
+    out_dist = np.empty_like(distances)
+    n = int(indptr.shape[0] - 1)
+    for i in range(n):
+        start = int(indptr[i])
+        end = int(indptr[i + 1])
+        if end <= start:
+            continue
+        order = np.argsort(distances[start:end], kind="stable")
+        out_idx[start:end] = indices[start:end][order]
+        out_dist[start:end] = distances[start:end][order]
+    return out_idx, out_dist
+
+
 @dataclass(frozen=True)
 class NeighborhoodIndex:
-    """CSR neighbor graph for expand lookup (k-NN or radius, already computed)."""
+    """CSR neighbor graph for expand lookup (k-NN or radius, already computed).
+
+    Rows are sorted by distance. Expand subsets: k-NN takes the first ``k``
+    neighbors; radius keeps ``distance <= radius``. Sliders cannot exceed
+    ``k_max`` / ``radius_max`` stored in the graph.
+    """
 
     indptr: np.ndarray
     indices: np.ndarray
     distances: np.ndarray
     k_max: int
     radius_max: float
-    points: np.ndarray  # (n, 2) float64; unused for expand
+    points: np.ndarray  # (n, 2) float64
 
     @property
     def n(self) -> int:
@@ -66,48 +115,35 @@ class NeighborhoodIndex:
         distances: Any | None = None,
         *,
         n: int | None = None,
+        points: Any | None = None,
     ) -> "NeighborhoodIndex":
-        """Build from a scipy sparse matrix (squidpy ``obsp`` connectivities)."""
-        from scipy.sparse import csr_matrix, issparse
-
-        if not issparse(connectivities):
-            conn = csr_matrix(connectivities)
-        else:
-            conn = connectivities.tocsr()
-        conn = conn.astype(np.float32, copy=False)
-        conn.setdiag(0)
-        conn.eliminate_zeros()
-        if n is not None and int(conn.shape[0]) != int(n):
+        """Build from squidpy ``obsp`` distances (preferred) or connectivities."""
+        src = _as_csr(distances if distances is not None else connectivities)
+        if n is not None and int(src.shape[0]) != int(n):
             raise ValueError(
-                f"connectivities n={conn.shape[0]} != expected n={n}"
+                f"connectivities n={src.shape[0]} != expected n={n}"
             )
-        indptr = np.asarray(conn.indptr, dtype=np.int32)
-        indices = np.asarray(conn.indices, dtype=np.int32)
-        dist_data = np.asarray(conn.data, dtype=np.float32)
-        if distances is not None:
-            if not issparse(distances):
-                dist = csr_matrix(distances)
-            else:
-                dist = distances.tocsr()
-            dist = dist.astype(np.float32, copy=False)
-            dist.setdiag(0)
-            dist.eliminate_zeros()
-            if (
-                dist.nnz == conn.nnz
-                and np.array_equal(np.asarray(dist.indptr, dtype=np.int32), indptr)
-                and np.array_equal(np.asarray(dist.indices, dtype=np.int32), indices)
-            ):
-                dist_data = np.asarray(dist.data, dtype=np.float32)
-        n_pts = int(conn.shape[0])
+        indptr = np.asarray(src.indptr, dtype=np.int32)
+        indices = np.asarray(src.indices, dtype=np.int32)
+        dist_data = np.asarray(src.data, dtype=np.float32)
+        n_pts = int(src.shape[0])
+        if points is None:
+            pts = np.zeros((n_pts, 2), dtype=np.float64)
+        else:
+            pts = np.asarray(points, dtype=np.float64).reshape(n_pts, 2)
+        if distances is None and points is not None:
+            dist_data = _edge_euclidean(indptr, indices, pts)
+        indices, dist_data = _sort_rows_by_distance(indptr, indices, dist_data)
         row_nnz = np.diff(indptr)
         k_max = int(row_nnz.max()) if row_nnz.size else 0
+        radius_max = float(dist_data.max()) if dist_data.size else 0.0
         return cls(
             indptr=indptr,
             indices=indices,
             distances=dist_data,
             k_max=k_max,
-            radius_max=0.0,
-            points=np.zeros((n_pts, 2), dtype=np.float64),
+            radius_max=radius_max,
+            points=pts,
         )
 
     def expand(
@@ -120,10 +156,9 @@ class NeighborhoodIndex:
     ) -> np.ndarray:
         """Boolean mask of neighbors of ``seed_mask`` (seeds themselves are False).
 
-        Uses every stored CSR neighbor. ``radius`` / ``k`` are ignored — the graph
-        was computed before the widget.
+        k-NN: first ``k`` stored neighbors (capped at row degree / ``k_max``).
+        Radius: stored neighbors with ``distance <= radius`` (capped at ``radius_max``).
         """
-        del radius, k
         seed = np.asarray(seed_mask, dtype=bool).ravel()
         if seed.shape[0] != self.n:
             raise ValueError("seed_mask length must match neighbor graph")
@@ -134,11 +169,29 @@ class NeighborhoodIndex:
         seeds = np.flatnonzero(seed)
         if seeds.size == 0:
             return out
-        for i in seeds:
-            start = int(self.indptr[i])
-            end = int(self.indptr[i + 1])
-            if end > start:
-                out[self.indices[start:end]] = True
+        if kind == "knn":
+            take = int(k)
+            if take <= 0:
+                return out
+            for i in seeds:
+                start = int(self.indptr[i])
+                end = int(self.indptr[i + 1])
+                stop = min(end, start + take)
+                if stop > start:
+                    out[self.indices[start:stop]] = True
+        elif kind == "radius":
+            r = float(radius)
+            if r <= 0:
+                return out
+            for i in seeds:
+                start = int(self.indptr[i])
+                end = int(self.indptr[i + 1])
+                if end <= start:
+                    continue
+                drow = self.distances[start:end]
+                hit = drow <= r
+                if hit.any():
+                    out[self.indices[start:end][hit]] = True
         out &= ~seed
         return out
 
@@ -150,7 +203,6 @@ class NeighborhoodIndex:
             f"{prefix}_distances": _encode_f32(self.distances),
         }
         if prefix == "neighbor":
-            out["neighbor_radius_max"] = float(self.radius_max)
             out["neighbor_k_max"] = int(self.k_max)
         return out
 

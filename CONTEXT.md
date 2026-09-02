@@ -10,10 +10,11 @@ layers via `LandmarksWidget.from_anndata(...)` (or `from_points` /
 `obsm["spatial"]`, labels in `obs`, expression in `X`.
 
 k-NN and radius neighbor graphs are computed **before** the widget with
-`squidpy.gr.spatial_neighbors` (two `key_added` values) and ingested from
-`obsp`. The widget expands a selection using those precomputed CSRs
-(`neighbor_*` / `radius_*`); it does not build or requery a graph.
-Persist selections as `obs_names`, not positional indices.
+`squidpy.gr.spatial_neighbors` (two `key_added` values) as k_max / r_max
+supersets, then ingested from `obsp`. Widget sliders subset those CSRs
+(`neighbor_*` / `radius_*`); they cannot exceed stored neighbors. The widget
+does not build or requery a graph. Persist selections as `obs_names`, not
+positional indices.
 
 ## Language
 

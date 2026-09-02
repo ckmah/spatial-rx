@@ -35,25 +35,31 @@ def _(mo):
     mo.md(r"""
     # Cell-set neighborhood
 
-    Load seqFISH, compute **k-NN and radius** graphs with squidpy, then expand a
-    lasso or category using those precomputed graphs (Off / Radius / k-NN).
+    Load seqFISH, compute **k-max and radius-max** graphs with squidpy, then
+    expand a lasso or category. Off / Radius / k-NN picks the graph; sliders
+    subset k and radius (cannot exceed the stored graphs).
     """)
     return
 
 
 @app.cell
-def _(LandmarksWidget, np, pd, sq):
+def _(np, pd, sq):
     CLUSTER = "celltype_mapped_refined"
     adata = sq.datasets.seqfish()
     adata.obs[CLUSTER] = pd.Categorical(adata.obs[CLUSTER].astype(str))
     xy = np.asarray(adata.obsm["spatial"], dtype=float)
     radius = 0.05 * float(np.hypot(np.ptp(xy[:, 0]), np.ptp(xy[:, 1])))
     sq.gr.spatial_neighbors(
-        adata, coord_type="generic", n_neighs=12, key_added="spatial_knn"
+        adata, coord_type="generic", n_neighs=64, key_added="spatial_knn"
     )
     sq.gr.spatial_neighbors(
         adata, coord_type="generic", radius=radius, key_added="spatial_radius"
     )
+    return CLUSTER, adata
+
+
+@app.cell
+def _(CLUSTER, LandmarksWidget, adata):
     genes = [str(g) for g in adata.var_names[:8]]
     widget = LandmarksWidget.from_anndata(
         adata,
@@ -61,10 +67,15 @@ def _(LandmarksWidget, np, pd, sq):
         genes=genes,
         width=1100,
         height=700,
-        point_size=2.0,
+        point_size=0.01,
         point_opacity=0.8,
     )
     widget
+    return
+
+
+@app.cell
+def _():
     return
 
 
