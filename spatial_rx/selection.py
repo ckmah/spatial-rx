@@ -108,9 +108,6 @@ def neighborhood_expand(
 
     Prefer a precomputed ``NeighborhoodIndex`` (``index=``) so expand matches the
     widget. Without ``index``, falls back to brute-force distances.
-
-    ``radius``: true Euclidean ball (independent of knn ``k_max``).
-    ``knn``: union of each seed's ``k`` nearest other points (CSR / brute).
     """
     if index is not None:
         return index.expand(seed_mask, method, radius=radius, k=k)

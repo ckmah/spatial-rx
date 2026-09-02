@@ -5,12 +5,15 @@ logic; the browser owns presentation. State crosses the boundary through named,
 typed fields.
 
 Point scatter, landmarks, selections, and drafts use deck.gl orthographic
-layers via `LandmarksWidget.from_points(...)`.
+layers via `LandmarksWidget.from_anndata(...)` (or `from_points` /
+`from_frame`). AnnData is the analysis object: coordinates in
+`obsm["spatial"]`, labels in `obs`, expression in `X`.
 
-Neighbor expand uses a **pynndescent-built CSR graph** synced as analysis state
-(`neighbor_indptr` / `neighbor_indices` / `neighbor_distances`). The browser
-looks up neighbors and draws radius neighborhoods as scatter disks (max blend);
-union polygons are not used.
+k-NN and radius neighbor graphs are computed **before** the widget with
+`squidpy.gr.spatial_neighbors` (two `key_added` values) and ingested from
+`obsp`. The widget expands a selection using those precomputed CSRs
+(`neighbor_*` / `radius_*`); it does not build or requery a graph.
+Persist selections as `obs_names`, not positional indices.
 
 ## Language
 

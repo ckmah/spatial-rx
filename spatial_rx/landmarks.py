@@ -17,7 +17,7 @@ from .categories import (
     encode_single_category,
 )
 from .genes import encode_gene_bundle
-from .neighbors import DEFAULT_K_MAX, NeighborhoodIndex, default_radius_max
+from .neighbors import DEFAULT_K_MAX, NeighborhoodIndex, empty_graph
 from .selection import neighborhood_expand, neighborhood_params, selection_mask
 
 if TYPE_CHECKING:
@@ -127,6 +127,61 @@ def _encode_colors(
     return seq, norm, [], vmin, vmax
 
 
+def _obsp_key(key_added: str, kind: str) -> str:
+    return f"{key_added}_{kind}"
+
+
+def _color_maps_from_uns(adata: Any) -> dict[str, dict[str, str]]:
+    """scanpy ``uns['<key>_colors']`` lists aligned to ``obs[key].cat.categories``."""
+    maps: dict[str, dict[str, str]] = {}
+    uns = getattr(adata, "uns", None) or {}
+    obs = getattr(adata, "obs", None)
+    if obs is None:
+        return maps
+    for col in obs.columns:
+        colors = uns.get(f"{col}_colors")
+        if colors is None:
+            continue
+        series = obs[col]
+        cats = getattr(getattr(series, "cat", None), "categories", None)
+        if cats is None:
+            continue
+        maps[str(col)] = {
+            str(cat): str(colors[i])
+            for i, cat in enumerate(cats)
+            if i < len(colors)
+        }
+    return maps
+
+
+def _expr_from_adata(adata: Any, genes: Any) -> Any:
+    import numpy as np
+    import pandas as pd
+
+    if genes is None:
+        return None
+    var_names = [str(v) for v in adata.var_names]
+    if genes is True:
+        wanted = var_names
+    else:
+        wanted_set = {str(g) for g in genes}
+        wanted = [g for g in var_names if g in wanted_set]
+    if not wanted:
+        return None
+    X = adata[:, wanted].X
+    if hasattr(X, "toarray"):
+        X = X.toarray()
+    return pd.DataFrame(np.asarray(X), columns=wanted)
+
+
+def _index_for_method(widget: "LandmarksWidget", method: str) -> NeighborhoodIndex | None:
+    if method == "knn":
+        return getattr(widget, "_knn_index", None)
+    if method == "radius":
+        return getattr(widget, "_radius_index", None)
+    return None
+
+
 class LandmarksWidget(AnyWidget):
     """Draw selections and landmarks as deck.gl layers on an orthographic scatter.
 
@@ -134,18 +189,19 @@ class LandmarksWidget(AnyWidget):
     in cartesian tissue coordinates; landmarks and selections are deck.gl layers.
 
     Synced state includes UI geometry (``landmarks``, ``selections``,
-    ``type_neighborhoods``) and a precomputed neighbor graph
-    (``neighbor_*`` CSR from pynndescent) for browser expand lookup.
+    ``type_neighborhoods``) and two neighbor graphs ingested from AnnData
+    ``obsp`` (k-NN as ``neighbor_*``, radius as ``radius_*``).
     Categorical ``color`` labels are intrinsic type layers — they are not
     created by clicking. Pass ``expr`` (numeric gene columns, same row order)
     to list genes under Layers; clicking a gene colors the scatter continuously.
     A spatial selection or type layer can expand with
-    ``neighborhood`` ``off`` / ``radius`` / ``knn`` the same way a line
-    landmark takes a buffer.
+    ``neighborhood`` ``off`` / ``radius`` / ``knn`` using those precomputed
+    graphs (computed with squidpy before ``from_anndata``).
 
-    Use ``get_mask`` / ``get_indices`` with an explicit ``selection_id``
-    (or ``\"all\"`` for every point). ``get_type_mask`` / ``get_type_indices``
-    cover a categorical label. Measurement tables belong in the notebook.
+    Use ``get_mask`` / ``get_indices`` / ``get_obs_names`` with an explicit
+    ``selection_id`` (or ``\"all\"`` for every point). ``get_type_mask`` /
+    ``get_type_indices`` cover a categorical label. Measurement tables belong
+    in the notebook. Persist selections as ``obs_names``, not positions.
 
     Line and spline landmarks carry ``buffer_width`` (data units, ``0`` = off)
     and ``buffer_side`` (``\"left\"``/``\"both\"``/``\"right\"``, relative to the
@@ -218,15 +274,21 @@ class LandmarksWidget(AnyWidget):
         sync=True
     )
 
-    # Precomputed neighbor graph (pynndescent CSR) for client-side expand lookup.
+    # Precomputed k-NN graph (from adata.obsp) for client-side expand lookup.
     neighbor_indptr = traitlets.Unicode("").tag(sync=True)  # base64 int32
     neighbor_indices = traitlets.Unicode("").tag(sync=True)  # base64 int32
     neighbor_distances = traitlets.Unicode("").tag(sync=True)  # base64 float32
     neighbor_radius_max = traitlets.Float(0.0).tag(sync=True)
     neighbor_k_max = traitlets.Int(DEFAULT_K_MAX).tag(sync=True)
+    # Precomputed radius graph (from adata.obsp).
+    radius_indptr = traitlets.Unicode("").tag(sync=True)
+    radius_indices = traitlets.Unicode("").tag(sync=True)
+    radius_distances = traitlets.Unicode("").tag(sync=True)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        raise TypeError("Use LandmarksWidget.from_points(...) or from_frame(...)")
+        raise TypeError(
+            "Use LandmarksWidget.from_anndata(...), from_points(...), or from_frame(...)"
+        )
 
     @classmethod
     def from_points(
@@ -265,13 +327,16 @@ class LandmarksWidget(AnyWidget):
         ``y`` (e.g. 2.0 for a 2 µm radius on micron coordinates); screen size
         scales with zoom and is not clamped to a minimum pixel size.
 
-        ``k_max`` / ``neighbor_radius_max`` control the precomputed neighbor
-        graph (pynndescent) synced for browser radius/k-NN lookup.
-
         ``expr`` is an optional table of numeric gene columns (same row order
         as ``x`` / ``y``). Packed values appear as a Genes section under Layers.
+
+        Neighbor graphs are not built here. Pass them with ``set_neighbor_graphs``
+        or use ``from_anndata`` after ``squidpy.gr.spatial_neighbors``.
+        ``k_max`` / ``neighbor_radius_max`` are accepted for compatibility and ignored.
         """
         import numpy as np
+
+        del k_max, neighbor_radius_max
 
         x_arr = np.asarray(x, dtype=np.float64).ravel()
         y_arr = np.asarray(y, dtype=np.float64).ravel()
@@ -313,22 +378,17 @@ class LandmarksWidget(AnyWidget):
         if modes is None:
             modes = list(_DEFAULT_MODES)
 
-        r_max = (
-            float(neighbor_radius_max)
-            if neighbor_radius_max is not None
-            else default_radius_max(x_arr, y_arr)
-        )
-        neigh = NeighborhoodIndex.build(
-            x_arr, y_arr, k_max=int(k_max), radius_max=r_max
-        )
-        neigh_sync = neigh.to_sync()
+        knn = empty_graph(n)
+        radius = empty_graph(n)
 
         self = cls.__new__(cls)
         self._x_scale = "linear"
         self._y_scale = "linear"
         self._data_x = x_arr
         self._data_y = y_arr
-        self._neighbor_index = neigh
+        self._knn_index = knn
+        self._radius_index = radius
+        self._obs_names = None
         cat_meta: list[dict] = []
         cat_codes = ""
         cat_labels: dict[str, Any] = {}
@@ -371,7 +431,8 @@ class LandmarksWidget(AnyWidget):
             category_codes=cat_codes,
             active_category=active_cat,
             continuous_palette=list(seq_palette),
-            **neigh_sync,
+            **knn.to_sync(prefix="neighbor"),
+            **radius.to_sync(prefix="radius"),
             **kwargs,
         )
         if expr is not None:
@@ -478,6 +539,135 @@ class LandmarksWidget(AnyWidget):
             w.legend_title = w.active_category
         return w
 
+    @classmethod
+    def from_anndata(
+        cls,
+        adata: Any,
+        *,
+        spatial_key: str = "spatial",
+        knn_key: str = "spatial_knn",
+        radius_key: str = "spatial_radius",
+        color: str | None = None,
+        genes: Any = None,
+        color_maps: dict[str, dict[str, str]] | None = None,
+        continuous_range: tuple[str, str] | None = None,
+        width: int = 900,
+        height: int = 900,
+        point_size: float = 2.0,
+        point_opacity: float = 0.75,
+        background: str | None = None,
+        mode: str = "select",
+        modes: list[str] | None = None,
+        landmark_opacity: float = 0.28,
+        stroke_width: int = 2,
+        default_tension: float = 0.0,
+        default_buffer_width: float = 0.0,
+        default_buffer_side: str = "both",
+        **kwargs: Any,
+    ) -> "LandmarksWidget":
+        """Build from AnnData. Requires k-NN and radius graphs already in ``obsp``.
+
+        Run ``squidpy.gr.spatial_neighbors`` twice first::
+
+            sq.gr.spatial_neighbors(adata, coord_type="generic", n_neighs=12, key_added="spatial_knn")
+            sq.gr.spatial_neighbors(adata, coord_type="generic", radius=r, key_added="spatial_radius")
+        """
+        import numpy as np
+
+        knn_conn = _obsp_key(knn_key, "connectivities")
+        radius_conn = _obsp_key(radius_key, "connectivities")
+        obsp = getattr(adata, "obsp", None)
+        if obsp is None or knn_conn not in obsp or radius_conn not in obsp:
+            raise ValueError(
+                "from_anndata requires "
+                f"adata.obsp[{knn_conn!r}] and adata.obsp[{radius_conn!r}]; "
+                "run squidpy.gr.spatial_neighbors for k-NN and radius first"
+            )
+        if spatial_key not in adata.obsm:
+            raise ValueError(f"adata.obsm[{spatial_key!r}] is required")
+        xy = np.asarray(adata.obsm[spatial_key], dtype=np.float64)
+        if xy.ndim != 2 or xy.shape[1] < 2:
+            raise ValueError(f"adata.obsm[{spatial_key!r}] must be (n, 2)")
+        if xy.shape[0] != adata.n_obs:
+            raise ValueError("spatial coords length must match adata.n_obs")
+
+        maps = _color_maps_from_uns(adata)
+        if color_maps:
+            maps.update(color_maps)
+
+        obs = adata.obs.copy()
+        obs["x"] = xy[:, 0]
+        obs["y"] = xy[:, 1]
+
+        color_arg = color
+        gene_color = None
+        var_names = {str(v) for v in adata.var_names}
+        if color and color not in obs.columns and color in var_names:
+            color_arg = None
+            X = adata[:, [color]].X
+            if hasattr(X, "toarray"):
+                X = X.toarray()
+            gene_color = np.asarray(X, dtype=np.float64).ravel()
+
+        expr = _expr_from_adata(adata, genes)
+        w = cls.from_frame(
+            obs,
+            x="x",
+            y="y",
+            color=color_arg,
+            color_maps=maps or None,
+            continuous_range=continuous_range,
+            width=width,
+            height=height,
+            point_size=point_size,
+            point_opacity=point_opacity,
+            background=background,
+            mode=mode,
+            modes=modes,
+            landmark_opacity=landmark_opacity,
+            stroke_width=stroke_width,
+            default_tension=default_tension,
+            default_buffer_width=default_buffer_width,
+            default_buffer_side=default_buffer_side,
+            expr=expr,
+            **kwargs,
+        )
+        if gene_color is not None:
+            w.set_color(
+                gene_color,
+                legend_title=str(color),
+                continuous_range=continuous_range,
+            )
+        knn_dist = _obsp_key(knn_key, "distances")
+        radius_dist = _obsp_key(radius_key, "distances")
+        w.set_neighbor_graphs(
+            obsp[knn_conn],
+            obsp[radius_conn],
+            knn_distances=obsp[knn_dist] if knn_dist in obsp else None,
+            radius_distances=obsp[radius_dist] if radius_dist in obsp else None,
+        )
+        w._obs_names = np.asarray(adata.obs_names.astype(str))
+        return w
+
+    def set_neighbor_graphs(
+        self,
+        knn: Any,
+        radius: Any,
+        *,
+        knn_distances: Any | None = None,
+        radius_distances: Any | None = None,
+    ) -> None:
+        """Ingest k-NN and radius sparse connectivities (squidpy ``obsp``)."""
+        n = int(getattr(self, "_data_x").shape[0])
+        knn_idx = NeighborhoodIndex.from_sparse(knn, knn_distances, n=n)
+        radius_idx = NeighborhoodIndex.from_sparse(radius, radius_distances, n=n)
+        self._knn_index = knn_idx
+        self._radius_index = radius_idx
+        for key, val in knn_idx.to_sync(prefix="neighbor").items():
+            setattr(self, key, val)
+        for key, val in radius_idx.to_sync(prefix="radius").items():
+            setattr(self, key, val)
+
     def set_points(
         self,
         x: Any,
@@ -534,7 +724,6 @@ class LandmarksWidget(AnyWidget):
                 256, low=seq_low, high=seq_high
             )
         self.points_data = _encode_f32(points)
-        self._rebuild_neighbor_index()
 
     def set_expression(self, expr: Any) -> None:
         """Pack a gene-expression table for the Layers Genes section."""
@@ -585,30 +774,11 @@ class LandmarksWidget(AnyWidget):
         self.clear_selections()
         self.clear_landmarks()
 
-    def _rebuild_neighbor_index(
-        self,
-        *,
-        k_max: int | None = None,
-        neighbor_radius_max: float | None = None,
-    ) -> None:
-        x = getattr(self, "_data_x", None)
-        y = getattr(self, "_data_y", None)
-        if x is None or y is None:
-            return
-        km = int(k_max if k_max is not None else (self.neighbor_k_max or DEFAULT_K_MAX))
-        r_max = (
-            float(neighbor_radius_max)
-            if neighbor_radius_max is not None
-            else float(self.neighbor_radius_max or 0.0) or default_radius_max(x, y)
-        )
-        neigh = NeighborhoodIndex.build(x, y, k_max=km, radius_max=r_max)
-        self._neighbor_index = neigh
-        sync = neigh.to_sync()
-        self.neighbor_indptr = sync["neighbor_indptr"]
-        self.neighbor_indices = sync["neighbor_indices"]
-        self.neighbor_distances = sync["neighbor_distances"]
-        self.neighbor_radius_max = sync["neighbor_radius_max"]
-        self.neighbor_k_max = sync["neighbor_k_max"]
+    def _expand_index(self, method: str) -> NeighborhoodIndex | None:
+        idx = _index_for_method(self, method)
+        if idx is None or idx.n == 0 or int(idx.indptr[-1]) == 0:
+            return None
+        return idx
 
     def get_mask(
         self,
@@ -639,6 +809,9 @@ class LandmarksWidget(AnyWidget):
         method, radius, k = neighborhood_params(sel)
         if method == "off":
             return mask
+        index = self._expand_index(method)
+        if index is None:
+            return mask
         return mask | neighborhood_expand(
             mask,
             x_arr,
@@ -646,7 +819,7 @@ class LandmarksWidget(AnyWidget):
             method,
             radius=radius,
             k=k,
-            index=getattr(self, "_neighbor_index", None),
+            index=index,
         )
 
     def get_indices(
@@ -705,6 +878,9 @@ class LandmarksWidget(AnyWidget):
         y = getattr(self, "_data_y", None)
         if x is None or y is None:
             raise RuntimeError("internal point cache missing; call set_points first")
+        index = self._expand_index(method)
+        if index is None:
+            return seed
         return seed | neighborhood_expand(
             seed,
             x,
@@ -712,7 +888,7 @@ class LandmarksWidget(AnyWidget):
             method,
             radius=radius,
             k=k,
-            index=getattr(self, "_neighbor_index", None),
+            index=index,
         )
 
     def get_type_indices(
@@ -725,3 +901,42 @@ class LandmarksWidget(AnyWidget):
         import numpy as np
 
         return np.where(self.get_type_mask(type_label, expand=expand))[0]
+
+    def get_obs_names(
+        self,
+        adata: Any,
+        selection_id: str | None = "all",
+        *,
+        spatial_key: str = "spatial",
+        expand: bool = True,
+    ) -> "np.ndarray":
+        """``obs_names`` of cells inside ``selection_id`` (durable join key)."""
+        import numpy as np
+
+        xy = np.asarray(adata.obsm[spatial_key], dtype=np.float64)
+        cached = getattr(self, "_data_x", None)
+        if cached is None or xy.shape[0] != int(cached.shape[0]):
+            raise ValueError(
+                "adata row count != widget points; rebuild the widget after filtering"
+            )
+        idx = self.get_indices(
+            xy[:, 0], xy[:, 1], selection_id=selection_id, expand=expand
+        )
+        return np.asarray(adata.obs_names.astype(str))[idx]
+
+    def assign_obs_mask(
+        self,
+        adata: Any,
+        key: str,
+        selection_id: str | None = "all",
+        *,
+        spatial_key: str = "spatial",
+        expand: bool = True,
+    ) -> None:
+        """Write a boolean column on ``adata.obs`` for the current selection."""
+        names = set(
+            self.get_obs_names(
+                adata, selection_id, spatial_key=spatial_key, expand=expand
+            ).tolist()
+        )
+        adata.obs[key] = [str(n) in names for n in adata.obs_names.astype(str)]

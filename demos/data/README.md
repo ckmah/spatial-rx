@@ -1,6 +1,8 @@
 # Demo data (TIFF + CSV)
 
-Slices used by `demos/gut_study.py` and `demos/landmarks.py`.
+Local TIFF/CSV slices remain under this directory. The landmarks and gut-study
+notebooks load **seqFISH** via `squidpy.datasets.seqfish()` (Lohoff et al. mouse
+gastrulation) and do not read these files.
 
 ## Layout
 

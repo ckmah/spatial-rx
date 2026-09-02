@@ -17,11 +17,13 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
 dependencies = [
+    "anndata>=0.10",
     "anywidget>=0.9.2",
     "matplotlib>=3.0",
     "numpy>=1.24",
+    "pandas>=2.0",
     "polars>=1.0",
-    "pynndescent>=0.5.13",
+    "scipy>=1.11",
     "traitlets>=5.0",
 ]
 
@@ -30,13 +32,17 @@ demo = [
     "altair>=6.2.2",
     "geopandas>=1.1.4",
     "marimo>=0.24.0",
-    "pandas>=3.0.5",
-    "scipy>=1.17.1",
+    "pandas>=2.0",
+    "scipy>=1.11",
     "shapely>=2.1.2",
+    "squidpy>=1.6",
     "tifffile>=2026.3.3",
 ]
 test = [
+    "geopandas>=1.1.4",
+    "pandas>=2.0",
     "pytest>=8.3.3",
+    "shapely>=2.1.2",
 ]
 
 [project.urls]
@@ -46,8 +52,10 @@ Issues = "https://github.com/ckmah/spatial-rx/issues"
 
 [dependency-groups]
 dev = [
+    "geopandas>=1.1.4",
     "pytest>=8.3.3",
     "pyyaml>=6.0",
+    "shapely>=2.1.2",
     "watchfiles>=1.2.0",
 ]
 
