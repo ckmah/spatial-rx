@@ -1,6 +1,7 @@
 export type EngineHandle = {
   zoomBy(delta: number): void;
   resetZoom(): void;
+  resize(): void;
   destroy(): void;
 };
 

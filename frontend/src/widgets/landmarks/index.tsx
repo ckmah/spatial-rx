@@ -14,6 +14,10 @@ type RenderContext = {
 const roots = new WeakMap<HTMLElement, Root>();
 
 function render({ model, el }: RenderContext) {
+  el.style.width = "100%";
+  el.style.maxWidth = "100%";
+  el.style.minWidth = "0";
+  el.style.display = "block";
   const existing = roots.get(el);
   if (existing) {
     existing.unmount();

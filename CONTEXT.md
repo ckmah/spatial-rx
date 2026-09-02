@@ -5,12 +5,18 @@ logic; the browser owns presentation. State crosses the boundary through named,
 typed fields.
 
 Point scatter, landmarks, selections, and drafts use deck.gl orthographic
-layers via `LandmarksWidget.from_points(...)`.
+layers via `LandmarksWidget(adata, color=..., genes=...)`. AnnData is the
+analysis object: coordinates in `obsm["spatial"]`, labels in `obs`,
+expression in `X`. Chrome follows the notebook cell width. Marker radius is derived from
+median nearest-neighbor distance; opacity and default buffer are fixed
+or computed from spatial extent.
 
-Neighbor expand uses a **pynndescent-built CSR graph** synced as analysis state
-(`neighbor_indptr` / `neighbor_indices` / `neighbor_distances`). The browser
-looks up neighbors and draws radius neighborhoods as scatter disks (max blend);
-union polygons are not used.
+k-NN and radius neighbor graphs are computed **before** the widget with
+`squidpy.gr.spatial_neighbors` (two `key_added` values) as k_max / r_max
+supersets, then ingested from `obsp`. Widget sliders subset those CSRs
+(`neighbor_*` / `radius_*`); they cannot exceed stored neighbors. The widget
+does not build or requery a graph. Persist selections as `obs_names`, not
+positional indices.
 
 ## Language
 

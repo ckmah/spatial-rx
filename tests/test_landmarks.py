@@ -1,22 +1,53 @@
 import numpy as np
+import pytest
+
+from tests.helpers import adata_xy, graph
 
 
-def test_from_points_defaults():
+def test_constructor_defaults():
     from spatial_rx import LandmarksWidget
 
     x = np.array([0.0, 1.0, 2.0, 3.0])
     y = np.array([0.0, 1.0, 0.0, 1.0])
     color = np.array(["a", "b", "a", "c"])
-    w = LandmarksWidget.from_points(x, y, color=color, width=400, height=400)
+    w = LandmarksWidget(adata_xy(x, y, color=color), color="label")
     assert w.mode == "select"
-    assert w.width == 400 and w.height == 400
+    assert w.height == 700
+    assert w.n_points == 4
     assert len(w.point_palette) == 3
     assert w.points_data
-    assert w.neighbor_indptr and w.neighbor_indices and w.neighbor_distances
-    assert w.neighbor_k_max >= 1
-    assert w.neighbor_radius_max > 0
-    assert getattr(w, "_neighbor_index", None) is not None
+    assert int(w._knn_index.indptr[-1]) == 0
+    assert int(w._radius_index.indptr[-1]) == 0
     assert w.x_bounds[0] < 0.0 and w.x_bounds[1] > 3.0
+    assert w.point_opacity == 0.8
+    assert w.landmark_opacity == 0.28
+    assert w.stroke_width == 2
+    assert w.default_buffer_side == "both"
+    assert w.default_buffer_width > 0
+    diag = float(np.hypot(3.0, 1.0))
+    assert w.point_size == pytest.approx(0.01 * diag)
+    assert w.default_buffer_width == pytest.approx(0.05 * diag)
+
+
+def test_marker_radius_from_knn():
+    from spatial_rx import LandmarksWidget
+
+    x = np.array([0.0, 1.0, 2.0, 3.0])
+    y = np.zeros(4)
+    knn = graph(
+        4,
+        [
+            (0, 1, 1.0),
+            (1, 0, 1.0),
+            (1, 2, 1.0),
+            (2, 1, 1.0),
+            (2, 3, 1.0),
+            (3, 2, 1.0),
+        ],
+    )
+    w = LandmarksWidget(adata_xy(x, y, knn=knn))
+    assert w.point_size == pytest.approx(0.4)
+    assert w.n_points == 4
     assert "spline" in w.modes and "shape" in w.modes
     assert "lasso" in w.modes
     assert "polygon" not in w.modes
@@ -50,19 +81,19 @@ def test_from_points_defaults():
     assert w.point_palette[-1].lower() == "#ff0000"
 
 
-def test_from_points_requires_xy():
+def test_constructor_requires_adata():
     from spatial_rx import LandmarksWidget
-    import pytest
 
     with pytest.raises(TypeError):
         LandmarksWidget()
-    with pytest.raises(ValueError):
-        LandmarksWidget.from_points([], [])
+    with pytest.raises(TypeError, match="AnnData"):
+        LandmarksWidget(object())
+    with pytest.raises(ValueError, match="at least one observation"):
+        LandmarksWidget(adata_xy([], []))
 
 
 def test_gallery_requires_title():
     from spatial_rx import GalleryWidget
-    import pytest
 
     with pytest.raises(ValueError):
         GalleryWidget(items=[{"description": "no title"}])
@@ -84,7 +115,7 @@ def test_get_indices_by_selection_id():
 
     x = np.array([0.0, 1.0, 2.0])
     y = np.array([0.0, 1.0, 0.0])
-    w = LandmarksWidget.from_points(x, y, width=400, height=400)
+    w = LandmarksWidget(adata_xy(x, y))
     w.selections = [
         {
             "id": "selection 1",
@@ -103,7 +134,7 @@ def test_get_mask_rectangle():
 
     x = np.array([0.0, 2.0])
     y = np.array([0.0, 2.0])
-    w = LandmarksWidget.from_points(x, y, width=400, height=400)
+    w = LandmarksWidget(adata_xy(x, y))
     w.selections = [
         {
             "id": "selection 1",
@@ -137,13 +168,14 @@ def test_neighborhood_radius_expands_selection():
 
     x = np.array([0.0, 1.0, 8.0])
     y = np.array([0.0, 0.0, 0.0])
-    w = LandmarksWidget.from_points(x, y, width=400, height=400)
+    radius = graph(3, [(0, 1, 1.0), (1, 0, 1.0)])
+    knn = graph(3, [(0, 1, 1.0), (1, 0, 1.0), (1, 2, 1.0), (2, 1, 1.0)])
+    w = LandmarksWidget(adata_xy(x, y, knn=knn, radius=radius))
     w.selections = [
         {
             **_box_around(0.0, 0.0),
             "neighborhood": "radius",
-            "neighborhood_radius": 1.1,
-            "neighborhood_k": 12,
+            "neighborhood_radius": 1.5,
         }
     ]
     assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {0, 1}
@@ -158,13 +190,13 @@ def test_neighborhood_knn_expands_selection():
 
     x = np.array([0.0, 1.0, 8.0])
     y = np.array([0.0, 0.0, 0.0])
-    w = LandmarksWidget.from_points(x, y, width=400, height=400)
+    knn = graph(3, [(0, 1, 1.0), (1, 0, 1.0)])
+    radius = graph(3, [])
+    w = LandmarksWidget(adata_xy(x, y, knn=knn, radius=radius))
     w.selections = [
         {
             **_box_around(0.0, 0.0),
             "neighborhood": "knn",
-            "neighborhood_radius": 0,
-            "neighborhood_k": 1,
         }
     ]
     assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {0, 1}
@@ -175,7 +207,7 @@ def test_neighborhood_off_does_not_expand():
 
     x = np.array([0.0, 1.0])
     y = np.array([0.0, 0.0])
-    w = LandmarksWidget.from_points(x, y, width=400, height=400)
+    w = LandmarksWidget(adata_xy(x, y))
     w.selections = [
         {
             **_box_around(0.0, 0.0),
@@ -193,22 +225,19 @@ def test_get_type_mask_neighborhood():
     x = np.array([0.0, 10.0, 0.4])
     y = np.array([0.0, 0.0, 0.0])
     color = np.array(["Stem", "Stem", "Immune"])
-    w = LandmarksWidget.from_points(
-        x, y, color=color, width=400, height=400, neighbor_radius_max=50.0
-    )
+    radius = graph(3, [(0, 2, 1.0), (2, 0, 1.0)])
+    knn = graph(3, [])
+    w = LandmarksWidget(adata_xy(x, y, color=color, knn=knn, radius=radius), color="label")
     assert set(w.get_type_indices("Stem", expand=False).tolist()) == {0, 1}
     w.type_neighborhoods = [
         {
             "id": "Stem",
             "neighborhood": "radius",
             "neighborhood_radius": 1.0,
-            "neighborhood_k": 12,
         }
     ]
     assert set(w.get_type_indices("Stem").tolist()) == {0, 1, 2}
     assert set(w.get_type_indices("Stem", expand=False).tolist()) == {0, 1}
-    # Same graph as UI expand path
-    assert w._neighbor_index is not None
     seed = np.asarray(w._data_labels).astype(str) == "Stem"
-    via_index = seed | w._neighbor_index.expand(seed, "radius", radius=1.0)
+    via_index = seed | w._radius_index.expand(seed, "radius", radius=1.0)
     assert np.array_equal(via_index, w.get_type_mask("Stem"))

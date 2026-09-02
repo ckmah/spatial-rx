@@ -2,9 +2,10 @@
 name: shadcn-anywidget
 description: >-
   Integrates shadcn/ui into spatial-rx anywidgets via the bundled React frontend.
-  Use when adding or changing a React/shadcn anywidget, fixing stale widget UI /
-  HMR / hot-reload in marimo, running shadcn CLI from frontend/, wiring Vite
-  widget entries, or pointing Python at bundled assets.
+  Always prefer shadcn components (@/components/ui/*) for widget chrome. Use when
+  adding or changing a React/shadcn anywidget, fixing stale widget UI / HMR /
+  hot-reload in marimo, running shadcn CLI from frontend/, wiring Vite widget
+  entries, or pointing Python at bundled assets.
 ---
 
 # shadcn anywidget
@@ -16,6 +17,44 @@ Landmarks chrome (panels, toolbar, forms) is React/shadcn. The deck.gl canvas
 engine stays in `spatial_rx/static/landmarks.js` (`mountEngine`) and is imported
 by the landmarks Vite entry. Chrome reads/writes via `useLandmarksModel` (not
 raw `model.set`); shared write recipes live in `spatial_rx/static/landmarks_state.js`.
+
+## UI components (required)
+
+**Always prefer shadcn/ui** for widget chrome in this repo.
+
+1. Import from `@/components/ui/*` (`Button`, `Card`, `Slider`, `Field`, `Accordion`,
+   `ToggleGroup`, `Separator`, etc.) or install from `@reui/*` when ReUI has a fit.
+2. Before writing custom markup, run `npx shadcn@latest search` or
+   `npx shadcn@latest docs <component>` from `frontend/` (include `@reui` in search).
+3. If a primitive is missing, add it: `npx shadcn@latest add <component>` or
+   `npx shadcn@latest add @reui/c-<name>` — do not copy registry source by hand.
+4. Follow composition rules in [../shadcn/SKILL.md](../shadcn/SKILL.md): built-in
+   variants, semantic tokens, `Field`/`FieldGroup` for forms, full `Card` structure.
+
+| Prefer | Avoid |
+| --- | --- |
+| `@/components/ui/button` | Raw `<button className="...">` |
+| `Card` + `CardHeader` + `CardContent` | Styled panel `div`s |
+| `Slider`, `Switch`, `ToggleGroup` | Native `<input type="range">` or manual toggles |
+| `Field` + `FieldLabel` + `FieldDescription` | Label/description `div` stacks |
+| `Separator` | `<hr>` or border-only dividers |
+| `Accordion` for collapsible sections | Custom show/hide state + styled headers |
+
+Exceptions: canvas/WebGL hosts (`plot-host`, deck mount nodes), layout wrappers with
+no shadcn equivalent, and CSS in `landmarks.css` for engine-adjacent layout (resize
+handles, fullscreen shell). Even then, keep interactive controls on shadcn.
+
+### ReUI registry (`@reui`)
+
+Configured in `frontend/components.json`. Search and install from `frontend/`:
+
+```bash
+cd frontend
+npx shadcn@latest search @reui
+npx shadcn@latest add @reui/c-alert-1
+```
+
+Free components use the `c-*` prefix (`npx shadcn@latest add @reui/c-alert-1`).
 
 shadcn APIs: [../shadcn/SKILL.md](../shadcn/SKILL.md) (CLI from `frontend/`).
 Humans: [../../docs/shadcn-frontend.md](../../docs/shadcn-frontend.md),
@@ -98,6 +137,7 @@ Complete every step.
 4. **Implement `<Name>View.tsx`** — presentation only; read via `useModel(model,
    [/* spec traitlet names */])`; on user action `model.set(...)` then
    `model.save_changes()`. Wrap in `useNotebookTheme(hostEl.parentElement)`.
+   Build UI with shadcn components only (see [UI components](#ui-components-required)).
 
 5. **Implement Python validation** in `__init__` if needed (optional; not generated).
 
@@ -118,6 +158,8 @@ Complete every step.
 
 | Do | Don't |
 | --- | --- |
+| shadcn `@/components/ui/*` for all widget chrome | Hand-rolled buttons, inputs, panels, toggles |
+| `npx shadcn@latest add` when a primitive is missing | Styled `div`/`span` substitutes for components |
 | `Path` `_esm` + `npm run watch:<name>` + `ANYWIDGET_HMR=1` | Point `_esm` at `localhost:5173`, use `npm run dev`, or add `@anywidget/vite` for the normal loop |
 | `widget_esm` / `widget_css` returning `Path` | `_esm = path.read_text()` (kills watching) |
 | `npx shadcn@latest add` from `frontend/` | Copy registry JSON from GitHub |
@@ -130,6 +172,7 @@ Complete every step.
 
 Follow the [shadcn skill](../shadcn/SKILL.md), especially:
 
+- **shadcn first** — search/add components before writing custom UI
 - Built-in variants before custom `className` styling
 - Semantic tokens (`bg-muted`, `text-muted-foreground`), not raw colors
 - `flex` + `gap-*`, not `space-x-*` / `space-y-*`

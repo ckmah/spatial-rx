@@ -1,32 +1,21 @@
 import base64
 
 import numpy as np
-import polars as pl
+
+from tests.helpers import adata_xy
 
 
-def test_from_frame_packs_genes():
+def test_constructor_packs_genes():
     from spatial_rx import LandmarksWidget
 
-    df = pl.DataFrame(
-        {
-            "x": [0.0, 1.0, 2.0, 3.0],
-            "y": [0.0, 1.0, 0.0, 1.0],
-            "cell_class": ["Epi", "Imm", "Epi", "Fib"],
-        }
+    adata = adata_xy(
+        [0.0, 1.0, 2.0, 3.0],
+        [0.0, 1.0, 0.0, 1.0],
+        color=["Epi", "Imm", "Epi", "Fib"],
+        color_key="cell_class",
+        genes={"Apob": [0.0, 1.0, 2.0, 4.0], "Lgr5": [0.0, 0.0, 0.5, 1.0]},
     )
-    expr = pl.DataFrame(
-        {
-            "Apob": [0.0, 1.0, 2.0, 4.0],
-            "Lgr5": [0.0, 0.0, 0.5, 1.0],
-        }
-    )
-    w = LandmarksWidget.from_frame(
-        df,
-        color="cell_class",
-        expr=expr,
-        width=400,
-        height=400,
-    )
+    w = LandmarksWidget(adata, color="cell_class", genes=["Apob", "Lgr5"])
     names = [g["name"] for g in w.gene_columns]
     assert names == ["Apob", "Lgr5"]
     assert w.active_genes == []
@@ -39,13 +28,14 @@ def test_from_frame_packs_genes():
     assert w.continuous_palette
     assert w.gene_scale_mode == "independent"
     assert w.gene_log1p is False
-    w.set_expression(expr.select("Lgr5"))
+    w.set_expression({"Lgr5": [0.0, 0.0, 0.5, 1.0]})
     assert [g["name"] for g in w.gene_columns] == ["Lgr5"]
 
 
 def test_encode_gene_bundle_rejects_row_mismatch():
     import pytest
     from spatial_rx.genes import encode_gene_bundle
+    import polars as pl
 
     expr = pl.DataFrame({"Apob": [0.0, 1.0]})
     with pytest.raises(ValueError, match="n_points"):

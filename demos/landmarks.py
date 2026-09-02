@@ -1,3 +1,18 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "marimo>=0.24.0",
+#     "anndata",
+#     "numpy",
+#     "pandas",
+#     "squidpy",
+#     "spatial-rx[demo]",
+# ]
+#
+# [tool.uv.sources]
+# spatial-rx = { path = "../", editable = true }
+# ///
+
 import marimo
 
 __generated_with = "0.24.0"
@@ -6,14 +21,13 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
-    from pathlib import Path
-
     import marimo as mo
-    import polars as pl
-    import spatial_rx
+    import numpy as np
+    import pandas as pd
+    import squidpy as sq
     from spatial_rx import LandmarksWidget
 
-    return LandmarksWidget, Path, mo, pl, spatial_rx
+    return LandmarksWidget, mo, np, pd, sq
 
 
 @app.cell(hide_code=True)
@@ -21,44 +35,33 @@ def _(mo):
     mo.md(r"""
     # Cell-set neighborhood
 
-    Seed a **set of cells** from a lasso or a category value, then expand with radius or k-NN like a landmark buffer.
-
-    - **Layers** and **Tools** are floating panels (top bar stays fixed).
-    - **Categories** lists every categorical column; expand a column, click a value to select it.
-    - **Genes** multi-select (up to 3) colors the map by blended expression.
-    - Neighborhood expand uses a **precomputed neighbor graph** (pynndescent); the browser only looks up CSR rows.
-    - Radius viz is a **GPU scatter halo** around seeds (transparent disks), not a polygon union.
-    - `widget.get_type_indices("Epithelial")` includes neighbors when expansion is on.
+    Load seqFISH, compute **k-max and radius-max** graphs with squidpy, then
+    expand a lasso or category. Off / Radius / k-NN picks the graph; sliders
+    subset k and radius (cannot exceed the stored graphs).
     """)
     return
 
 
 @app.cell
-def _(LandmarksWidget, Path, pl, spatial_rx):
-    _data = Path(spatial_rx.__file__).resolve().parents[1] / "demos" / "data" / "ileum"
-    gut_xy = pl.read_csv(_data / "cells.csv")
-    gut_expr = pl.read_csv(_data / "expr.csv")
-    CLASS_COLORS = {
-        "Epithelial": "#4c78a8",
-        "Immune": "#e45756",
-        "Fibroblast": "#72b7b2",
-        "Smooth Muscle": "#f58518",
-        "Endothelial": "#54a24b",
-        "ENS": "#b279a2",
-        "Interstitial": "#9d755d",
-    }
-    widget = LandmarksWidget.from_frame(
-        gut_xy,
-        color="cell_class",
-        color_maps={"cell_class": CLASS_COLORS},
-        expr=gut_expr,
-        width=1100,
-        height=700,
-        point_size=2.0,
-        point_opacity=0.8,
-        k_max=64,
-        neighbor_radius_max=200.0,
+def _(np, pd, sq):
+    CLUSTER = "celltype_mapped_refined"
+    adata = sq.datasets.seqfish()
+    adata.obs[CLUSTER] = pd.Categorical(adata.obs[CLUSTER].astype(str))
+    xy = np.asarray(adata.obsm["spatial"], dtype=float)
+    radius = 0.05 * float(np.hypot(np.ptp(xy[:, 0]), np.ptp(xy[:, 1])))
+    sq.gr.spatial_neighbors(
+        adata, coord_type="generic", n_neighs=64, key_added="spatial_knn"
     )
+    sq.gr.spatial_neighbors(
+        adata, coord_type="generic", radius=radius, key_added="spatial_radius"
+    )
+    return CLUSTER, adata
+
+
+@app.cell
+def _(CLUSTER, LandmarksWidget, adata):
+    genes = [str(g) for g in adata.var_names[:8]]
+    widget = LandmarksWidget(adata, color=CLUSTER, genes=genes)
     widget
     return
 

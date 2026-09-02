@@ -17,7 +17,6 @@ const SEL_COLORS = ["#94a3b8", "#64748b", "#a8a29e", "#78716c"];
 const NEIGH_COLOR = "#00e5cc";
 const NEIGH_FILL_ALPHA = 0.3;
 const NEIGH_LINE_ALPHA = 0.9;
-const NEIGH_FILL_FALLBACK = "#00453d";
 const SEED_ROLE = 2;
 const NEIGH_ROLE = 1;
 /** Unselected points shrink when a type/selection is focused. */
@@ -150,7 +149,8 @@ export function mountEngine({ model, host }) {
   let resetZoom = () => { };
   let categoryCodes = null;
   let geneValues = null;
-  let neighborGraph = null;
+  let knnGraph = null;
+  let radiusGraph = null;
 
   function refreshCategoryCodes() {
     const b64 = model.get("category_codes") || "";
@@ -165,32 +165,25 @@ export function mountEngine({ model, host }) {
   refreshGeneValues();
 
   function refreshNeighborGraph() {
-    const indptr = decodeI32Base64(model.get("neighbor_indptr") || "");
-    const indices = decodeI32Base64(model.get("neighbor_indices") || "");
-    const distances = decodeF32Base64(model.get("neighbor_distances") || "");
-    if (!indptr.length) {
-      neighborGraph = null;
-      return;
-    }
-    neighborGraph = {
-      indptr,
-      indices,
-      distances,
-      radiusMax: Number(model.get("neighbor_radius_max")) || 0,
-      kMax: Number(model.get("neighbor_k_max")) || 64,
-    };
+    knnGraph = decodeNeighborCsr(
+      model.get("neighbor_indptr") || "",
+      model.get("neighbor_indices") || "",
+      model.get("neighbor_distances") || "",
+    );
+    radiusGraph = decodeNeighborCsr(
+      model.get("radius_indptr") || "",
+      model.get("radius_indices") || "",
+      model.get("radius_distances") || "",
+    );
+  }
+  function decodeNeighborCsr(indptrB64, indicesB64, distancesB64) {
+    const indptr = decodeI32Base64(indptrB64);
+    const indices = decodeI32Base64(indicesB64);
+    const distances = decodeF32Base64(distancesB64);
+    if (!indptr.length) return null;
+    return { indptr, indices, distances };
   }
   refreshNeighborGraph();
-
-  function maxNeighborhoodRadius() {
-    const r = Number(model.get("neighbor_radius_max")) || 0;
-    return r > 0 ? r : maxBufferWidth();
-  }
-
-  function maxNeighborhoodK() {
-    const k = Number(model.get("neighbor_k_max")) || 64;
-    return Math.max(1, k);
-  }
 
   function activeCategoryIndex() {
     const cols = model.get("category_columns") || [];
@@ -377,28 +370,12 @@ export function mountEngine({ model, host }) {
     if (deckgl) deckgl.setProps({ controller: controllerProps() });
   }
 
-  function applyViewportSize() {
-    const w = Math.max(1, Number(model.get("width")) || 400);
-    const h = Math.max(1, Number(model.get("height")) || 400);
-    // Size the widget shell; figure panel flex-fills the remaining viewport
-    // (not forced square).
-    container.style.width = `${w}px`;
-    container.style.maxWidth = "100%";
-    body.style.height = `${h}px`;
-    main.style.width = "";
-    main.style.height = "";
-    main.style.maxWidth = "";
-    main.style.aspectRatio = "";
-  }
-
   function syncCanvasBuffer() {
-    const w = Math.max(1, Math.round(main.clientWidth || model.get("width") || 400));
-    const h = Math.max(1, Math.round(main.clientHeight || model.get("height") || 400));
+    const w = Math.max(1, Math.round(main.clientWidth || 1));
+    const h = Math.max(1, Math.round(main.clientHeight || 1));
     plotW = w;
     plotH = h;
-    if (webglCanvas.width !== w) webglCanvas.width = w;
-    if (webglCanvas.height !== h) webglCanvas.height = h;
-    if (deckgl) deckgl.setProps({ width: w, height: h });
+    if (deckgl) deckgl.setProps({ width: w, height: h, useDevicePixels: true });
     const bounds = model.get("axes_pixel_bounds") || [0, 0, w, h];
     if (bounds[2] !== w || bounds[3] !== h) {
       model.set("axes_pixel_bounds", [0, 0, w, h]);
@@ -749,7 +726,7 @@ export function mountEngine({ model, host }) {
         getFillColor: (d) => fillColorForPoint(d),
         getRadius: (d) => radiusForPoint(d),
         radiusUnits: "common",
-        radiusMinPixels: 0,
+        radiusMinPixels: 1.5,
         stroked: false,
         filled: true,
         pickable: false,
@@ -1047,38 +1024,27 @@ export function mountEngine({ model, host }) {
     ];
   }
 
-  function lookupRadiusNeighbors(seedIdxs, r, roles) {
-    // True Euclidean ball — independent of the knn CSR / k_max horizon.
-    if (!(r > 0) || !seedIdxs.length) return;
-    const pts = getPointsData();
-    const r2 = r * r;
-    for (let j = 0; j < pts.length; j++) {
-      if (roles[j] === SEED_ROLE) continue;
-      const pj = pts[j];
-      for (let s = 0; s < seedIdxs.length; s++) {
-        const ps = pts[seedIdxs[s]];
-        const dx = pj.x - ps.x;
-        const dy = pj.y - ps.y;
-        if (dx * dx + dy * dy <= r2) {
-          roles[j] = NEIGH_ROLE;
-          break;
-        }
-      }
-    }
-  }
-
-  function lookupKnnNeighbors(pts, seedIdxs, k) {
+  function lookupGraphNeighbors(graph, pts, seedIdxs, opts) {
     const edges = [];
     const neighbors = [];
-    if (!neighborGraph || !seedIdxs.length) return { edges, neighbors };
-    const take = Math.max(1, Math.min(k | 0, neighborGraph.kMax | 0));
-    const { indptr, indices } = neighborGraph;
+    if (!graph || !seedIdxs.length) return { edges, neighbors };
+    const mode = opts?.mode || "knn";
+    const takeK = Math.max(0, opts?.k | 0);
+    const radius = Number(opts?.radius) || 0;
+    if (mode === "knn" && takeK <= 0) return { edges, neighbors };
+    if (mode === "radius" && !(radius > 0)) return { edges, neighbors };
+    const { indptr, indices, distances } = graph;
     const seen = new Set();
     for (const si of seedIdxs) {
       const start = indptr[si] | 0;
-      const end = Math.min(indptr[si + 1] | 0, start + take);
+      const end = indptr[si + 1] | 0;
       const s = pts[si];
-      for (let p = start; p < end; p++) {
+      const stop = mode === "knn" ? Math.min(end, start + takeK) : end;
+      for (let p = start; p < stop; p++) {
+        if (mode === "radius") {
+          const d = distances && distances.length ? distances[p] : 0;
+          if (d > radius) break;
+        }
         const j = indices[p] | 0;
         if (!seen.has(j)) {
           seen.add(j);
@@ -1095,13 +1061,6 @@ export function mountEngine({ model, host }) {
     return { edges, neighbors };
   }
 
-  function neighHaloFillColor() {
-    const fill =
-      getComputedStyle(container).getPropertyValue("--lm-neigh-fill").trim() ||
-      NEIGH_FILL_FALLBACK;
-    return hexToRgbaBytes(fill, 1);
-  }
-
   function buildNeighborhoodLayers() {
     if (!deckModules) return [];
     const focus = cellLayerFocus();
@@ -1109,48 +1068,15 @@ export function mountEngine({ model, host }) {
     if (!focus || !hood || hood.neighborhood === "off") return [];
     const pts = getPointsData();
     const layers = [];
-    const { PathLayer, ScatterplotLayer } = deckModules;
+    const { PathLayer } = deckModules;
     const pick = { kind: focus.kind, index: focus.index };
-    if (hood.neighborhood === "radius") {
-      const r = Number(hood.neighborhood_radius) || 0;
-      if (r <= 0) return [];
-      const centers = [];
-      if (pointRoles) {
-        for (let i = 0; i < pts.length; i++) {
-          if (pointRoles[i] === SEED_ROLE) centers.push({ x: pts[i].x, y: pts[i].y, ...pick });
-        }
-      }
-      if (!centers.length) return [];
-      const rMax = maxNeighborhoodRadius();
-      const radius = rMax > 0 ? Math.min(r, rMax) : r;
-      layers.push(
-        new ScatterplotLayer({
-          id: "neighborhood-radius",
-          data: centers,
-          getPosition: (d) => [d.x, d.y, 0],
-          getRadius: radius,
-          radiusUnits: "common",
-          radiusMinPixels: 0,
-          radiusMaxPixels: 1e7,
-          getFillColor: neighHaloFillColor(),
-          stroked: false,
-          filled: true,
-          pickable: true,
-          // Opaque dim fill (alpha 255) — blend only so circle AA doesn't leave a hard rim.
-          parameters: {
-            ...OVERLAY_GL,
-            depthTest: false,
-            blend: true,
-          },
-          updateTriggers: { getRadius: radius },
-        }),
-      );
-    }
-    if (hood.neighborhood === "knn") {
-      if (!hoodEdges.length) return [];
+    if (
+      (hood.neighborhood === "radius" || hood.neighborhood === "knn") &&
+      hoodEdges.length
+    ) {
       layers.push(
         new PathLayer({
-          id: "neighborhood-knn",
+          id: `neighborhood-${hood.neighborhood}`,
           data: hoodEdges.map((e) => ({ ...e, ...pick })),
           getPath: (d) => d.path,
           getColor: hexToRgbaBytes(NEIGH_COLOR, 0.45),
@@ -1312,7 +1238,6 @@ export function mountEngine({ model, host }) {
 
   async function initDeck() {
     if (deckgl) return;
-    applyViewportSize();
     const { w, h } = syncCanvasBuffer();
     webglCanvas.style.display = "block";
     applyPlotBackground();
@@ -1331,6 +1256,7 @@ export function mountEngine({ model, host }) {
         canvas: webglCanvas,
         width: w,
         height: h,
+        useDevicePixels: true,
         views: new OrthographicView(),
         controller: controllerProps(),
         initialViewState: vs,
@@ -1466,6 +1392,15 @@ export function mountEngine({ model, host }) {
     return 0.25 * Math.min(Math.abs(xMax - xMin), Math.abs(yMax - yMin));
   }
 
+  function maxNeighborhoodK() {
+    return Math.max(1, model.get("neighbor_k_max") || 64);
+  }
+
+  function maxNeighborhoodRadius() {
+    const t = Number(model.get("neighbor_radius_max") || 0);
+    return t > 0 ? t : maxBufferWidth();
+  }
+
   // Offset a polyline by `width` along its left normal (negative goes right).
   function offsetPathData(points, width) {
     return points.map((p, i) => {
@@ -1590,17 +1525,17 @@ export function mountEngine({ model, host }) {
     for (const i of seeds) pointRoles[i] = SEED_ROLE;
     const hood = neighborhoodFor(focus);
     if (!hood || hood.neighborhood === "off") return;
-    if (hood.neighborhood === "radius") {
+    const graph = hood.neighborhood === "radius" ? radiusGraph : knnGraph;
+    if (hood.neighborhood === "radius" || hood.neighborhood === "knn") {
+      const k = Math.min(Number(hood.neighborhood_k) || 12, maxNeighborhoodK());
       let r = Number(hood.neighborhood_radius) || 0;
       const rMax = maxNeighborhoodRadius();
       if (rMax > 0) r = Math.min(r, rMax);
-      if (r > 0) lookupRadiusNeighbors(seeds, r, pointRoles);
-      return;
-    }
-    if (hood.neighborhood === "knn") {
-      let k = Number(hood.neighborhood_k) || 12;
-      k = Math.min(k, maxNeighborhoodK());
-      const result = lookupKnnNeighbors(pts, seeds, k);
+      const result = lookupGraphNeighbors(graph, pts, seeds, {
+        mode: hood.neighborhood,
+        k,
+        radius: r,
+      });
       hoodEdges = result.edges;
       for (const i of result.neighbors) {
         if (pointRoles[i] !== SEED_ROLE) pointRoles[i] = NEIGH_ROLE;
@@ -1899,7 +1834,7 @@ export function mountEngine({ model, host }) {
         return;
       }
       const hood = activeNeighborhood();
-      if (!hood) return;
+      if (!hood || hood.neighborhood === "off") return;
       e.preventDefault();
       e.stopImmediatePropagation();
       if (hood.neighborhood === "knn") {
@@ -1911,13 +1846,15 @@ export function mountEngine({ model, host }) {
         updateActiveNeighborhood({ neighborhood: "knn", neighborhood_k: k });
         return;
       }
-      const max = maxNeighborhoodRadius();
-      const step = max / 40;
-      const r = Math.max(
-        0,
-        Math.min(max, (Number(hood.neighborhood_radius) || 0) + (e.deltaY > 0 ? -step : step))
-      );
-      updateActiveNeighborhood({ neighborhood: "radius", neighborhood_radius: r });
+      if (hood.neighborhood === "radius") {
+        const max = maxNeighborhoodRadius();
+        const step = max / 40;
+        const r = Math.max(
+          0,
+          Math.min(max, (Number(hood.neighborhood_radius) || 0) + (e.deltaY > 0 ? -step : step))
+        );
+        updateActiveNeighborhood({ neighborhood: "radius", neighborhood_radius: r });
+      }
     },
     { capture: true, passive: false, signal }
   );
@@ -1949,14 +1886,10 @@ export function mountEngine({ model, host }) {
     setDeckLayers();
   });
   onChange("width", () => {
-    applyViewportSize();
-    syncCanvasBuffer();
-    setDeckLayers();
+    resizeDeck();
   });
   onChange("height", () => {
-    applyViewportSize();
-    syncCanvasBuffer();
-    setDeckLayers();
+    resizeDeck();
   });
   onChange("points_data", () => {
     pointsCache = { key: "", data: [] };
@@ -1986,7 +1919,7 @@ export function mountEngine({ model, host }) {
     refreshGeneValues();
     setDeckLayers();
   });
-  ["neighbor_indptr", "neighbor_indices", "neighbor_distances", "neighbor_radius_max", "neighbor_k_max"].forEach((k) => {
+  ["neighbor_indptr", "neighbor_indices", "neighbor_distances", "radius_indptr", "radius_indices", "radius_distances"].forEach((k) => {
     onChange(k, () => {
       refreshNeighborGraph();
       if (deckgl) setDeckLayers();
@@ -2008,7 +1941,6 @@ export function mountEngine({ model, host }) {
   onChange("plot_background", () => applyPlotBackground());
 
   updateUI();
-  applyViewportSize();
   let resizeObserver = null;
   let startRaf = 0;
   let destroyed = false;
@@ -2047,5 +1979,10 @@ export function mountEngine({ model, host }) {
     host.replaceChildren();
   }
 
-  return { zoomBy: (d) => zoomBy(d), resetZoom: () => resetZoom(), destroy };
+  return {
+    zoomBy: (d) => zoomBy(d),
+    resetZoom: () => resetZoom(),
+    resize: () => resizeDeck(),
+    destroy,
+  };
 }

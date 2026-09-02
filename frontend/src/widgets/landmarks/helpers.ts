@@ -83,6 +83,12 @@ export function maxBufferWidth(xBounds: number[], yBounds: number[]) {
   return 0.25 * Math.min(Math.abs(xMax - xMin), Math.abs(yMax - yMin));
 }
 
+export function spatialDiag(xBounds: number[], yBounds: number[]) {
+  const [xMin, xMax] = xBounds;
+  const [yMin, yMax] = yBounds;
+  return Math.hypot(Math.abs(xMax - xMin), Math.abs(yMax - yMin));
+}
+
 export function formatParam(value: number, empty = "off") {
   if (!value) return empty;
   return value.toPrecision(3);

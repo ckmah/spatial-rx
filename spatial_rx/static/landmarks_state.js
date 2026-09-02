@@ -218,3 +218,31 @@ export function toggleLandmarkHidden(model, index, landmarks) {
   );
   model.save_changes();
 }
+
+export function setPointSize(model, value) {
+  const v = Number(value);
+  if (!Number.isFinite(v) || v < 0) return;
+  model.set("point_size", v);
+  model.save_changes();
+}
+
+export function setPointOpacity(model, value) {
+  const v = Number(value);
+  if (!Number.isFinite(v)) return;
+  model.set("point_opacity", Math.min(1, Math.max(0.05, v)));
+  model.save_changes();
+}
+
+export function setLandmarkOpacity(model, value) {
+  const v = Number(value);
+  if (!Number.isFinite(v)) return;
+  model.set("landmark_opacity", Math.min(1, Math.max(0.05, v)));
+  model.save_changes();
+}
+
+export function setStrokeWidth(model, value) {
+  const v = Math.round(Number(value));
+  if (!Number.isFinite(v)) return;
+  model.set("stroke_width", Math.min(12, Math.max(1, v)));
+  model.save_changes();
+}

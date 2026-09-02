@@ -27,7 +27,22 @@ def as_polars(frame: Any) -> Any:
 
     if isinstance(frame, pl.DataFrame):
         return frame
-    if hasattr(frame, "__dataframe__") or type(frame).__module__.startswith("pandas"):
+    if type(frame).__module__.startswith("pandas"):
+        import pandas as pd
+
+        if isinstance(frame, pd.DataFrame):
+            # Categorical / extension columns need pyarrow for ``pl.from_pandas``.
+            # Convert via numpy so AnnData ``obs`` works without that extra.
+            cols: dict[str, Any] = {}
+            for name in frame.columns:
+                series = frame[name]
+                if isinstance(series.dtype, pd.CategoricalDtype):
+                    cols[str(name)] = series.astype(str).to_numpy()
+                else:
+                    cols[str(name)] = series.to_numpy()
+            return pl.DataFrame(cols)
+        return pl.from_pandas(frame)
+    if hasattr(frame, "__dataframe__"):
         return pl.from_pandas(frame)
     if isinstance(frame, dict):
         return pl.DataFrame(frame)
@@ -121,7 +136,7 @@ def encode_single_category(
     name: str = "category",
     color_map: dict[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], str, dict[str, Any]]:
-    """Bundle one categorical series (for ``from_points(color=...)``)."""
+    """Bundle one categorical series."""
     import polars as pl
 
     df = pl.DataFrame({name: pl.Series(name, values).cast(pl.Utf8)})

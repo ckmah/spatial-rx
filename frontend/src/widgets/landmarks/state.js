@@ -17,5 +17,9 @@ export {
   setMode,
   setSelected,
   toggleLandmarkHidden,
+  setPointSize,
+  setPointOpacity,
+  setLandmarkOpacity,
+  setStrokeWidth,
   withHood,
 } from "../../../../spatial_rx/static/landmarks_state.js";
