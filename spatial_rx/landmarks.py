@@ -16,6 +16,7 @@ from .categories import (
     encode_category_bundle,
     encode_single_category,
 )
+from .genes import encode_gene_bundle
 from .neighbors import DEFAULT_K_MAX, NeighborhoodIndex, default_radius_max
 from .selection import neighborhood_expand, neighborhood_params, selection_mask
 
@@ -136,7 +137,9 @@ class LandmarksWidget(AnyWidget):
     ``type_neighborhoods``) and a precomputed neighbor graph
     (``neighbor_*`` CSR from pynndescent) for browser expand lookup.
     Categorical ``color`` labels are intrinsic type layers — they are not
-    created by clicking. A spatial selection or type layer can expand with
+    created by clicking. Pass ``expr`` (numeric gene columns, same row order)
+    to list genes under Layers; clicking a gene colors the scatter continuously.
+    A spatial selection or type layer can expand with
     ``neighborhood`` ``off`` / ``radius`` / ``knn`` the same way a line
     landmark takes a buffer.
 
@@ -203,6 +206,18 @@ class LandmarksWidget(AnyWidget):
     category_codes = traitlets.Unicode("").tag(sync=True)  # base64 int32, col-major
     active_category = traitlets.Unicode("").tag(sync=True)
 
+    gene_columns = traitlets.List(traitlets.Dict(), default_value=[]).tag(sync=True)
+    gene_values = traitlets.Unicode("").tag(sync=True)  # base64 float32, col-major [0, 1]
+    active_genes = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
+    # independent: each gene uses its own vmax; shared: all use max vmax among selected.
+    gene_scale_mode = traitlets.Enum(
+        ["independent", "shared"], default_value="independent"
+    ).tag(sync=True)
+    gene_log1p = traitlets.Bool(False).tag(sync=True)
+    continuous_palette = traitlets.List(traitlets.Unicode(), default_value=[]).tag(
+        sync=True
+    )
+
     # Precomputed neighbor graph (pynndescent CSR) for client-side expand lookup.
     neighbor_indptr = traitlets.Unicode("").tag(sync=True)  # base64 int32
     neighbor_indices = traitlets.Unicode("").tag(sync=True)  # base64 int32
@@ -237,6 +252,7 @@ class LandmarksWidget(AnyWidget):
         default_buffer_side: str = "both",
         k_max: int = DEFAULT_K_MAX,
         neighbor_radius_max: float | None = None,
+        expr: Any = None,
         **kwargs: Any,
     ) -> "LandmarksWidget":
         """Build a pan/zoom deck.gl scatter with landmark and selection layers.
@@ -251,6 +267,9 @@ class LandmarksWidget(AnyWidget):
 
         ``k_max`` / ``neighbor_radius_max`` control the precomputed neighbor
         graph (pynndescent) synced for browser radius/k-NN lookup.
+
+        ``expr`` is an optional table of numeric gene columns (same row order
+        as ``x`` / ``y``). Packed values appear as a Genes section under Layers.
         """
         import numpy as np
 
@@ -278,6 +297,8 @@ class LandmarksWidget(AnyWidget):
         palette, value_a, labels, vmin, vmax = _encode_colors(
             color, color_map, n, continuous_range=continuous_range
         )
+        seq_low, seq_high = continuous_range or ("#e5e7eb", "#b91c1c")
+        seq_palette = _sequential_palette(256, low=seq_low, high=seq_high)
         color_mode = (
             "categorical"
             if color is None
@@ -349,9 +370,12 @@ class LandmarksWidget(AnyWidget):
             category_columns=cat_meta,
             category_codes=cat_codes,
             active_category=active_cat,
+            continuous_palette=list(seq_palette),
             **neigh_sync,
             **kwargs,
         )
+        if expr is not None:
+            self.set_expression(expr)
         return self
 
     @classmethod
@@ -378,6 +402,7 @@ class LandmarksWidget(AnyWidget):
         default_buffer_side: str = "both",
         k_max: int = DEFAULT_K_MAX,
         neighbor_radius_max: float | None = None,
+        expr: Any = None,
         **kwargs: Any,
     ) -> "LandmarksWidget":
         """Build from a polars/pandas table; auto-detect categorical columns.
@@ -385,6 +410,9 @@ class LandmarksWidget(AnyWidget):
         ``color`` selects the active category column (default: first detected, or
         a continuous numeric column name). Category codes are packed from
         Arrow-backed polars columns for the browser.
+
+        ``expr`` is an optional table of numeric gene columns (same row order as
+        ``frame``). Click a gene under Layers to color by expression.
         """
         import numpy as np
 
@@ -432,6 +460,7 @@ class LandmarksWidget(AnyWidget):
             default_buffer_side=default_buffer_side,
             k_max=k_max,
             neighbor_radius_max=neighbor_radius_max,
+            expr=expr,
             **kwargs,
         )
         if cat_meta:
@@ -493,13 +522,30 @@ class LandmarksWidget(AnyWidget):
         )
         self.point_palette = list(palette)
         self.color_by = color_mode
+        self.active_genes = []
         self.legend_labels = list(labels)
         if legend_title is not None:
             self.legend_title = legend_title
         self.color_vmin = float(vmin if vmin is not None else 0.0)
         self.color_vmax = float(vmax if vmax is not None else 1.0)
+        if continuous_range is not None:
+            seq_low, seq_high = continuous_range
+            self.continuous_palette = _sequential_palette(
+                256, low=seq_low, high=seq_high
+            )
         self.points_data = _encode_f32(points)
         self._rebuild_neighbor_index()
+
+    def set_expression(self, expr: Any) -> None:
+        """Pack a gene-expression table for the Layers Genes section."""
+        x = getattr(self, "_data_x", None)
+        if x is None:
+            raise RuntimeError("internal point cache missing; call from_points first")
+        meta, values = encode_gene_bundle(expr, int(x.shape[0]))
+        self.gene_columns = meta
+        self.gene_values = values
+        names = {g["name"] for g in meta}
+        self.active_genes = [g for g in (self.active_genes or []) if g in names]
 
     def set_color(
         self,

@@ -6,16 +6,65 @@ export const DEFAULT_HOOD = {
   neighborhood_k: 12,
 };
 
+/** Keep in sync with frontend helpers MAX_ACTIVE_GENES. */
+export const MAX_ACTIVE_GENES = 3;
+
 export function withHood(item) {
   return { ...DEFAULT_HOOD, ...item };
 }
 
 export function applyActiveCategory(model, col) {
   model.set("active_category", col.name);
+  model.set("active_genes", []);
   model.set("point_palette", col.palette || []);
   model.set("legend_labels", col.labels || []);
   model.set("legend_title", col.name || "");
   model.set("color_by", "categorical");
+  model.save_changes();
+}
+
+export function setActiveGenes(model, names) {
+  const geneCols = model.get("gene_columns") || [];
+  const known = new Set(geneCols.map((g) => g.name));
+  const next = [];
+  for (const name of names || []) {
+    if (!known.has(name) || next.includes(name)) continue;
+    next.push(name);
+    if (next.length >= MAX_ACTIVE_GENES) break;
+  }
+  model.set("active_genes", next);
+  if (!next.length) {
+    const cols = model.get("category_columns") || [];
+    const active = model.get("active_category") || "";
+    const col = cols.find((c) => c.name === active) || cols[0];
+    if (col) {
+      applyActiveCategory(model, col);
+      return;
+    }
+    model.set("color_by", "categorical");
+    model.set("legend_title", "");
+    model.save_changes();
+    return;
+  }
+  model.set("color_by", "continuous");
+  if (next.length === 1) {
+    const g = geneCols.find((x) => x.name === next[0]);
+    model.set("legend_title", next[0]);
+    model.set("color_vmin", g?.vmin ?? 0);
+    model.set("color_vmax", g?.vmax ?? 1);
+  } else {
+    model.set("legend_title", next.join(", "));
+  }
+  model.save_changes();
+}
+
+export function setGeneScaleMode(model, mode) {
+  model.set("gene_scale_mode", mode === "shared" ? "shared" : "independent");
+  model.save_changes();
+}
+
+export function setGeneLog1p(model, enabled) {
+  model.set("gene_log1p", !!enabled);
   model.save_changes();
 }
 

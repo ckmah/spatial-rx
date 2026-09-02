@@ -1,5 +1,6 @@
 export {
   DEFAULT_HOOD,
+  MAX_ACTIVE_GENES,
   applyActiveCategory,
   deleteLandmark,
   deleteSelection,
@@ -10,6 +11,9 @@ export {
   removeAt,
   renameLandmark,
   renameSelection,
+  setActiveGenes,
+  setGeneLog1p,
+  setGeneScaleMode,
   setMode,
   setSelected,
   toggleLandmarkHidden,

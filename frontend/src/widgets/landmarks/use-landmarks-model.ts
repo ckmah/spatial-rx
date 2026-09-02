@@ -3,6 +3,8 @@ import { useModel } from "@/hooks/use-model";
 import type {
   AnyModel,
   CategoryColumn,
+  GeneColumn,
+  GeneScaleMode,
   LandmarkItem,
   SelectionItem,
   TypeNeighborhood,
@@ -16,6 +18,9 @@ import {
   patchNeighborhood as patchNeighborhoodTrait,
   renameLandmark as renameLandmarkTrait,
   renameSelection as renameSelectionTrait,
+  setActiveGenes as setActiveGenesTrait,
+  setGeneLog1p as setGeneLog1pTrait,
+  setGeneScaleMode as setGeneScaleModeTrait,
   setMode as setModeTrait,
   setSelected,
   toggleLandmarkHidden as toggleLandmarkHiddenTrait,
@@ -30,6 +35,12 @@ export type LandmarksState = {
   selected_index: number;
   category_columns: CategoryColumn[];
   active_category: string;
+  gene_columns: GeneColumn[];
+  active_genes: string[];
+  gene_scale_mode: GeneScaleMode;
+  gene_log1p: boolean;
+  color_by: string;
+  continuous_palette: string[];
   legend_labels: string[];
   type_neighborhoods: TypeNeighborhood[];
   default_tension: number;
@@ -48,6 +59,12 @@ const MODEL_KEYS: (keyof LandmarksState)[] = [
   "selected_index",
   "category_columns",
   "active_category",
+  "gene_columns",
+  "active_genes",
+  "gene_scale_mode",
+  "gene_log1p",
+  "color_by",
+  "continuous_palette",
   "legend_labels",
   "type_neighborhoods",
   "default_tension",
@@ -61,6 +78,9 @@ export type LandmarksModel = LandmarksState & {
   setMode(mode: string): void;
   select(kind: string, index: number): void;
   setActiveCategory(col: CategoryColumn): void;
+  setActiveGenes(names: string[]): void;
+  setGeneScaleMode(mode: GeneScaleMode): void;
+  setGeneLog1p(enabled: boolean): void;
   selectType(col: CategoryColumn, labelIndex: number): void;
   patchNeighborhood(patch: Record<string, unknown>): void;
   patchLandmark(patch: Record<string, unknown>): void;
@@ -87,6 +107,15 @@ export function useLandmarksModel(model: AnyModel): LandmarksModel {
     },
     setActiveCategory(col) {
       applyActiveCategory(model, col);
+    },
+    setActiveGenes(names) {
+      setActiveGenesTrait(model, names);
+    },
+    setGeneScaleMode(mode) {
+      setGeneScaleModeTrait(model, mode);
+    },
+    setGeneLog1p(enabled) {
+      setGeneLog1pTrait(model, enabled);
     },
     selectType(col, labelIndex) {
       if (col.name !== state.active_category) {

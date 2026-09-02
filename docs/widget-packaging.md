@@ -81,7 +81,7 @@ cd frontend && npm run watch:landmarks
 # or: npm run watch:gallery
 
 # terminal 2 — ANYWIDGET_HMR must be set before Python starts
-ANYWIDGET_HMR=1 uv run --extra demo marimo edit demos/neighbors.py
+ANYWIDGET_HMR=1 uv run --extra demo marimo edit demos/landmarks.py
 ```
 
 Requirements:

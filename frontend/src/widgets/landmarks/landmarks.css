@@ -234,6 +234,19 @@
   min-height: 72px;
 }
 
+.landmarks__legend-genes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.landmarks__legend-gene {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .landmarks__legend-bar {
   width: 10px;
   border-radius: 2px;

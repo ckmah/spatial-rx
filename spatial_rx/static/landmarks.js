@@ -149,6 +149,7 @@ export function mountEngine({ model, host }) {
   let zoomBy = () => { };
   let resetZoom = () => { };
   let categoryCodes = null;
+  let geneValues = null;
   let neighborGraph = null;
 
   function refreshCategoryCodes() {
@@ -156,6 +157,12 @@ export function mountEngine({ model, host }) {
     categoryCodes = b64 ? decodeI32Base64(b64) : null;
   }
   refreshCategoryCodes();
+
+  function refreshGeneValues() {
+    const b64 = model.get("gene_values") || "";
+    geneValues = b64 ? decodeF32Base64(b64) : null;
+  }
+  refreshGeneValues();
 
   function refreshNeighborGraph() {
     const indptr = decodeI32Base64(model.get("neighbor_indptr") || "");
@@ -199,6 +206,112 @@ export function mountEngine({ model, host }) {
       return Math.round(pts[i]?.valueA || 0);
     }
     return categoryCodes[ci * pts.length + i];
+  }
+
+  /** Additive channels (keep in sync with helpers GENE_COLORS): magenta / lime / azure. */
+  const GENE_COLORS = ["#ff0099", "#b8ff00", "#00b7ff"];
+
+  function geneMeta(geneName) {
+    const genes = model.get("gene_columns") || [];
+    return genes.find((g) => g.name === geneName) || null;
+  }
+
+  function geneValueAt(i, geneName) {
+    const genes = model.get("gene_columns") || [];
+    const gi = genes.findIndex((g) => g.name === geneName);
+    const pts = getPointsData();
+    if (gi < 0 || !geneValues || !geneValues.length || !pts.length) return null;
+    return geneValues[gi * pts.length + i];
+  }
+
+  /** Reconstruct data-space value from packed [0, 1], then optional log1p. */
+  function geneIntensity(t01, vmin, vmax) {
+    const lo = Number.isFinite(vmin) ? vmin : 0;
+    const hi = Number.isFinite(vmax) && vmax > lo ? vmax : lo + 1;
+    const t = Math.max(0, Math.min(1, t01 == null ? 0 : t01));
+    const raw = Math.max(0, lo + t * (hi - lo));
+    return model.get("gene_log1p") ? Math.log1p(raw) : raw;
+  }
+
+  function geneCeiling(vmin, vmax) {
+    const lo = Number.isFinite(vmin) ? vmin : 0;
+    const hi = Number.isFinite(vmax) && vmax > lo ? vmax : lo + 1;
+    const top = Math.max(0, hi);
+    const bot = Math.max(0, lo);
+    if (model.get("gene_log1p")) {
+      const a = Math.log1p(bot);
+      const b = Math.log1p(top);
+      return b > a ? b : b + 1e-6;
+    }
+    return top > bot ? top : top + 1e-6;
+  }
+
+  function geneFloor(vmin, vmax) {
+    const lo = Number.isFinite(vmin) ? vmin : 0;
+    const bot = Math.max(0, lo);
+    return model.get("gene_log1p") ? Math.log1p(bot) : bot;
+  }
+
+  /** Scaled channel weight in [0, 1] for one gene at point i. */
+  function scaledGeneT(i, geneName, sharedCeiling) {
+    const meta = geneMeta(geneName);
+    if (!meta) return 0;
+    const t01 = geneValueAt(i, geneName);
+    if (t01 == null) return 0;
+    const vmin = meta.vmin ?? 0;
+    const vmax = meta.vmax ?? 1;
+    const intensity = geneIntensity(t01, vmin, vmax);
+    const mode = model.get("gene_scale_mode") || "independent";
+    if (mode === "shared") {
+      const ceil = sharedCeiling > 0 ? sharedCeiling : geneCeiling(vmin, vmax);
+      return Math.max(0, Math.min(1, intensity / ceil));
+    }
+    const floor = geneFloor(vmin, vmax);
+    const ceil = geneCeiling(vmin, vmax);
+    if (ceil <= floor) return 0;
+    return Math.max(0, Math.min(1, (intensity - floor) / (ceil - floor)));
+  }
+
+  function sharedGeneCeiling(active) {
+    let max = 0;
+    for (const name of active) {
+      const meta = geneMeta(name);
+      if (!meta) continue;
+      max = Math.max(max, geneCeiling(meta.vmin ?? 0, meta.vmax ?? 1));
+    }
+    return max;
+  }
+
+  function blendGeneColors(i, opacity) {
+    const active = model.get("active_genes") || [];
+    const pts = getPointsData();
+    if (!active.length || !pts.length) return null;
+    const shared =
+      (model.get("gene_scale_mode") || "independent") === "shared"
+        ? sharedGeneCeiling(active)
+        : 0;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let w = 0;
+    for (let ai = 0; ai < active.length; ai++) {
+      const t = scaledGeneT(i, active[ai], shared);
+      if (!(t > 0)) continue;
+      const rgb = hexToRgbaBytes(GENE_COLORS[ai % GENE_COLORS.length], 1);
+      r += rgb[0] * t;
+      g += rgb[1] * t;
+      b += rgb[2] * t;
+      w += t;
+    }
+    if (w < 1e-6) {
+      return hexToRgbaBytes("#6b7280", opacity * 0.35);
+    }
+    return [
+      Math.min(255, Math.round(r)),
+      Math.min(255, Math.round(g)),
+      Math.min(255, Math.round(b)),
+      Math.round(Math.max(0, Math.min(1, opacity)) * 255),
+    ];
   }
   let zoomInterpolator = null;
   let draft = [];
@@ -308,7 +421,7 @@ export function mountEngine({ model, host }) {
     const mode = model.get("color_by") || "categorical";
     const title = model.get("legend_title") || "";
     const palette = model.get("point_palette") || [];
-    const labels = model.get("legend_labels") || [];
+    const activeGenes = model.get("active_genes") || [];
 
     legend.innerHTML = "";
     if (title) {
@@ -316,6 +429,12 @@ export function mountEngine({ model, host }) {
       t.className = "landmarks__legend-title";
       t.textContent = title;
       legend.appendChild(t);
+    }
+
+    // Gene legends render in the Layers panel under the combobox.
+    if (mode === "continuous" && activeGenes.length > 0) {
+      legend.hidden = true;
+      return;
     }
 
     if (mode === "continuous" && palette.length > 1) {
@@ -370,18 +489,25 @@ export function mountEngine({ model, host }) {
     const mode = model.get("color_by") || "categorical";
     let rgba;
     if (mode === "continuous") {
-      const palette = model.get("point_palette") || ["#60a5fa"];
-      if (palette.length > 1) {
-        const t = Math.max(0, Math.min(1, d.valueA));
-        const idx = t * (palette.length - 1);
-        const lo = Math.floor(idx);
-        const hi = Math.min(palette.length - 1, lo + 1);
-        const frac = idx - lo;
-        const c0 = hexToRgbaBytes(palette[lo], opacity);
-        const c1 = hexToRgbaBytes(palette[hi], opacity);
-        rgba = c0.map((v, i) => Math.round(v + (c1[i] - v) * frac));
+      const activeGenes = model.get("active_genes") || [];
+      if (activeGenes.length > 0) {
+        rgba =
+          blendGeneColors(d.i, opacity) ||
+          hexToRgbaBytes("#6b7280", opacity * 0.35);
       } else {
-        rgba = hexToRgbaBytes(palette[0], opacity);
+        const palette = model.get("point_palette") || ["#60a5fa"];
+        if (palette.length > 1) {
+          const t = Math.max(0, Math.min(1, d.valueA));
+          const idx = t * (palette.length - 1);
+          const lo = Math.floor(idx);
+          const hi = Math.min(palette.length - 1, lo + 1);
+          const frac = idx - lo;
+          const c0 = hexToRgbaBytes(palette[lo], opacity);
+          const c1 = hexToRgbaBytes(palette[hi], opacity);
+          rgba = c0.map((v, i) => Math.round(v + (c1[i] - v) * frac));
+        } else {
+          rgba = hexToRgbaBytes(palette[0], opacity);
+        }
       }
     } else {
       const cols = model.get("category_columns") || [];
@@ -609,6 +735,10 @@ export function mountEngine({ model, host }) {
       model.get("point_palette"),
       model.get("point_opacity"),
       model.get("color_by"),
+      model.get("active_genes"),
+      model.get("gene_values"),
+      model.get("gene_scale_mode"),
+      model.get("gene_log1p"),
       ...roleTrigger,
     ];
     return [
@@ -1852,6 +1982,10 @@ export function mountEngine({ model, host }) {
     refreshCategoryCodes();
     setDeckLayers();
   });
+  onChange("gene_values", () => {
+    refreshGeneValues();
+    setDeckLayers();
+  });
   ["neighbor_indptr", "neighbor_indices", "neighbor_distances", "neighbor_radius_max", "neighbor_k_max"].forEach((k) => {
     onChange(k, () => {
       refreshNeighborGraph();
@@ -1861,6 +1995,13 @@ export function mountEngine({ model, host }) {
   ["category_columns", "active_category"].forEach((k) => {
     onChange(k, () => {
       updateUI();
+      setDeckLayers();
+    });
+  });
+  ["gene_columns", "active_genes", "gene_scale_mode", "gene_log1p"].forEach((k) => {
+    onChange(k, () => {
+      updateUI();
+      updatePointLegend();
       setDeckLayers();
     });
   });

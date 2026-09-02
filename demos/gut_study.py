@@ -111,6 +111,7 @@ def _():
     import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
+    import polars as pl
     import tifffile
     from spatial_rx import GalleryWidget, LandmarksWidget
 
@@ -139,6 +140,7 @@ def _():
         mo,
         np,
         pd,
+        pl,
         plt,
     )
 
@@ -294,8 +296,8 @@ def _():
 
 
 @app.cell
-def _(DATA_URL, pd):
-    gut_xy = pd.read_csv(f"{DATA_URL}/ileum/cells.csv")
+def _(DATA_URL, pd, pl):
+    gut_xy = pl.read_csv(f"{DATA_URL}/ileum/cells.csv")
     gut_expr = pd.read_csv(f"{DATA_URL}/ileum/expr.csv")
     gene_panel = list(gut_expr.columns)
     return gene_panel, gut_expr, gut_xy
@@ -303,7 +305,7 @@ def _(DATA_URL, pd):
 
 @app.cell
 def _(gpd, np, pd):
-    # Plotting and spatial computation functions
+    # Spatial measurement functions
     from shapely.geometry import LineString, Point, Polygon
 
     def cardinal_sample(vertices, tension=0.0, n_per_seg=20, closed=False):
@@ -620,34 +622,6 @@ def _(gpd, np, pd):
                     )
         return _row_density(pd.DataFrame(rows))
 
-    return buffer_polygon, composition, distances, landmark_geoms
-
-
-@app.cell(hide_code=True)
-def _(alt, buffer_polygon, gpd, gut_xy, landmark_geoms, np, pd):
-    def altair_theme(chart, theme="dark"):
-        if theme == "dark":
-            return (
-                chart.configure(background="#1e1e1e")
-                .configure_axis(
-                    labelColor="#e2e8f0",
-                    titleColor="#f8fafc",
-                    gridColor="#334155",
-                    domainColor="#94a3b8",
-                    tickColor="#94a3b8",
-                )
-                .configure_title(color="#f8fafc", fontSize=13)
-                .configure_legend(labelColor="#e2e8f0", titleColor="#f8fafc")
-                .configure_view(strokeWidth=0)
-            )
-        return chart.configure_view(strokeWidth=0)
-
-    def sequential_range(theme="dark"):
-        """Continuous heatmap/scatter scale: light grey→red (light), grey→red (dark)."""
-        if theme == "dark":
-            return ("#6b7280", "#f87171")
-        return ("#e5e7eb", "#b91c1c")
-
     def along_positions(x, y, groups, landmarks, indices, radius=None):
         """Project cells onto line/spline; membership uses buffer when set."""
         x = np.asarray(x, dtype=float)
@@ -776,6 +750,53 @@ def _(alt, buffer_polygon, gpd, gut_xy, landmark_geoms, np, pd):
                     }
                 )
         return pd.DataFrame(rows)
+
+    def nice_limit_and_step(limit, target_ticks=4):
+        """Ceil limit to 1/2/5 × 10^k and pick a matching tick step."""
+        limit = float(max(limit, 0.0))
+        if limit <= 0:
+            return 1.0, 1.0
+        exp = int(np.floor(np.log10(limit)))
+        base = 10.0**exp
+        nice_hi = next(
+            (m * base for m in (1, 2, 5, 10) if m * base >= limit), 10 * base
+        )
+        raw = nice_hi / max(target_ticks - 1, 1)
+        exp = int(np.floor(np.log10(raw))) if raw > 0 else 0
+        base = 10.0**exp
+        step = next(
+            (m * base for m in (1, 2, 5, 10) if m * base >= raw), 10 * base
+        )
+        return nice_hi, step
+
+
+    return along_positions, composition, distances, nice_limit_and_step
+
+
+@app.cell(hide_code=True)
+def _(alt, gut_xy, nice_limit_and_step, np, pd):
+    def altair_theme(chart, theme="dark"):
+        if theme == "dark":
+            return (
+                chart.configure(background="#1e1e1e")
+                .configure_axis(
+                    labelColor="#e2e8f0",
+                    titleColor="#f8fafc",
+                    gridColor="#334155",
+                    domainColor="#94a3b8",
+                    tickColor="#94a3b8",
+                )
+                .configure_title(color="#f8fafc", fontSize=13)
+                .configure_legend(labelColor="#e2e8f0", titleColor="#f8fafc")
+                .configure_view(strokeWidth=0)
+            )
+        return chart.configure_view(strokeWidth=0)
+
+    def sequential_range(theme="dark"):
+        """Continuous heatmap/scatter scale: light grey→red (light), grey→red (dark)."""
+        if theme == "dark":
+            return ("#6b7280", "#f87171")
+        return ("#e5e7eb", "#b91c1c")
 
     def kde_row_heatmap(
         df,
@@ -994,14 +1015,51 @@ def _(alt, buffer_polygon, gpd, gut_xy, landmark_geoms, np, pd):
         )
         return altair_theme(chart, theme)
 
+    def hist_heatmap(
+        df,
+        value_col,
+        row_order,
+        title,
+        xlabel,
+        x_max=None,
+        x_min=0.0,
+        n_bins=128,
+        theme="dark",
+    ):
+        """Max-normalized row heatmap: 1D KDE on a fine grid."""
+        if df.empty or not row_order:
+            return None
+        vals = df.loc[df["group"].isin(row_order), value_col]
+        vals = vals.to_numpy(dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if vals.size == 0:
+            return None
+        if x_max is None:
+            x_max, step = nice_limit_and_step(float(vals.max()))
+        else:
+            x_max = float(x_max)
+            _, step = nice_limit_and_step(max(x_max - x_min, 1e-9))
+        return kde_row_heatmap(
+            df,
+            value_col,
+            row_order,
+            title,
+            xlabel,
+            x_min=x_min,
+            x_max=x_max,
+            n_bins=n_bins,
+            tick_step=step,
+            theme=theme,
+        )
+
     def build_recipe_scenes(xy):
         from shapely.geometry import MultiPoint
 
-        x = xy["x"].to_numpy(dtype=float)
-        y = xy["y"].to_numpy(dtype=float)
-        m = xy["mucosal_pseudospace"].to_numpy(dtype=float)
-        layer = xy["anatomical_layer"].to_numpy()
-        cls = xy["cell_class"].to_numpy()
+        x = np.asarray(xy["x"], dtype=float)
+        y = np.asarray(xy["y"], dtype=float)
+        m = np.asarray(xy["mucosal_pseudospace"], dtype=float)
+        layer = np.asarray(xy["anatomical_layer"]).astype(str)
+        cls = np.asarray(xy["cell_class"]).astype(str)
 
         epi = (cls == "Epithelial") & (m >= 0)
         win = epi & (x >= 2797) & (x < 2938) & (y >= 300) & (y < 465)
@@ -1028,15 +1086,15 @@ def _(alt, buffer_polygon, gpd, gut_xy, landmark_geoms, np, pd):
 
         cv_spline = spline("crypt-villus", cv)
 
-        galt = xy[xy["anatomical_layer"] == "GALT"]
-        gx = np.round(galt["x"].to_numpy() / 80.0) * 80.0
-        gy = np.round(galt["y"].to_numpy() / 80.0) * 80.0
+        galt = layer == "GALT"
+        gx = np.round(x[galt] / 80.0) * 80.0
+        gy = np.round(y[galt] / 80.0) * 80.0
         vc = pd.DataFrame({"gx": gx, "gy": gy}).value_counts()
         bx, by = vc.index[0]
-        near = galt[
-            (np.abs(galt["x"] - bx) < 180) & (np.abs(galt["y"] - by) < 180)
-        ]
-        hull = MultiPoint(near[["x", "y"]].to_numpy()).convex_hull.simplify(12)
+        near = galt & (np.abs(x - bx) < 180) & (np.abs(y - by) < 180)
+        hull = MultiPoint(
+            np.column_stack([x[near], y[near]])
+        ).convex_hull.simplify(12)
         galt_verts = [
             [float(px), float(py)] for px, py in hull.exterior.coords[:-1]
         ]
@@ -1047,12 +1105,8 @@ def _(alt, buffer_polygon, gpd, gut_xy, landmark_geoms, np, pd):
             "tension": 0.35,
         }
 
-        base = xy[
-            (xy["cell_class"] == "Epithelial")
-            & (xy["mucosal_pseudospace"] >= 0)
-            & (xy["mucosal_pseudospace"] < 0.35)
-        ]
-        bxy = base[["x", "y"]].to_numpy(dtype=float)
+        base = (cls == "Epithelial") & (m >= 0) & (m < 0.35)
+        bxy = np.column_stack([x[base], y[base]])
         b0 = bxy - bxy.mean(0)
         _, evecs = np.linalg.eigh(b0.T @ b0)
         proj = b0 @ evecs[:, -1]
@@ -1087,18 +1141,11 @@ def _(alt, buffer_polygon, gpd, gut_xy, landmark_geoms, np, pd):
         }
 
     RECIPE_SCENES = build_recipe_scenes(gut_xy)
-    return (
-        RECIPE_SCENES,
-        along_positions,
-        altair_theme,
-        kde_gene_heatmap,
-        kde_row_heatmap,
-        sequential_range,
-    )
+    return RECIPE_SCENES, altair_theme, hist_heatmap, kde_gene_heatmap
 
 
 @app.cell
-def _(LandmarksWidget, gut_xy, matplotlib, np, plt):
+def _(LandmarksWidget, gut_xy, matplotlib, np, pd, plt):
     CLASS_COLORS = {
         "Epithelial": "#4c78a8",
         "Immune": "#e45756",
@@ -1163,12 +1210,13 @@ def _(LandmarksWidget, gut_xy, matplotlib, np, plt):
         "NK",
         "FDC",
     ]
-    _observed = set(gut_xy["cell_type"].astype(str))
+    _types = np.asarray(gut_xy["cell_type"]).astype(str)
+    _observed = set(_types.tolist())
     FOCUS_TYPES = [t for t in _FOCUS_CANDIDATES if t in _observed]
     _focus_set = set(FOCUS_TYPES)
     _rest = [
         t
-        for t in gut_xy["cell_type"].astype(str).value_counts().index.tolist()
+        for t in pd.Series(_types).value_counts().index.tolist()
         if t not in _focus_set
     ]
     # Focus first (stable legend/chart order), then remaining for composition/GALT.
@@ -1180,26 +1228,24 @@ def _(LandmarksWidget, gut_xy, matplotlib, np, plt):
     }
 
     _span = max(
-        float(np.ptp(gut_xy["x"].to_numpy(dtype=float)) or 1.0),
-        float(np.ptp(gut_xy["y"].to_numpy(dtype=float)) or 1.0),
+        float(np.ptp(np.asarray(gut_xy["x"], dtype=float)) or 1.0),
+        float(np.ptp(np.asarray(gut_xy["y"], dtype=float)) or 1.0),
     )
     DEFAULT_BUFFER = 0.05 * _span  # ~5% of extent; band used by measures
 
-    landmarks = LandmarksWidget.from_points(
-        gut_xy["x"],
-        gut_xy["y"],
-        color=gut_xy["cell_class"],
-        color_map=CLASS_COLORS,
-        legend_title="Cell class",
+    landmarks = LandmarksWidget.from_frame(
+        gut_xy,
+        color="cell_class",
+        color_maps={"cell_class": CLASS_COLORS},
         width=1100,
         height=600,
-        point_size=2.0,
+        point_size=3.0,
         point_opacity=0.8,
         mode="select",
         stroke_width=4,
         default_buffer_width=DEFAULT_BUFFER,
     )
-    return CLASS_COLORS, FOCUS_TYPES, group_colors, landmarks
+    return FOCUS_TYPES, group_colors, landmarks
 
 
 @app.cell(hide_code=True)
@@ -1216,81 +1262,6 @@ def _(RECIPE_SCENES, use_case):
     recipe_scene = RECIPE_SCENES[use_case]
     # Use cases set the suggested measure only; landmarks are user-drawn.
     return (recipe_scene,)
-
-
-@app.cell
-def _(gene_panel, mo):
-    _opts = ["Cell class", "Cell type"]
-    if gene_panel:
-        _opts = _opts + ["Expression"]
-    color_by = mo.ui.radio(
-        options=_opts, value="Cell class", label="Color cells by", inline=True
-    )
-    expr_gene = mo.ui.dropdown(
-        options=gene_panel or ["(load gene panel)"],
-        value=(gene_panel or ["(load gene panel)"])[0],
-        label="Gene",
-    )
-    return color_by, expr_gene
-
-
-@app.cell(hide_code=True)
-def _(color_by, expr_gene, mo):
-    _color_rows = [color_by]
-    if color_by.value == "Expression":
-        _color_rows.append(expr_gene)
-    color_controls = mo.hstack(_color_rows, justify="start")
-    return (color_controls,)
-
-
-@app.cell(hide_code=True)
-def _(
-    CLASS_COLORS,
-    FOCUS_TYPES,
-    color_by,
-    expr_gene,
-    gene_panel,
-    group_colors,
-    gut_expr,
-    gut_xy,
-    landmarks,
-    np,
-    sequential_range,
-    theme,
-):
-    _mode = color_by.value
-    if (
-        _mode == "Expression"
-        and gene_panel
-        and expr_gene.value in getattr(gut_expr, "columns", [])
-    ):
-        landmarks.set_color(
-            gut_expr[expr_gene.value].to_numpy(dtype=float),
-            legend_title=str(expr_gene.value),
-            continuous_range=sequential_range(theme),
-        )
-    elif _mode == "Cell type":
-        _types = gut_xy["cell_type"].astype(str).to_numpy()
-        _focus = set(FOCUS_TYPES)
-        _mapped = np.where(np.isin(_types, list(_focus)), _types, "Other")
-        _cmap = {t: group_colors[t] for t in FOCUS_TYPES if t in group_colors}
-        _cmap["Other"] = "#94a3b8"
-        landmarks.set_color(
-            _mapped,
-            color_map=_cmap,
-            legend_title="Cell type",
-        )
-        # Legend = focus only; non-focus stays grey on the map as "Other".
-        landmarks.legend_labels = [
-            t for t in FOCUS_TYPES if t in set(_mapped.tolist())
-        ]
-    else:
-        landmarks.set_color(
-            gut_xy["cell_class"].astype(str).to_numpy(),
-            color_map=CLASS_COLORS,
-            legend_title="Cell class",
-        )
-    return
 
 
 @app.cell
@@ -1440,27 +1411,27 @@ def _(
     along_positions,
     alt,
     altair_theme,
-    color_controls,
     composition,
     distances,
     gene_pick,
     group_colors,
     gut_expr,
     gut_xy,
+    hist_heatmap,
     kde_gene_heatmap,
-    kde_row_heatmap,
     landmark_pick,
     landmarks_ui,
     mo,
+    nice_limit_and_step,
     np,
     plot_type,
     selection_pick,
     theme,
     use_case,
 ):
-    _x = gut_xy["x"].to_numpy()
-    _y = gut_xy["y"].to_numpy()
-    _groups = gut_xy["cell_type"].to_numpy()
+    _x = np.asarray(gut_xy["x"], dtype=float)
+    _y = np.asarray(gut_xy["y"], dtype=float)
+    _groups = np.asarray(gut_xy["cell_type"]).astype(str)
     _sid = selection_pick.value
     _idx = landmarks_ui.get_indices(_x, _y, selection_id=_sid)
     _hue_order = list(group_colors.keys())
@@ -1468,63 +1439,6 @@ def _(
     _lms = [lm for lm in landmarks_ui.landmarks if str(lm.get("id")) == _lid]
     _focus = list(FOCUS_TYPES)
     _focus_set = set(_focus)
-
-    def _nice_limit_and_step(limit, target_ticks=4):
-        limit = float(max(limit, 0.0))
-        if limit <= 0:
-            return 1.0, 1.0
-        exp = int(np.floor(np.log10(limit)))
-        base = 10.0**exp
-        nice_hi = next(
-            (m * base for m in (1, 2, 5, 10) if m * base >= limit), 10 * base
-        )
-        raw = nice_hi / max(target_ticks - 1, 1)
-        exp = int(np.floor(np.log10(raw))) if raw > 0 else 0
-        base = 10.0**exp
-        step = next(
-            (m * base for m in (1, 2, 5, 10) if m * base >= raw), 10 * base
-        )
-        return nice_hi, step
-
-    def _hist_heatmap(
-        df,
-        value_col,
-        row_order,
-        title,
-        xlabel,
-        x_max=None,
-        x_min=0.0,
-        n_bins=128,
-    ):
-        """Max-normalized row heatmap: 1D KDE on a fine grid."""
-        if df.empty or not row_order:
-            return None
-        vals = df.loc[df["group"].isin(row_order), value_col]
-        vals = vals.to_numpy(dtype=float)
-        vals = vals[np.isfinite(vals)]
-        if vals.size == 0:
-            return None
-        if x_max is None:
-            x_max, step = _nice_limit_and_step(float(vals.max()))
-        else:
-            x_max = float(x_max)
-            _, step = _nice_limit_and_step(max(x_max - x_min, 1e-9))
-        return kde_row_heatmap(
-            df,
-            value_col,
-            row_order,
-            title,
-            xlabel,
-            x_min=x_min,
-            x_max=x_max,
-            n_bins=n_bins,
-            tick_step=step,
-            theme=theme,
-        )
-
-    def _along_positions(x, y, groups, landmarks, indices, radius=None):
-        """Project selected cells onto line/spline landmarks → normalized path position s."""
-        return along_positions(x, y, groups, landmarks, indices, radius=radius)
 
     if not _lms:
         chart = mo.md("_Add a landmark on the map to unlock measurements._")
@@ -1578,14 +1492,15 @@ def _(
             chart = mo.md("_No distance rows for this landmark / selection._")
         else:
             _row_order = [g for g in _focus if g in set(_d["group"])]
-            _hi, _ = _nice_limit_and_step(float(_d["distance"].quantile(0.98)))
-            chart = _hist_heatmap(
+            _hi, _ = nice_limit_and_step(float(_d["distance"].quantile(0.98)))
+            chart = hist_heatmap(
                 _d,
                 "distance",
                 _row_order,
                 f"Gradient (perpendicular) · {_lid} · selection={_sid}",
                 "distance from landmark",
                 x_max=_hi,
+                theme=theme,
             ) or mo.md(
                 "_No cells in distance bins for this landmark / selection._"
             )
@@ -1660,7 +1575,7 @@ def _(
         elif not _genes or gut_expr.empty:
             chart = mo.md("_Gene panel missing for this slice._")
         else:
-            _hi, _ = _nice_limit_and_step(float(_d["distance"].quantile(0.98)))
+            _hi, _ = nice_limit_and_step(float(_d["distance"].quantile(0.98)))
             chart = kde_gene_heatmap(
                 _d,
                 "distance",
@@ -1673,14 +1588,14 @@ def _(
                 theme=theme,
             ) or mo.md("_No expression vs distance._")
     else:
-        _p = _along_positions(_x, _y, _groups, _lms, _idx)
+        _p = along_positions(_x, _y, _groups, _lms, _idx)
         if _p.empty:
             chart = mo.md(
                 "_Need a **line** or **spline** landmark for Gradient (along)._"
             )
         else:
             _row_order = [g for g in _focus if g in set(_p["group"])]
-            chart = _hist_heatmap(
+            chart = hist_heatmap(
                 _p,
                 "s",
                 _row_order,
@@ -1688,14 +1603,18 @@ def _(
                 "along path (start → end)",
                 x_min=0.0,
                 x_max=1.0,
+                theme=theme,
             ) or mo.md("_No nearby cells in path bins._")
+    return (chart,)
 
+
+@app.cell
+def _(landmarks_ui, mo):
     mo.vstack(
-           [mo.md("### Spatial measurements"),
-        color_controls, landmarks_ui],
+        [mo.md("### Spatial measurements"), landmarks_ui],
         gap=0.5,
     )
-    return (chart,)
+    return
 
 
 @app.cell

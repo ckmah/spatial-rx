@@ -7,6 +7,10 @@ export const LANDMARK_COLORS = [
   "#00ffa3",
 ];
 export const SELECTION_COLORS = ["#94a3b8", "#64748b", "#a8a29e", "#78716c"];
+/** Additive channels for multi-gene blend (selection order): magenta / lime / azure. */
+export const GENE_COLORS = ["#ff0099", "#b8ff00", "#00b7ff"];
+export const MAX_ACTIVE_GENES = GENE_COLORS.length;
+export type GeneScaleMode = "independent" | "shared";
 export const BUFFERABLE = ["line", "spline", "gradient"];
 export const TENSION_TYPES = ["spline", "shape", "gradient"];
 
@@ -59,6 +63,12 @@ export type CategoryColumn = {
   palette?: string[];
 };
 
+export type GeneColumn = {
+  name: string;
+  vmin?: number;
+  vmax?: number;
+};
+
 export type TypeNeighborhood = {
   id: string;
   column?: string;
@@ -76,4 +86,14 @@ export function maxBufferWidth(xBounds: number[], yBounds: number[]) {
 export function formatParam(value: number, empty = "off") {
   if (!value) return empty;
   return value.toPrecision(3);
+}
+
+/** Compact numeric labels for gene expression scales. */
+export function formatLegendValue(value: number | undefined | null) {
+  if (value == null || !Number.isFinite(value)) return "";
+  const a = Math.abs(value);
+  if (a !== 0 && (a >= 1000 || a < 0.01)) return value.toExponential(1);
+  if (a >= 100) return value.toFixed(0);
+  if (a >= 10) return value.toFixed(1);
+  return value.toFixed(2);
 }

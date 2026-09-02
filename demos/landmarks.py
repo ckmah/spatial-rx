@@ -25,6 +25,7 @@ def _(mo):
 
     - **Layers** and **Tools** are floating panels (top bar stays fixed).
     - **Categories** lists every categorical column; expand a column, click a value to select it.
+    - **Genes** multi-select (up to 3) colors the map by blended expression.
     - Neighborhood expand uses a **precomputed neighbor graph** (pynndescent); the browser only looks up CSR rows.
     - Radius viz is a **GPU scatter halo** around seeds (transparent disks), not a polygon union.
     - `widget.get_type_indices("Epithelial")` includes neighbors when expansion is on.
@@ -34,8 +35,9 @@ def _(mo):
 
 @app.cell
 def _(LandmarksWidget, Path, pl, spatial_rx):
-    _path = Path(spatial_rx.__file__).resolve().parents[1] / "demos" / "data" / "ileum" / "cells.csv"
-    gut_xy = pl.read_csv(_path)
+    _data = Path(spatial_rx.__file__).resolve().parents[1] / "demos" / "data" / "ileum"
+    gut_xy = pl.read_csv(_data / "cells.csv")
+    gut_expr = pl.read_csv(_data / "expr.csv")
     CLASS_COLORS = {
         "Epithelial": "#4c78a8",
         "Immune": "#e45756",
@@ -49,6 +51,7 @@ def _(LandmarksWidget, Path, pl, spatial_rx):
         gut_xy,
         color="cell_class",
         color_maps={"cell_class": CLASS_COLORS},
+        expr=gut_expr,
         width=1100,
         height=700,
         point_size=2.0,

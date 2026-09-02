@@ -12,6 +12,8 @@ export declare const DEFAULT_HOOD: {
   neighborhood_k: number;
 };
 
+export declare const MAX_ACTIVE_GENES: number;
+
 export declare function withHood<T extends Record<string, unknown>>(
   item: T,
 ): T & typeof DEFAULT_HOOD;
@@ -20,6 +22,18 @@ export declare function applyActiveCategory(
   model: AnyModel,
   col: CategoryColumn,
 ): void;
+
+export declare function setActiveGenes(
+  model: AnyModel,
+  names: string[],
+): void;
+
+export declare function setGeneScaleMode(
+  model: AnyModel,
+  mode: "independent" | "shared",
+): void;
+
+export declare function setGeneLog1p(model: AnyModel, enabled: boolean): void;
 
 export declare function neighborhoodFor(
   kind: string,
