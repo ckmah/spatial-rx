@@ -21,6 +21,24 @@
   --lm-halo: #ffffff;
   /* Opaque radius-neighborhood wash (~30% #00e5cc on white). */
   --lm-neigh-fill: #b3f2e8;
+
+  /* Chrome layout scale (4px base) */
+  --lm-space-1: 0.25rem;
+  --lm-space-2: 0.5rem;
+  --lm-space-3: 0.75rem;
+  --lm-space-4: 1rem;
+  --lm-space-5: 1.25rem;
+  --lm-chrome-inset: var(--lm-space-3);
+  --lm-chrome-gap: var(--lm-space-2);
+  --lm-chrome-band: 3.25rem;
+  --lm-dock-width: 14rem;
+
+  /* Shared Soft Float surface — panels + toolbars */
+  --lm-float-radius: calc(var(--radius) + 2px);
+  --lm-float-border: color-mix(in oklab, var(--border) 85%, transparent);
+  --lm-float-bg: color-mix(in oklab, var(--card) 72%, transparent);
+  --lm-float-blur: blur(14px) saturate(1.05);
+  --lm-float-shadow: 0 10px 28px color-mix(in srgb, #000 12%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -54,6 +72,11 @@
   --lm-tooltip-text: #0f172a;
   --lm-halo: #ffffff;
   --lm-neigh-fill: #00453d;
+  --lm-float-bg: color-mix(in oklab, var(--card) 68%, transparent);
+  --lm-float-border: color-mix(in oklab, var(--border) 100%, transparent);
+  --lm-float-shadow:
+    0 1px 0 rgb(255 255 255 / 6%) inset,
+    0 10px 28px color-mix(in srgb, #000 40%, transparent);
 }
 
 .landmarks.landmarks--light {
@@ -67,6 +90,8 @@
   --lm-tooltip-text: #f8fafc;
   --lm-halo: #ffffff;
   --lm-neigh-fill: #b3f2e8;
+  --lm-float-bg: color-mix(in oklab, var(--card) 78%, transparent);
+  --lm-float-shadow: 0 8px 24px color-mix(in srgb, #000 8%, transparent);
 }
 
 .landmarks__body {
@@ -79,11 +104,13 @@
   min-height: 0;
   height: auto;
   box-sizing: border-box;
-  border: 1px solid var(--lm-border);
-  border-radius: 8px;
+  border: 1px solid color-mix(in oklab, var(--lm-border) 70%, transparent);
+  border-radius: 12px;
   overflow: hidden;
   background: var(--lm-bg);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--lm-border) 65%, transparent);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #000 6%, transparent),
+    0 8px 24px color-mix(in srgb, #000 8%, transparent);
 }
 
 .landmarks__chrome {
@@ -378,4 +405,546 @@
 .landmarks__resize:hover::after,
 .landmarks__resize:focus-visible::after {
   opacity: 0.75;
+}
+
+/* Floating glass chrome — one surface system for docks, sheets, toolbars */
+
+.landmarks-float {
+  border-radius: var(--lm-float-radius);
+  border: 1px solid var(--lm-float-border);
+  background: var(--lm-float-bg);
+  backdrop-filter: var(--lm-float-blur);
+  -webkit-backdrop-filter: var(--lm-float-blur);
+  box-shadow: var(--lm-float-shadow);
+}
+
+/* Shape roles share the same float material; pill vs card is radius only. */
+.landmarks-float--toolbar {
+  border-radius: 9999px;
+}
+
+.landmarks-float--panel {
+  border-radius: var(--lm-float-radius);
+}
+
+/* Back-compat aliases during migration */
+.landmarks-float-panel,
+.landmarks-float-toolbar {
+  border-radius: var(--lm-float-radius);
+  border: 1px solid var(--lm-float-border);
+  background: var(--lm-float-bg);
+  backdrop-filter: var(--lm-float-blur);
+  -webkit-backdrop-filter: var(--lm-float-blur);
+  box-shadow: var(--lm-float-shadow);
+}
+
+.landmarks-float-toolbar {
+  border-radius: 9999px;
+}
+
+.landmarks-mode-toggle [data-slot="toggle-group-item"] {
+  box-shadow: none;
+}
+
+/*
+ * Layer list geometry — shared by rows + category headers.
+ * Trail is a fixed right rail; rows fill remaining width of the panel.
+ */
+.landmarks-float--panel,
+.landmarks-float-panel {
+  --lm-layer-row-h: 1.875rem;
+  --lm-layer-row-gap: 0.375rem;
+  --lm-layer-row-px: 0.375rem;
+  --lm-layer-swatch: 0.625rem;
+  --lm-layer-icon: 0.875rem;
+  --lm-layer-radius: calc(var(--radius) - 2px);
+  --lm-layer-hover-bg: color-mix(in srgb, var(--accent) 35%, transparent);
+  --lm-layer-active-bg: color-mix(in srgb, var(--accent) 55%, transparent);
+  --lm-layer-active-hover-bg: color-mix(in srgb, var(--accent) 80%, transparent);
+  --lm-trail-hit: 1.5rem;
+  --lm-trail-gap: 0.125rem;
+  --lm-trail: calc(var(--lm-trail-hit) + var(--lm-trail-hit) + var(--lm-trail-gap));
+}
+
+.landmarks-layer-row,
+.landmarks-cat-trigger {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: var(--lm-layer-row-h);
+  min-height: var(--lm-layer-row-h);
+  max-height: var(--lm-layer-row-h);
+  align-items: center;
+  gap: var(--lm-layer-row-gap);
+  padding-block: 0;
+  padding-inline: var(--lm-layer-row-px);
+  margin: 0;
+  border-radius: var(--lm-layer-radius);
+  background-color: transparent;
+  transition: background-color 180ms ease;
+}
+
+/* Shared hover / active washes — same radius as the row geometry. */
+.landmarks-layer-row:hover,
+.landmarks-cat-trigger:hover {
+  background-color: var(--lm-layer-hover-bg);
+}
+
+.landmarks-layer-row--active,
+.landmarks-cat-trigger--active {
+  background-color: var(--lm-layer-active-bg);
+}
+
+.landmarks-layer-row--active .landmarks-layer-label,
+.landmarks-cat-trigger--active {
+  color: var(--foreground);
+}
+
+.landmarks-layer-row--active:hover,
+.landmarks-cat-trigger--active:hover {
+  background-color: var(--lm-layer-active-hover-bg);
+}
+
+.landmarks-layer-label {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0;
+}
+
+.landmarks-layer-swatch {
+  box-sizing: border-box;
+  flex: 0 0 var(--lm-layer-swatch);
+  width: var(--lm-layer-swatch);
+  height: var(--lm-layer-swatch);
+  min-width: var(--lm-layer-swatch);
+  min-height: var(--lm-layer-swatch);
+}
+
+/* Leading glyphs in a layer row (chevron) — square, container-bound. */
+.landmarks-layer-icon {
+  box-sizing: border-box;
+  flex: 0 0 var(--lm-layer-icon);
+  width: var(--lm-layer-icon);
+  height: var(--lm-layer-icon);
+  min-width: var(--lm-layer-icon);
+  min-height: var(--lm-layer-icon);
+  display: block;
+}
+
+/* Glyphs inside the fixed trail hit cells. */
+.landmarks-trail-hit svg,
+.landmarks-trail .landmarks-layer-icon {
+  width: var(--lm-layer-icon);
+  height: var(--lm-layer-icon);
+  justify-self: end;
+}
+
+/* Landmark: color outline + transparent fill (matches canvas landmark_opacity). */
+.landmarks-layer-swatch--landmark {
+  box-sizing: border-box;
+  border: 1.5px solid;
+}
+
+/* Selection: dotted outline — reads as a point collection, not a solid region. */
+.landmarks-layer-swatch--selection {
+  box-sizing: border-box;
+  border: 1.5px dotted;
+  background-color: transparent;
+}
+
+.landmarks-trail {
+  display: grid;
+  grid-template-columns: var(--lm-trail-hit) var(--lm-trail-hit);
+  align-items: center;
+  justify-items: center;
+  column-gap: var(--lm-trail-gap);
+  flex: 0 0 var(--lm-trail);
+  width: var(--lm-trail);
+  min-width: var(--lm-trail);
+  margin-left: auto;
+}
+
+.landmarks-trail-cell {
+  display: block;
+  width: 100%;
+  height: var(--lm-trail-hit);
+}
+
+.landmarks-trail-hit {
+  width: var(--lm-trail-hit) !important;
+  height: var(--lm-trail-hit) !important;
+  min-width: var(--lm-trail-hit) !important;
+  justify-self: stretch;
+}
+
+/* End-column glyphs share the trail's right edge */
+.landmarks-trail > :nth-child(2) {
+  justify-self: end;
+}
+
+/* Accordion +/- sits in the same end column as delete / category eye */
+.landmarks-float--panel [data-slot="accordion-trigger"],
+.landmarks-float-panel [data-slot="accordion-trigger"] {
+  gap: 0.5rem;
+}
+
+.landmarks-float--panel [data-slot="accordion-trigger"] > span:last-child,
+.landmarks-float-panel [data-slot="accordion-trigger"] > span:last-child {
+  position: relative;
+  flex: 0 0 var(--lm-trail) !important;
+  width: var(--lm-trail) !important;
+  min-width: var(--lm-trail) !important;
+  height: var(--lm-trail-hit) !important;
+  max-width: none !important;
+  margin-left: auto;
+}
+
+.landmarks-float--panel [data-slot="accordion-trigger"] > span:last-child > svg,
+.landmarks-float-panel [data-slot="accordion-trigger"] > span:last-child > svg {
+  inset: auto !important;
+  top: 50% !important;
+  right: 0 !important;
+  left: auto !important;
+  width: 0.875rem !important;
+  height: 0.875rem !important;
+  margin-top: -0.4375rem;
+}
+
+.landmarks-section-trigger {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--muted-foreground);
+}
+
+.landmarks-section-trigger[data-state="open"] {
+  color: var(--foreground);
+}
+
+.landmarks-slider-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lm-space-3);
+  min-width: 0;
+}
+
+.landmarks-slider-label {
+  flex: 0 0 6.75rem;
+  width: 6.75rem;
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--muted-foreground);
+}
+
+.landmarks-slider-capsule {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.landmarks-slider-control {
+  min-width: 0;
+}
+
+.landmarks-slider-value {
+  position: absolute;
+  top: 50%;
+  left: 0.55rem;
+  right: auto;
+  z-index: 2;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 0.625rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
+  text-shadow: 0 0 6px color-mix(in oklab, var(--background) 70%, transparent);
+  white-space: nowrap;
+}
+
+/* Capsule value slider — fill reads the amount */
+.landmarks-slider-control [data-slot="slider"] {
+  width: 100%;
+}
+
+.landmarks-slider-control [data-slot="slider-track"] {
+  height: 1.625rem;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: color-mix(in oklab, var(--muted) 88%, var(--foreground));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+.landmarks-slider-control [data-slot="slider-range"] {
+  border-radius: 0.5rem;
+  background: color-mix(in oklab, var(--foreground) 22%, var(--muted));
+}
+
+.landmarks--dark .landmarks-slider-control [data-slot="slider-track"] {
+  background: color-mix(in oklab, var(--accent) 70%, #000);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%);
+}
+
+.landmarks--dark .landmarks-slider-control [data-slot="slider-range"] {
+  background: color-mix(in oklab, var(--foreground) 28%, var(--accent));
+}
+
+.landmarks--light .landmarks-slider-control [data-slot="slider-track"] {
+  background: color-mix(in oklab, var(--muted) 92%, var(--foreground));
+}
+
+.landmarks--light .landmarks-slider-control [data-slot="slider-range"] {
+  background: color-mix(in oklab, var(--foreground) 14%, var(--muted));
+}
+
+.landmarks-slider-control [data-slot="slider-thumb"] {
+  width: 0.25rem;
+  height: 1rem;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--foreground);
+  box-shadow: none;
+  opacity: 0.15;
+  transition: opacity 0.12s ease-out;
+}
+
+.landmarks-slider-control [data-slot="slider"]:hover [data-slot="slider-thumb"],
+.landmarks-slider-control [data-slot="slider"]:focus-within [data-slot="slider-thumb"] {
+  opacity: 0.95;
+}
+
+.landmarks-slider-control [data-slot="slider-thumb"]:focus-visible {
+  opacity: 1;
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 45%, transparent);
+}
+
+.landmarks-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--lm-space-1) var(--lm-space-2);
+}
+
+.landmarks-stat-chip {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--lm-space-1);
+  padding: 0.3rem 0.45rem;
+  border-radius: 0.375rem;
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+  font-size: 0.6875rem;
+  line-height: 1.2;
+}
+
+.landmarks-stat-chip dt {
+  color: var(--muted-foreground);
+}
+
+.landmarks-stat-chip dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
+
+/* Chrome regions */
+
+.landmarks__chrome-tools {
+  position: absolute;
+  top: var(--lm-chrome-inset);
+  left: 50%;
+  z-index: 22;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.landmarks__chrome-dock {
+  position: absolute;
+  top: calc(var(--lm-chrome-band) + var(--lm-chrome-gap));
+  z-index: 16;
+  display: flex;
+  width: var(--lm-dock-width);
+  max-height: calc(
+    100% - var(--lm-chrome-band) - (2 * var(--lm-chrome-gap)) - var(--lm-chrome-inset)
+  );
+  flex-direction: column;
+}
+
+.landmarks__chrome-dock--left {
+  left: var(--lm-chrome-inset);
+}
+
+.landmarks__chrome-dock--right {
+  right: var(--lm-chrome-inset);
+}
+
+.landmarks__chrome-sections {
+  position: absolute;
+  left: var(--lm-chrome-inset);
+  bottom: var(--lm-chrome-inset);
+  z-index: 20;
+  display: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--lm-chrome-gap);
+  pointer-events: none;
+  width: calc(100% - (2 * var(--lm-chrome-inset)));
+  max-height: calc(
+    100% - var(--lm-chrome-band) - (2 * var(--lm-chrome-gap)) - var(--lm-chrome-inset)
+  );
+}
+
+.landmarks__chrome-sheet {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100% - 3.25rem - var(--lm-chrome-gap));
+  overflow: hidden;
+  gap: 0;
+  padding: 0;
+}
+
+.landmarks__chrome-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.45rem 0.5rem 0.2rem 0.75rem;
+}
+
+.landmarks__chrome-sheet-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.landmarks__chrome-section-bar {
+  pointer-events: auto;
+  position: relative;
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  padding-block: 0.3rem;
+}
+
+.landmarks__chrome-section-bar::before,
+.landmarks__chrome-section-bar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: 2rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.landmarks__chrome-section-bar::before {
+  left: 0;
+  background: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--card) 92%, transparent) 0%,
+    color-mix(in oklab, var(--card) 55%, transparent) 45%,
+    transparent 100%
+  );
+}
+
+.landmarks__chrome-section-bar::after {
+  right: 0;
+  background: linear-gradient(
+    to left,
+    color-mix(in oklab, var(--card) 92%, transparent) 0%,
+    color-mix(in oklab, var(--card) 55%, transparent) 45%,
+    transparent 100%
+  );
+}
+
+.landmarks__chrome-section-bar--fade-start::before,
+.landmarks__chrome-section-bar--fade-end::after {
+  opacity: 1;
+}
+
+.landmarks__chrome-section-scroll {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.125rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding-inline: 0.4rem;
+}
+
+.landmarks__chrome-section-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.landmarks-section-solo [data-slot="accordion-trigger"] {
+  display: none;
+}
+
+.landmarks-section-solo [data-slot="accordion-item"]:not([data-state="open"]) {
+  display: none;
+}
+
+.landmarks-section-solo [data-slot="accordion-item"] {
+  border: none;
+  margin: 0;
+}
+
+.landmarks-section-solo [data-slot="accordion-content"] > div {
+  padding-bottom: 0.5rem;
+}
+
+.landmarks--narrow .landmarks__chrome-sections {
+  display: flex;
+}
+
+.landmarks--narrow .landmarks__chrome-dock {
+  display: none;
+}
+
+.landmarks:fullscreen .landmarks__chrome,
+.landmarks.landmarks--fs .landmarks__chrome,
+.landmarks--overlay-fs .landmarks__chrome {
+  --lm-dock-width: 15rem;
+}
+
+.landmarks:fullscreen .landmarks__chrome-dock,
+.landmarks.landmarks--fs .landmarks__chrome-dock,
+.landmarks--overlay-fs .landmarks__chrome-dock {
+  width: var(--lm-dock-width);
+  max-height: calc(
+    100% - var(--lm-chrome-band) - (2 * var(--lm-chrome-gap)) - var(--lm-chrome-inset)
+  );
+}
+
+/* Panel interior rhythm: more space above titles than below */
+
+.landmarks-float--panel [data-slot="card-header"],
+.landmarks-float-panel [data-slot="card-header"] {
+  padding-top: var(--lm-space-1);
+  padding-bottom: var(--lm-space-2);
+}
+
+.landmarks-float--panel [data-slot="accordion-item"],
+.landmarks-float-panel [data-slot="accordion-item"] {
+  margin-top: var(--lm-space-1);
+}
+
+.landmarks-float--panel [data-slot="accordion-item"]:first-child,
+.landmarks-float-panel [data-slot="accordion-item"]:first-child {
+  margin-top: 0;
 }

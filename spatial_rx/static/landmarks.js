@@ -740,39 +740,55 @@ export function mountEngine({ model, host }) {
 
   function buildSelectionLayers() {
     if (!deckModules) return [];
-    const { PolygonLayer } = deckModules;
+    const { ScatterplotLayer } = deckModules;
     const kind = model.get("selected_kind");
     const selectedIdx = model.get("selected_index");
-    const selStroke =
-      getComputedStyle(container).getPropertyValue("--lm-sel-stroke").trim() || "#64748b";
+    const size = model.get("point_size") ?? 2;
+    const pts = getPointsData();
     const data = [];
     (model.get("selections") || []).forEach((sel, i) => {
       const polygon = selectionPolygonData(sel);
       if (polygon.length < 3) return;
       const selected = kind === "selection" && i === selectedIdx;
-      data.push({
-        polygon,
-        fill: hexToRgbaBytes(selStroke, selected ? 0.08 : 0.04),
-        line: hexToRgbaBytes(selStroke, selected ? 1 : 0.85),
-        width: selected ? 2.5 : 2,
-        kind: "selection",
-        index: i,
-      });
+      const hex = SEL_COLORS[i % SEL_COLORS.length];
+      const fill = hexToRgbaBytes(hex, selected ? 0.22 : 0.1);
+      const line = hexToRgbaBytes(hex, selected ? 1 : 0.7);
+      const radius = selected ? size * 1.15 : size;
+      for (let pi = 0; pi < pts.length; pi++) {
+        const p = pts[pi];
+        if (!pointInRing(p, polygon)) continue;
+        data.push({
+          position: [p.x, p.y, 0],
+          fill,
+          line,
+          radius,
+          kind: "selection",
+          index: i,
+        });
+      }
     });
     if (!data.length) return [];
     return [
-      new PolygonLayer({
+      new ScatterplotLayer({
         id: "selections",
         data,
-        getPolygon: (d) => d.polygon,
+        getPosition: (d) => d.position,
         getFillColor: (d) => d.fill,
         getLineColor: (d) => d.line,
-        getLineWidth: (d) => d.width,
+        getRadius: (d) => d.radius,
+        getLineWidth: 1.5,
+        radiusUnits: "common",
+        radiusMinPixels: 2,
         lineWidthUnits: "pixels",
         stroked: true,
         filled: true,
         pickable: true,
         parameters: OVERLAY_GL,
+        updateTriggers: {
+          getFillColor: [kind, selectedIdx, model.get("selections")],
+          getLineColor: [kind, selectedIdx, model.get("selections")],
+          getRadius: [size, kind, selectedIdx, model.get("selections")],
+        },
       }),
     ];
   }
@@ -802,7 +818,9 @@ export function mountEngine({ model, host }) {
         if (!v) return;
         markers.push({
           position: [v[0], v[1], 0],
-          fill: line,
+          fill,
+          line,
+          lineWidth: selected ? 2 : 1.5,
           radius: selected ? 7 : 6,
           ...pick,
         });
@@ -821,6 +839,8 @@ export function mountEngine({ model, host }) {
           markers.push({
             position: [x, y, 0],
             fill: line,
+            line,
+            lineWidth: 0,
             radius: selected ? 5 : 4,
             ...pick,
           });
@@ -853,6 +873,8 @@ export function mountEngine({ model, host }) {
           markers.push({
             position: [x, y, 0],
             fill: line,
+            line,
+            lineWidth: 0,
             radius: selected ? 5 : 4,
             ...pick,
           });
@@ -901,10 +923,13 @@ export function mountEngine({ model, host }) {
           data: markers,
           getPosition: (d) => d.position,
           getFillColor: (d) => d.fill,
+          getLineColor: (d) => d.line,
           getRadius: (d) => d.radius,
+          getLineWidth: (d) => d.lineWidth ?? 0,
           radiusUnits: "pixels",
+          lineWidthUnits: "pixels",
           filled: true,
-          stroked: false,
+          stroked: true,
           pickable: true,
           radiusMinPixels: 2,
           parameters: OVERLAY_GL,

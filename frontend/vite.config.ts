@@ -6,7 +6,9 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
-const outDir = path.resolve(rootDir, "../spatial_rx/static/bundled");
+const repoRoot = path.resolve(rootDir, "..");
+const devDir = path.resolve(rootDir, "dev");
+const outDir = path.resolve(repoRoot, "spatial_rx/static/bundled");
 
 /** One entry per anywidget that uses shadcn/React. */
 const widgetEntries = {
@@ -21,40 +23,50 @@ const entries =
     : widgetEntries;
 const singleWidget = Object.keys(entries).length === 1;
 
-export default defineConfig(({ command }) => ({
-  plugins: [react(), tailwindcss()],
-  resolve: {
-    alias: {
-      "@": path.resolve(rootDir, "src"),
-    },
+const sharedResolve = {
+  alias: {
+    "@": path.resolve(rootDir, "src"),
   },
-  // Engine + vanilla CSS live outside frontend/; allow resolve during build.
-  server: {
-    fs: { allow: [path.resolve(rootDir, "..")] },
-  },
-  define:
-    command === "build"
-      ? { "process.env.NODE_ENV": JSON.stringify("production") }
-      : undefined,
-  build: {
-    outDir,
-    emptyOutDir: !buildWidget || buildWidget === "gallery",
-    lib: {
-      entry: entries,
-      formats: ["es"],
-    },
-    rollupOptions: {
-      output: {
-        entryFileNames: "[name].mjs",
-        // anywidget loads each _esm as a blob URL; extra chunks cannot resolve.
-        inlineDynamicImports: singleWidget,
-        assetFileNames: (assetInfo) => {
-          if (assetInfo.names?.some((name) => name.endsWith(".css"))) {
-            return "widgets.css";
-          }
-          return "[name][extname]";
+};
+
+const sharedServer = {
+  fs: { allow: [repoRoot] },
+};
+
+export default defineConfig(({ command }) => {
+  if (command === "serve") {
+    return {
+      root: devDir,
+      plugins: [react(), tailwindcss()],
+      resolve: sharedResolve,
+      server: sharedServer,
+    };
+  }
+
+  return {
+    plugins: [react(), tailwindcss()],
+    resolve: sharedResolve,
+    server: sharedServer,
+    define: { "process.env.NODE_ENV": JSON.stringify("production") },
+    build: {
+      outDir,
+      emptyOutDir: !buildWidget || buildWidget === "gallery",
+      lib: {
+        entry: entries,
+        formats: ["es"],
+      },
+      rollupOptions: {
+        output: {
+          entryFileNames: "[name].mjs",
+          inlineDynamicImports: singleWidget,
+          assetFileNames: (assetInfo) => {
+            if (assetInfo.names?.some((name) => name.endsWith(".css"))) {
+              return "widgets.css";
+            }
+            return "[name][extname]";
+          },
         },
       },
     },
-  },
-}));
+  };
+});

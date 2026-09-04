@@ -3,7 +3,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNotebookTheme } from "@/hooks/use-notebook-theme";
 import { cn } from "@/lib/utils";
 
-import { InspectPanel, LayersPanel, ToolsPanel, Topbar, ZoomControls } from "./chrome";
+import {
+  ControlPanel,
+  LayersPanel,
+  MobileSectionChrome,
+  Topbar,
+  type PanelSectionId,
+} from "./chrome";
 import { mountEngine, type EngineHandle } from "./engine";
 import type { AnyModel } from "./helpers";
 import { useLandmarksModel } from "./use-landmarks-model";
@@ -12,20 +18,26 @@ import { useWidgetFullscreen } from "./use-widget-fullscreen";
 const SHELL_HEIGHT = 700;
 const MIN_HEIGHT = 400;
 const MAX_HEIGHT = 1400;
+const NARROW_BREAKPOINT = 640;
 
 export function LandmarksView({
   model,
   hostEl,
+  defaultHeight = SHELL_HEIGHT,
 }: {
   hostEl: HTMLElement;
   model: AnyModel;
+  /** Dev harness can pass a taller initial shell height; notebooks keep 700px default. */
+  defaultHeight?: number;
 }) {
   const dark = useNotebookTheme(hostEl.parentElement);
   const lm = useLandmarksModel(model);
   const plotHostRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EngineHandle | null>(null);
-  const [shellHeight, setShellHeight] = useState(SHELL_HEIGHT);
+  const [shellHeight, setShellHeight] = useState(defaultHeight);
+  const [narrow, setNarrow] = useState(false);
+  const [openSection, setOpenSection] = useState<PanelSectionId | null>(null);
   const savedHeightRef = useRef<number | null>(null);
   const wasFullscreenRef = useRef(false);
 
@@ -37,6 +49,22 @@ export function LandmarksView({
     rootRef,
     syncEngineLayout,
   );
+
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? el.clientWidth;
+      setNarrow(width < NARROW_BREAKPOINT);
+    });
+    ro.observe(el);
+    setNarrow(el.clientWidth < NARROW_BREAKPOINT);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!narrow) setOpenSection(null);
+  }, [narrow]);
 
   useEffect(() => {
     if (isFullscreen && !wasFullscreenRef.current) {
@@ -85,6 +113,7 @@ export function LandmarksView({
             Math.min(start.maxH, Math.max(MIN_HEIGHT, start.h + (ev.clientY - start.y))),
           ),
         );
+        syncEngineLayout();
       };
       const up = () => {
         window.removeEventListener("pointermove", move);
@@ -104,6 +133,7 @@ export function LandmarksView({
         "spatial-rx-widget landmarks relative min-w-0 w-full",
         dark && "dark landmarks--dark",
         !dark && "landmarks--light",
+        narrow && "landmarks--narrow",
         isFullscreen && "landmarks--fs",
         overlay && "landmarks--overlay-fs",
       )}
@@ -113,24 +143,10 @@ export function LandmarksView({
         style={isFullscreen ? undefined : { height: shellHeight }}
       >
         <div className="landmarks__figure">
-          <Topbar
-            modes={lm.modes}
-            mode={lm.mode}
-            onMode={(mode) => lm.setMode(mode)}
-            fullscreen={isFullscreen}
-            onToggleFullscreen={() => {
-              toggle();
-            }}
-          />
           <div className="landmarks__main landmarks__main--plot">
             <div
               ref={plotHostRef}
               className="landmarks__plot-host relative min-h-0 flex-1 w-full h-full"
-            />
-            <ZoomControls
-              onZoomIn={() => engineRef.current?.zoomBy(1)}
-              onZoomOut={() => engineRef.current?.zoomBy(-1)}
-              onReset={() => engineRef.current?.resetZoom()}
             />
           </div>
         </div>
@@ -146,20 +162,48 @@ export function LandmarksView({
       </div>
       <div className="landmarks__chrome">
         <div
-          className="absolute top-12 left-2.5 flex w-56 max-h-[calc(100%-3.25rem)] flex-col p-2 -m-1"
+          className="landmarks__chrome-tools"
           onMouseDown={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
         >
-          <LayersPanel lm={lm} />
+          <Topbar
+            modes={lm.modes}
+            mode={lm.mode}
+            onMode={(mode) => lm.setMode(mode)}
+            fullscreen={isFullscreen}
+            onToggleFullscreen={() => {
+              toggle();
+            }}
+            onZoomIn={() => engineRef.current?.zoomBy(1)}
+            onZoomOut={() => engineRef.current?.zoomBy(-1)}
+            onReset={() => engineRef.current?.resetZoom()}
+          />
         </div>
-        <div
-          className="absolute top-12 right-2.5 flex w-56 max-h-[calc(100%-3.25rem)] flex-col gap-2 overflow-y-auto p-2 -m-1"
-          onMouseDown={(e) => e.stopPropagation()}
-          onWheel={(e) => e.stopPropagation()}
-        >
-          <InspectPanel lm={lm} />
-          <ToolsPanel lm={lm} />
-        </div>
+
+        {narrow ? (
+          <MobileSectionChrome
+            lm={lm}
+            open={openSection}
+            onOpenChange={setOpenSection}
+          />
+        ) : (
+          <>
+            <div
+              className="landmarks__chrome-dock landmarks__chrome-dock--left"
+              onMouseDown={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
+            >
+              <LayersPanel lm={lm} />
+            </div>
+            <div
+              className="landmarks__chrome-dock landmarks__chrome-dock--right"
+              onMouseDown={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
+            >
+              <ControlPanel lm={lm} />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

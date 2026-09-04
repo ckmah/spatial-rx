@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ChevronDownIcon } from "lucide-react"
+import { MinusIcon, PlusIcon } from "lucide-react"
 import { Accordion as AccordionPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
@@ -33,13 +33,16 @@ function AccordionTrigger({
       <AccordionPrimitive.Trigger
         data-slot="accordion-trigger"
         className={cn(
-          "flex flex-1 items-start justify-between gap-4 rounded-md py-4 text-left text-sm font-medium transition-all outline-none hover:underline focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&[data-state=open]>svg]:rotate-180",
+          "group/accordion-trigger flex flex-1 items-center justify-between gap-4 rounded-md py-4 text-left text-sm font-medium transition-all outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
           className
         )}
         {...props}
       >
         {children}
-        <ChevronDownIcon className="pointer-events-none size-4 shrink-0 translate-y-0.5 text-muted-foreground transition-transform duration-200" />
+        <span className="relative size-3.5 shrink-0" aria-hidden>
+          <PlusIcon className="absolute inset-0 size-3.5 text-muted-foreground transition-[opacity,transform] duration-150 ease-out group-data-[state=open]/accordion-trigger:scale-75 group-data-[state=open]/accordion-trigger:opacity-0" />
+          <MinusIcon className="absolute inset-0 size-3.5 scale-75 text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 ease-out group-data-[state=open]/accordion-trigger:scale-100 group-data-[state=open]/accordion-trigger:opacity-100" />
+        </span>
       </AccordionPrimitive.Trigger>
     </AccordionPrimitive.Header>
   )
