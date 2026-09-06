@@ -106,15 +106,204 @@ export function mountEngine({ model, host }) {
     attributeFilter: ["class"],
   });
 
-  function placeTooltip(text, clientX, clientY) {
-    tooltip.textContent = text;
-    tooltip.hidden = false;
+  function positionTooltip(clientX, clientY) {
     const rect = host.getBoundingClientRect();
     tooltip.style.left = `${clientX - rect.left + 12}px`;
     tooltip.style.top = `${clientY - rect.top + 12}px`;
+    tooltip.hidden = false;
+  }
+  function placeTooltip(text, clientX, clientY) {
+    tooltip.replaceChildren();
+    tooltip.textContent = text;
+    positionTooltip(clientX, clientY);
+  }
+  /** Rich hover tooltip: optional color swatch, bold title, muted detail line. */
+  function placeHoverTooltip(parts, clientX, clientY) {
+    tooltip.replaceChildren();
+    const body = document.createElement("div");
+    body.className = "landmarks__tooltip-body";
+    const swatch = document.createElement("span");
+    swatch.className = "landmarks__tooltip-swatch";
+    swatch.style.backgroundColor = parts.color || "#94a3b8";
+    swatch.setAttribute("aria-hidden", "true");
+    body.appendChild(swatch);
+    const text = document.createElement("span");
+    text.className = "landmarks__tooltip-text";
+    const title = document.createElement("span");
+    title.className = "landmarks__tooltip-title";
+    title.textContent = parts.title;
+    text.appendChild(title);
+    if (parts.detail) {
+      const detail = document.createElement("span");
+      detail.className = "landmarks__tooltip-detail";
+      detail.textContent = parts.detail;
+      text.appendChild(detail);
+    }
+    body.appendChild(text);
+    tooltip.appendChild(body);
+    positionTooltip(clientX, clientY);
   }
   function hideTooltip() {
     tooltip.hidden = true;
+  }
+
+  function typeLabel(type) {
+    if (!type) return "";
+    return type[0].toUpperCase() + type.slice(1);
+  }
+
+  function colorForCode(code, palette) {
+    if (!palette || !palette.length) return "#94a3b8";
+    return palette[((code % palette.length) + palette.length) % palette.length];
+  }
+
+  /** Hover content for a type code in the active category column. */
+  function categoryTooltipForCode(code) {
+    const cols = model.get("category_columns") || [];
+    const ci = activeCategoryIndex();
+    if (ci < 0) return null;
+    const col = cols[ci];
+    const label = col && (col.labels || [])[code];
+    if (label == null) return null;
+    return {
+      title: String(label),
+      detail: String(col.name || ""),
+      color: colorForCode(code, col.palette || model.get("point_palette")),
+    };
+  }
+
+  /** Hover content for a cell point in the active category column. */
+  function categoryTooltip(pointIndex) {
+    const pts = getPointsData();
+    if (!pts[pointIndex]) return null;
+    return categoryTooltipForCode(categoryCodeAt(pointIndex));
+  }
+
+  /** Named-layer tooltip (landmark or selection): id + type + color swatch. */
+  function layerTooltip(index, items, colors, skipHidden) {
+    const item = items[index];
+    if (!item || (skipHidden && item.hidden)) return null;
+    return {
+      title: String(item.id),
+      detail: typeLabel(item.type),
+      color: colors[index % colors.length],
+    };
+  }
+
+  function tooltipForObject(obj) {
+    if (!obj) return null;
+    if (obj.kind === "landmark") {
+      return layerTooltip(obj.index, model.get("landmarks") || [], COLORS, true);
+    }
+    if (obj.kind === "selection") {
+      return layerTooltip(
+        obj.index,
+        model.get("selections") || [],
+        SEL_COLORS,
+        false
+      );
+    }
+    // Focused type neighborhood edges carry the type code, not a point index.
+    if (obj.kind === "type") return categoryTooltipForCode(obj.index);
+    if (typeof obj.i === "number") return categoryTooltip(obj.i);
+    return null;
+  }
+
+  // deck.gl's pick pass does not reliably surface low-alpha overlay fragments
+  // over dense cells, so hover hit-testing falls back to the drawn geometry.
+  function projectToViewport(x, y) {
+    const w = Math.max(1, webglCanvas.clientWidth || webglCanvas.width);
+    const h = Math.max(1, webglCanvas.clientHeight || webglCanvas.height);
+    const vs = currentViewState || {};
+    const scale = Math.pow(2, vs.zoom ?? 0);
+    const tx = vs.target?.[0] ?? 0;
+    const ty = vs.target?.[1] ?? 0;
+    return [(x - tx) * scale + w / 2, h / 2 - (y - ty) * scale];
+  }
+
+  function pixelDistanceToPath2(px, py, pts) {
+    let best = Infinity;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const ax = pts[i][0];
+      const ay = pts[i][1];
+      const bx = pts[i + 1][0];
+      const by = pts[i + 1][1];
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const cx2 = ax + t * dx - px;
+      const cy2 = ay + t * dy - py;
+      const d2 = cx2 * cx2 + cy2 * cy2;
+      if (d2 < best) best = d2;
+    }
+    return best;
+  }
+
+  /** Hover content from landmark/selection geometry when picking misses it. */
+  function overlayTooltipAt(x, y) {
+    if (!currentViewState) return null;
+    const selected = model.get("selected_kind") === "landmark";
+    const selectedIdx = model.get("selected_index");
+    const landmarks = model.get("landmarks") || [];
+    for (let i = landmarks.length - 1; i >= 0; i--) {
+      const lm = landmarks[i];
+      if (!lm || lm.hidden) continue;
+      if (lm.type === "point") {
+        const v = (lm.vertices || [])[0];
+        if (!v) continue;
+        const p = projectToViewport(v[0], v[1]);
+        const d = (selected && i === selectedIdx ? 9 : 8);
+        if ((p[0] - x) ** 2 + (p[1] - y) ** 2 <= d * d) {
+          return layerTooltip(i, landmarks, COLORS, true);
+        }
+        continue;
+      }
+      const pathPts = landmarkPathData(lm);
+      if (lm.type === "shape" && pathPts.length >= 3) {
+        const poly = pathPts.map((a) => projectToViewport(a.x, a.y));
+        if (pointInRing({ x, y }, poly)) return layerTooltip(i, landmarks, COLORS, true);
+        continue;
+      }
+      const buffer = bufferPolygonData(lm);
+      if (buffer && buffer.length >= 3) {
+        const poly = buffer.map((a) => projectToViewport(a.x, a.y));
+        if (pointInRing({ x, y }, poly)) return layerTooltip(i, landmarks, COLORS, true);
+      }
+      if (pathPts.length >= 2) {
+        const tol = (model.get("stroke_width") || 2) + 3;
+        const proj = pathPts.map((a) => projectToViewport(a.x, a.y));
+        if (pixelDistanceToPath2(x, y, proj) <= tol * tol) {
+          return layerTooltip(i, landmarks, COLORS, true);
+        }
+      }
+    }
+    const selections = model.get("selections") || [];
+    for (let i = selections.length - 1; i >= 0; i--) {
+      const poly = selectionPolygonData(selections[i] || {});
+      if (poly.length < 3) continue;
+      const proj = poly.map(([px, py]) => projectToViewport(px, py));
+      if (pointInRing({ x, y }, proj)) {
+        return layerTooltip(i, selections, SEL_COLORS, false);
+      }
+    }
+    const focus = cellLayerFocus();
+    const hood = neighborhoodFor(focus);
+    if (focus && hood && hood.neighborhood !== "off" && hoodEdges.length) {
+      const edgeParts =
+        focus.kind === "type"
+          ? categoryTooltipForCode(focus.index)
+          : layerTooltip(focus.index, selections, SEL_COLORS, false);
+      if (!edgeParts) return null;
+      for (const e of hoodEdges) {
+        const path = e.path;
+        if (!Array.isArray(path) || path.length < 2) continue;
+        const proj = path.map((a) => projectToViewport(a[0], a[1]));
+        if (pixelDistanceToPath2(x, y, proj) <= 16) return edgeParts;
+      }
+    }
+    return null;
   }
 
   legend.addEventListener("mousedown", (e) => e.stopPropagation());
@@ -308,6 +497,12 @@ export function mountEngine({ model, host }) {
   }
   let zoomInterpolator = null;
   let draft = [];
+  function isDrafting() {
+    return (
+      draft.length > 0 &&
+      ["polygon", "line", "spline", "shape"].includes(currentMode)
+    );
+  }
   let isDragging = false;
   let dragStart = null;
   let dragKind = "";
@@ -492,7 +687,7 @@ export function mountEngine({ model, host }) {
       const col = ci >= 0 ? cols[ci] : null;
       const palette = (col && col.palette) || model.get("point_palette") || ["#60a5fa"];
       const code = col ? categoryCodeAt(d.i) : Math.round(d.valueA);
-      rgba = hexToRgbaBytes(palette[((code % palette.length) + palette.length) % palette.length], opacity);
+      rgba = hexToRgbaBytes(colorForCode(code, palette), opacity);
     }
     if (!pointRoleMode || !pointRoles) return rgba;
     const role = pointRoles[d.i] || 0;
@@ -718,6 +913,10 @@ export function mountEngine({ model, host }) {
       model.get("gene_log1p"),
       ...roleTrigger,
     ];
+    // Point picking powers the category hover tooltip; only enable it when
+    // there is a category column to look up, keeping huge point sets pickable
+    // only when the tooltip has something to say.
+    const pointsPickable = (model.get("category_columns") || []).length > 0;
     return [
       new ScatterplotLayer({
         id: "landmarks-points",
@@ -729,7 +928,7 @@ export function mountEngine({ model, host }) {
         radiusMinPixels: 1.5,
         stroked: false,
         filled: true,
-        pickable: false,
+        pickable: pointsPickable,
         updateTriggers: {
           getFillColor: fillTriggers,
           getRadius: roleTrigger,
@@ -1308,6 +1507,29 @@ export function mountEngine({ model, host }) {
           }
         },
         onHover: (info) => {
+          if (info?.isDragging) {
+            // deck's getCursor already maps drags to "grabbing".
+            hideTooltip();
+            return;
+          }
+          // While drafting vertices the "Click"/"Enter to finish" hint in
+          // handleMouseMove takes precedence over hover tooltips.
+          if (!isDrafting()) {
+            // Overlays (landmarks, selections, neighborhood edges) sit visually
+            // on top, so their hit-tested geometry wins over the cell beneath.
+            let parts = overlayTooltipAt(info.x || 0, info.y || 0);
+            if (!parts) parts = tooltipForObject(info?.object);
+            if (parts) {
+              const rect = webglCanvas.getBoundingClientRect();
+              placeHoverTooltip(
+                parts,
+                rect.left + (info.x || 0),
+                rect.top + (info.y || 0)
+              );
+            } else {
+              hideTooltip();
+            }
+          }
           const obj = info?.object;
           if (obj?.kind === "landmark" || obj?.kind === "selection" || obj?.kind === "type") {
             webglCanvas.style.cursor = "pointer";
@@ -1735,23 +1957,17 @@ export function mountEngine({ model, host }) {
     if (isLassoing) { lassoPath.push(pt); setDeckLayers(); return; }
     if (isBoxing) { boxCurrent = pt; setDeckLayers(); return; }
 
-    const drafting = draft.length > 0 && ["polygon", "line", "spline", "shape"].includes(currentMode);
-    if (drafting) {
+    if (isDrafting()) {
       const need = currentMode === "line" || currentMode === "spline" ? 2 : 3;
       placeTooltip(draft.length >= need ? "Enter to finish" : "Click", event.clientX, event.clientY);
       return;
     }
-    if (currentMode === "select") return;
-    const hit = findHit(pt);
-    if (hit && (hit.kind === "landmark" || hit.kind === "selection")) {
-      const items = hit.kind === "landmark" ? model.get("landmarks") : model.get("selections");
-      const name = items?.[hit.index]?.id;
-      if (name) {
-        placeTooltip(String(name), event.clientX, event.clientY);
-        return;
-      }
+    // Hover tooltips arrive via deck's onHover; just keep them off while the
+    // user pans with a mouse button held in select mode.
+    if (currentMode === "select" && (event.buttons & 1)) {
+      hideTooltip();
+      return;
     }
-    hideTooltip();
   }
 
   function handleMouseUp(event) {
