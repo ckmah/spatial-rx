@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PR-10 Landmarks chrome harness</title>
+  <link rel="stylesheet" href="../../spatial_rx/static/bundled/widgets.css" />
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b0b0c; color: #e7e7e7; font-family: ui-sans-serif, system-ui, sans-serif; }
+    #banner { padding: 8px 12px; font-size: 12px; opacity: 0.7; }
+    #host { width: min(1100px, 100%); margin: 0 auto; padding: 8px 12px 24px; }
+  </style>
+</head>
+<body>
+  <div id="banner">PR #10 harness — custom shadcn zoom/reset chrome; stock ZoomWidget/ResetViewWidget DOM hidden</div>
+  <div id="host"></div>
+  <script type="module">
+    const state = await fetch("./harness-state.json").then((r) => r.json());
+    const listeners = new Map();
+    const model = {
+      get(key) { return state[key]; },
+      set(key, value) { state[key] = value; },
+      save_changes() {},
+      on(event, cb) {
+        if (!listeners.has(event)) listeners.set(event, new Set());
+        listeners.get(event).add(cb);
+      },
+      off(event, cb) { listeners.get(event)?.delete(cb); },
+    };
+    const mod = await import("../../spatial_rx/static/bundled/landmarks.mjs");
+    const widget = mod.default || mod;
+    const el = document.getElementById("host");
+    widget.render({ model, el });
+  </script>
+</body>
+</html>

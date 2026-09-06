@@ -1,0 +1,8 @@
+node_modules/
+package.json
+package-lock.json
+*.cjs
+*.mjs
+debug-page.png
+harness_app.py
+fix_harness.py
