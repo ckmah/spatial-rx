@@ -11,6 +11,9 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@deck.gl/core": "9.1.14",
+    "@deck.gl/layers": "9.1.14",
+    "@deck.gl/widgets": "9.1.14",
     "@radix-ui/react-slot": "^1.2.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
