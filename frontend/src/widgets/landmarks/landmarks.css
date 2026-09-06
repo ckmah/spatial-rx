@@ -367,3 +367,9 @@
 .landmarks__resize:focus-visible::after {
   opacity: 0.75;
 }
+
+/* Stock deck.gl widgets stay mounted for behavior but must not show chrome. */
+.landmarks__plot-host .deck-widget-zoom,
+.landmarks__plot-host .deck-widget-reset-view {
+  display: none !important;
+}

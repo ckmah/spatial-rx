@@ -1,13 +1,13 @@
 import {
   Deck,
   OrthographicView,
-  LinearInterpolator,
 } from "@deck.gl/core";
 import {
   ScatterplotLayer,
   PathLayer,
   PolygonLayer,
 } from "@deck.gl/layers";
+import { ZoomWidget, ResetViewWidget } from "@deck.gl/widgets";
 import {
   neighborhoodFor as neighborhoodForArgs,
   patchLandmark,
@@ -20,11 +20,15 @@ import {
 const DECK_MODULES = {
   Deck,
   OrthographicView,
-  LinearInterpolator,
   ScatterplotLayer,
   PathLayer,
   PolygonLayer,
+  ZoomWidget,
+  ResetViewWidget,
 };
+
+/** Hide stock widget DOM; React/shadcn chrome calls the same handle methods. */
+const HIDDEN_WIDGET_STYLE = { display: "none" };
 const OVERLAY_GL = { depthCompare: "always", depthWriteEnabled: false };
 
 const COLORS = ["#00e5ff", "#ff2d95", "#b8ff00", "#ffb000", "#7c4dff", "#00ffa3"];
@@ -52,11 +56,6 @@ function decodeI32Base64(b64) {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new Int32Array(bytes.buffer);
-}
-
-/** CSS/Penner easeOutQuart. */
-function easeOutQuart(t) {
-  return 1 - (1 - t) ** 4;
 }
 
 function cssColorToClear(color) {
@@ -166,6 +165,8 @@ export function mountEngine({ model, host }) {
 
   let deckgl = null;
   let deckModules = null;
+  let zoomWidget = null;
+  let resetWidget = null;
   let plotW = 0;
   let plotH = 0;
   let currentViewState = null;
@@ -338,7 +339,6 @@ export function mountEngine({ model, host }) {
       Math.round(Math.max(0, Math.min(1, opacity)) * 255),
     ];
   }
-  let zoomInterpolator = null;
   let draft = [];
   let isDragging = false;
   let dragStart = null;
@@ -1160,55 +1160,56 @@ export function mountEngine({ model, host }) {
     if (w <= 1 || h <= 1) return;
     currentViewState = computeDeckViewState(w, h);
     fitZoom = currentViewState.zoom;
-    deckgl.setProps({ viewState: currentViewState, width: w, height: h });
+    deckgl.setProps({
+      viewState: currentViewState,
+      initialViewState: currentViewState,
+      width: w,
+      height: h,
+    });
+    if (resetWidget) resetWidget.setProps({ initialViewState: currentViewState });
     fittedOnce = true;
   }
 
-  function setViewState(next, { animate = false, duration = 320 } = {}) {
-    if (!deckgl) return;
-    const vs = {
-      ...currentViewState,
-      ...next,
-      transitionDuration: animate ? duration : 0,
-    };
-    if (animate) {
-      if (!zoomInterpolator && deckModules?.LinearInterpolator) {
-        zoomInterpolator = new deckModules.LinearInterpolator({
-          transitionProps: ["target", "zoom"],
-        });
-      }
-      if (zoomInterpolator) vs.transitionInterpolator = zoomInterpolator;
-      vs.transitionEasing = easeOutQuart;
-    }
-    currentViewState = vs;
-    deckgl.setProps({ viewState: vs });
+  function syncFitAsInitialViewState(vs) {
+    if (!deckgl || !vs) return;
+    deckgl.setProps({ initialViewState: vs });
+    if (resetWidget) resetWidget.setProps({ initialViewState: vs });
   }
 
+  function seedZoomViewports() {
+    if (!zoomWidget || !deckgl) return;
+    if (Object.keys(zoomWidget.viewports).length) return;
+    const vps = typeof deckgl.getViewports === "function" ? deckgl.getViewports() || [] : [];
+    for (const vp of vps) {
+      zoomWidget.viewports[vp.id || "default-view"] = vp;
+    }
+    if (!Object.keys(zoomWidget.viewports).length && currentViewState) {
+      zoomWidget.viewports["default-view"] = currentViewState;
+    }
+  }
+
+  /** Native ZoomWidget zoom step; React chrome supplies the buttons. */
   zoomBy = (delta) => {
-    if (!deckgl || !currentViewState) return;
-    const minZ = currentViewState.minZoom ?? -20;
-    const maxZ = currentViewState.maxZoom ?? 20;
-    const zoom = Math.max(minZ, Math.min(maxZ, (currentViewState.zoom ?? 0) + delta));
-    setViewState({ zoom }, { animate: true });
+    if (!zoomWidget || !deckgl || !delta) return;
+    seedZoomViewports();
+    const steps = Math.max(1, Math.round(Math.abs(delta)) || 1);
+    for (let i = 0; i < steps; i++) {
+      if (delta >= 0) zoomWidget.handleZoomIn();
+      else zoomWidget.handleZoomOut();
+    }
   };
 
+  /** Native ResetViewWidget path; refresh initialViewState for current canvas. */
   resetZoom = () => {
-    if (!deckgl) return;
+    if (!resetWidget || !deckgl) return;
     const w = Math.max(1, webglCanvas.clientWidth || webglCanvas.width);
     const h = Math.max(1, webglCanvas.clientHeight || webglCanvas.height);
     if (w <= 1 || h <= 1) return;
     const fitted = computeDeckViewState(w, h);
     fitZoom = fitted.zoom;
     fittedOnce = true;
-    setViewState(
-      {
-        target: fitted.target,
-        zoom: fitted.zoom,
-        minZoom: fitted.minZoom,
-        maxZoom: fitted.maxZoom,
-      },
-      { animate: true, duration: 320 }
-    );
+    syncFitAsInitialViewState(fitted);
+    resetWidget.handleClick();
     // Recalibrate common-space point radius for the new fit zoom.
     setDeckLayers();
   };
@@ -1264,7 +1265,12 @@ export function mountEngine({ model, host }) {
     webglCanvas.style.display = "block";
     applyPlotBackground();
     try {
-      const { Deck, OrthographicView } = await loadDeckModules();
+      const {
+        Deck,
+        OrthographicView,
+        ZoomWidget: ZoomWidgetCtor,
+        ResetViewWidget: ResetViewWidgetCtor,
+      } = await loadDeckModules();
       const layers = buildDeckLayers();
       if (!layers.length) {
         console.warn("landmarks deck: no points_data yet");
@@ -1274,6 +1280,16 @@ export function mountEngine({ model, host }) {
       currentViewState = vs;
       fitZoom = vs.zoom;
       const bg = resolvePlotBackground();
+      zoomWidget = new ZoomWidgetCtor({
+        id: "landmarks-zoom",
+        style: HIDDEN_WIDGET_STYLE,
+        transitionDuration: 200,
+      });
+      resetWidget = new ResetViewWidgetCtor({
+        id: "landmarks-reset-view",
+        style: HIDDEN_WIDGET_STYLE,
+        initialViewState: vs,
+      });
       deckgl = new Deck({
         canvas: webglCanvas,
         width: w,
@@ -1283,6 +1299,7 @@ export function mountEngine({ model, host }) {
         views: new OrthographicView(),
         controller: controllerProps(),
         initialViewState: vs,
+        widgets: [zoomWidget, resetWidget],
         parameters: { clearColor: cssColorToClear(bg) },
         layers,
         pickingRadius: 8,
@@ -1982,6 +1999,8 @@ export function mountEngine({ model, host }) {
     if (layerRaf) cancelAnimationFrame(layerRaf);
     if (deckgl && typeof deckgl.finalize === "function") deckgl.finalize();
     deckgl = null;
+    zoomWidget = null;
+    resetWidget = null;
     host.replaceChildren();
   }
 

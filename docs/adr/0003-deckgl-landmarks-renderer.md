@@ -34,8 +34,9 @@ zoom) stays outside the host and talks to traitlets only through
 create/update stays in the engine.
 
 Hover tips use Deck `getTooltip` instead of engine-owned tooltip DOM.
-Zoom/reset stay on React/shadcn (`EngineHandle`); widgets package is
-pinned for a later ZoomWidget pass without duplicating chrome.
+Zoom/reset behavior uses stock `@deck.gl/widgets` `ZoomWidget` /
+`ResetViewWidget` (hidden DOM) behind `EngineHandle.zoomBy` /
+`resetZoom`; React/shadcn chrome keeps the visible controls.
 
 ## Consequences
 
