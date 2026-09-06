@@ -307,13 +307,16 @@ export function mountEngine({ model, host }) {
     ];
   }
   let zoomInterpolator = null;
-  let draft = [];
+let draft = [];
   let isDragging = false;
   let dragStart = null;
   let dragKind = "";
   let dragIndex = -1;
   let didDrag = false;
-  let suppressClick = false;
+  let isDrawing = false;
+  let drawStart = null;
+  let vertexDragIndex = -1;
+  let vertexDragLandmarkIndex = -1;
   let isLassoing = false;
   let lassoPath = [];
   let isBoxing = false;
@@ -1681,6 +1684,27 @@ export function mountEngine({ model, host }) {
     setDeckLayers();
   }
 
+  function hitTestVertex(pt) {
+    const focus = landmarkFocus();
+    if (!focus) return null;
+    const landmarks = model.get("landmarks") || [];
+    const lm = focus.index >= 0 && focus.index < landmarks.length ? landmarks[focus.index] : null;
+    if (!lm || !lm.vertices) return null;
+    for (let i = 0; i < lm.vertices.length; i++) {
+      const v = lm.vertices[i];
+      const dx = pt.x - v[0];
+      const dy = pt.y - v[1];
+      if (Math.hypot(dx, dy) < 6) return { index: i, landmarkIdx: focus.index };
+    }
+    return null;
+  }
+
+  function startVertexDrag(vertexIndex, landmarkIndex) {
+    // Track vertex drag state
+    vertexDragIndex = vertexIndex;
+    vertexDragLandmarkIndex = landmarkIndex;
+  }
+
   function handleMouseDown(event) {
     if (currentMode === "select") return;
     event.preventDefault();
@@ -1719,6 +1743,19 @@ export function mountEngine({ model, host }) {
       if (hit) { setSelected(hit.kind, hit.index); suppressClick = true; return; }
       if (selectedIdx >= 0) setSelected("", -1);
     }
+
+    if (currentMode !== "select" && draft.length === 0 && !hit) {
+      isDrawing = true;
+      drawStart = pt;
+      draft = [pt];
+      setDeckLayers();
+    }
+
+    const vertexHit = hitTestVertex(pt);
+    if (vertexHit && currentMode !== "select") {
+      startVertexDrag(vertexHit.index, vertexHit.landmarkIndex);
+      return;
+    }
   }
 
   function handleMouseMove(event) {
@@ -1735,10 +1772,36 @@ export function mountEngine({ model, host }) {
     if (isLassoing) { lassoPath.push(pt); setDeckLayers(); return; }
     if (isBoxing) { boxCurrent = pt; setDeckLayers(); return; }
 
+    if (vertexDragIndex >= 0 && vertexDragLandmarkIndex >= 0) {
+      const focus = landmarkFocus();
+      if (focus && focus.index === vertexDragLandmarkIndex) {
+        const landmarks = model.get("landmarks") || [];
+        const lm = landmarks[focus.index];
+        if (lm && lm.vertices && vertexDragIndex < lm.vertices.length) {
+          lm.vertices[vertexDragIndex] = [pt.x, pt.y];
+          model.set("landmarks", landmarks);
+          setDeckLayers();
+        }
+      }
+      vertexDragIndex = -1;
+      vertexDragLandmarkIndex = -1;
+      return;
+    }
+
     const drafting = draft.length > 0 && ["polygon", "line", "spline", "shape"].includes(currentMode);
     if (drafting) {
       const need = currentMode === "line" || currentMode === "spline" ? 2 : 3;
       placeTooltip(draft.length >= need ? "Enter to finish" : "Click", event.clientX, event.clientY);
+      return;
+    }
+    if (isDrawing && drawStart) {
+      const dx = pt.px - drawStart.px;
+      const dy = pt.py - drawStart.py;
+      if (dx * dx + dy * dy > 9) {
+        draft.push(pt);
+        drawStart = pt;
+        setDeckLayers();
+      }
       return;
     }
     if (currentMode === "select") return;
@@ -1746,8 +1809,10 @@ export function mountEngine({ model, host }) {
     if (hit && (hit.kind === "landmark" || hit.kind === "selection")) {
       const items = hit.kind === "landmark" ? model.get("landmarks") : model.get("selections");
       const name = items?.[hit.index]?.id;
+      const label = items?.[hit.index]?.label;
       if (name) {
-        placeTooltip(String(name), event.clientX, event.clientY);
+        const text = label ? `${name} (${label})` : name;
+        placeTooltip(String(text), event.clientX, event.clientY);
         return;
       }
     }
@@ -1804,6 +1869,16 @@ export function mountEngine({ model, host }) {
     }
     if (suppressClick) { suppressClick = false; return; }
     if (!pt) return;
+    if (isDrawing) {
+      isDrawing = false;
+      if (draft.length >= 2) {
+        finishVertexDraft();
+      } else {
+        draft = [];
+        setDeckLayers();
+      }
+      return;
+    }
     if (currentMode === "select" || currentMode === "lasso" || currentMode === "rectangle" || currentMode === "ellipse") return;
 
     if (currentMode === "point") {
