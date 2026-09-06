@@ -26,6 +26,9 @@ export default defineConfig(({ command }) => ({
   resolve: {
     alias: {
       "@": path.resolve(rootDir, "src"),
+      "@deck.gl/core": path.resolve(rootDir, "node_modules/@deck.gl/core"),
+      "@deck.gl/layers": path.resolve(rootDir, "node_modules/@deck.gl/layers"),
+      "@deck.gl/widgets": path.resolve(rootDir, "node_modules/@deck.gl/widgets"),
     },
   },
   // Engine + vanilla CSS live outside frontend/; allow resolve during build.
