@@ -144,6 +144,30 @@ export function pasteLandmark(
   return { ...lm, id: nextId };
 }
 
+export function blendHex(a: string, b: string) {
+  const pa = a.replace("#", "");
+  const pb = b.replace("#", "");
+  const ra = parseInt(pa.slice(0, 2), 16);
+  const ga = parseInt(pa.slice(2, 4), 16);
+  const ba = parseInt(pa.slice(4, 6), 16);
+  const rb = parseInt(pb.slice(0, 2), 16);
+  const gb = parseInt(pb.slice(2, 4), 16);
+  const bb = parseInt(pb.slice(4, 6), 16);
+  const r = Math.min(255, ra + rb);
+  const g = Math.min(255, ga + gb);
+  const bch = Math.min(255, ba + bb);
+  return `#${[r, g, bch].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+export function parseHexRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
 function nextNumberedId(prefix: string, items: LandmarkItem[]): string {
   const used = new Set(items.map((x) => String(x.id)));
   for (let i = 1; ; i++) {
