@@ -941,3 +941,4 @@
 .landmarks-float--panel [data-slot="accordion-item"]:first-child,
 .landmarks-float-panel [data-slot="accordion-item"]:first-child {
   margin-top: 0;
+}
