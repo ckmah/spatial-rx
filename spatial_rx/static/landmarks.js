@@ -1,6 +1,7 @@
 import {
   Deck,
   OrthographicView,
+  LinearInterpolator,
 } from "@deck.gl/core";
 import {
   ScatterplotLayer,
@@ -20,6 +21,7 @@ import {
 const DECK_MODULES = {
   Deck,
   OrthographicView,
+  LinearInterpolator,
   ScatterplotLayer,
   PathLayer,
   PolygonLayer,
@@ -41,6 +43,19 @@ const NEIGH_ROLE = 1;
 /** Unselected points shrink when a type/selection is focused. */
 const OTHER_SIZE_SCALE = 0.55;
 const BUFFERABLE = ["line", "spline", "gradient"];
+
+/** CSS/Penner easeOutQuart for camera transitions. */
+function easeOutQuart(t) {
+  return 1 - Math.pow(1 - t, 4);
+}
+
+/** Shift+wheel often reports deltaX on macOS/Chrome; prefer vertical then horizontal. */
+function wheelDelta(e) {
+  const dy = e.deltaY || 0;
+  const dx = e.deltaX || 0;
+  if (dy !== 0) return dy;
+  return dx;
+}
 
 function decodeF32Base64(b64) {
   if (!b64) return new Float32Array(0);
@@ -184,6 +199,7 @@ export function mountEngine({ model, host }) {
   let hoodEdges = [];
   let zoomBy = () => { };
   let resetZoom = () => { };
+  let zoomInterpolator = null;
   let categoryCodes = null;
   let geneValues = null;
   let knnGraph = null;
@@ -791,9 +807,11 @@ export function mountEngine({ model, host }) {
       if (polygon.length < 3) return;
       const selected = kind === "selection" && i === selectedIdx;
       const hex = SEL_COLORS[i % SEL_COLORS.length];
+      // Tint all selections; outline stroke only on the active selection.
       const fill = hexToRgbaBytes(hex, selected ? 0.22 : 0.1);
-      const line = hexToRgbaBytes(hex, selected ? 1 : 0.7);
+      const line = hexToRgbaBytes(hex, selected ? 1 : 0);
       const radius = selected ? size * 1.15 : size;
+      const lineWidth = selected ? 1.5 : 0;
       for (let pi = 0; pi < pts.length; pi++) {
         const p = pts[pi];
         if (!pointInRing(p, polygon)) continue;
@@ -802,8 +820,10 @@ export function mountEngine({ model, host }) {
           fill,
           line,
           radius,
+          lineWidth,
           kind: "selection",
           index: i,
+          selected,
         });
       }
     });
@@ -816,7 +836,7 @@ export function mountEngine({ model, host }) {
         getFillColor: (d) => d.fill,
         getLineColor: (d) => d.line,
         getRadius: (d) => d.radius,
-        getLineWidth: 1.5,
+        getLineWidth: (d) => d.lineWidth,
         radiusUnits: "common",
         radiusMinPixels: 2,
         lineWidthUnits: "pixels",
@@ -828,6 +848,7 @@ export function mountEngine({ model, host }) {
           getFillColor: [kind, selectedIdx, model.get("selections")],
           getLineColor: [kind, selectedIdx, model.get("selections")],
           getRadius: [size, kind, selectedIdx, model.get("selections")],
+          getLineWidth: [kind, selectedIdx, model.get("selections")],
         },
       }),
     ];
@@ -1209,32 +1230,48 @@ export function mountEngine({ model, host }) {
     if (resetWidget) resetWidget.setProps({ initialViewState: vs });
   }
 
-  function seedZoomViewports() {
-    if (!zoomWidget || !deckgl) return;
-    if (Object.keys(zoomWidget.viewports).length) return;
-    const vps = typeof deckgl.getViewports === "function" ? deckgl.getViewports() || [] : [];
-    for (const vp of vps) {
-      zoomWidget.viewports[vp.id || "default-view"] = vp;
+  /**
+   * Stock ZoomWidget spreads Viewport instances ({position}) into viewState.
+   * OrthographicView expects {target, zoom}, so the widget bridge cannot drive
+   * this camera correctly. Keep widgets mounted (DOM hidden) for compatibility,
+   * but implement zoom/reset via EngineHandle viewState updates.
+   */
+  function setViewState(next, { animate = false, duration = 200 } = {}) {
+    if (!deckgl || !currentViewState) return;
+    const vs = {
+      ...currentViewState,
+      ...next,
+      transitionDuration: animate ? duration : 0,
+    };
+    if (animate) {
+      if (!zoomInterpolator && deckModules?.LinearInterpolator) {
+        zoomInterpolator = new deckModules.LinearInterpolator({
+          transitionProps: ["target", "zoom"],
+        });
+      }
+      if (zoomInterpolator) vs.transitionInterpolator = zoomInterpolator;
+      vs.transitionEasing = easeOutQuart;
     }
-    if (!Object.keys(zoomWidget.viewports).length && currentViewState) {
-      zoomWidget.viewports["default-view"] = currentViewState;
-    }
+    currentViewState = vs;
+    deckgl.setProps({ viewState: vs });
+    maybeRefreshGrid();
   }
 
-  /** Native ZoomWidget zoom step; React chrome supplies the buttons. */
+  /** React chrome zoom buttons → orthographic viewState. */
   zoomBy = (delta) => {
-    if (!zoomWidget || !deckgl || !delta) return;
-    seedZoomViewports();
-    const steps = Math.max(1, Math.round(Math.abs(delta)) || 1);
-    for (let i = 0; i < steps; i++) {
-      if (delta >= 0) zoomWidget.handleZoomIn();
-      else zoomWidget.handleZoomOut();
-    }
+    if (!deckgl || !currentViewState || !delta) return;
+    const minZ = currentViewState.minZoom ?? -20;
+    const maxZ = currentViewState.maxZoom ?? 20;
+    const zoom = Math.max(
+      minZ,
+      Math.min(maxZ, (currentViewState.zoom ?? 0) + delta)
+    );
+    setViewState({ zoom }, { animate: true });
   };
 
-  /** Native ResetViewWidget path; refresh initialViewState for current canvas. */
+  /** React chrome reset → fit bounds. */
   resetZoom = () => {
-    if (!resetWidget || !deckgl) return;
+    if (!deckgl) return;
     const w = Math.max(1, webglCanvas.clientWidth || webglCanvas.width);
     const h = Math.max(1, webglCanvas.clientHeight || webglCanvas.height);
     if (w <= 1 || h <= 1) return;
@@ -1242,7 +1279,15 @@ export function mountEngine({ model, host }) {
     fitZoom = fitted.zoom;
     fittedOnce = true;
     syncFitAsInitialViewState(fitted);
-    resetWidget.handleClick();
+    setViewState(
+      {
+        target: fitted.target,
+        zoom: fitted.zoom,
+        minZoom: fitted.minZoom,
+        maxZoom: fitted.maxZoom,
+      },
+      { animate: true, duration: 320 }
+    );
     // Recalibrate common-space point radius for the new fit zoom.
     setDeckLayers();
   };
@@ -1736,11 +1781,19 @@ export function mountEngine({ model, host }) {
     const landmarks = model.get("landmarks") || [];
     const lm = focus.index >= 0 && focus.index < landmarks.length ? landmarks[focus.index] : null;
     if (!lm || !lm.vertices) return null;
+    const viewport = deckgl?.isInitialized ? deckgl.getViewports()[0] : null;
     for (let i = 0; i < lm.vertices.length; i++) {
       const v = lm.vertices[i];
-      const dx = pt.x - v[0];
-      const dy = pt.y - v[1];
-      if (Math.hypot(dx, dy) < 6) return { index: i, landmarkIdx: focus.index };
+      if (viewport) {
+        const [sx, sy] = viewport.project([v[0], v[1]]);
+        if (Math.hypot(pt.px - sx, pt.py - sy) <= 10) {
+          return { index: i, landmarkIdx: focus.index };
+        }
+      } else {
+        const dx = pt.x - v[0];
+        const dy = pt.y - v[1];
+        if (Math.hypot(dx, dy) < 6) return { index: i, landmarkIdx: focus.index };
+      }
     }
     return null;
   }
@@ -1790,17 +1843,23 @@ export function mountEngine({ model, host }) {
       if (selectedIdx >= 0) setSelected("", -1);
     }
 
-    if (currentMode !== "select" && draft.length === 0 && !hit) {
-      isDrawing = true;
-      drawStart = pt;
-      draft = [pt];
-      setDeckLayers();
-    }
-
     const vertexHit = hitTestVertex(pt);
     if (vertexHit && currentMode !== "select") {
       startVertexDrag(vertexHit.index, vertexHit.landmarkIndex);
       return;
+    }
+
+    // Freehand stroke for multi-vertex landmarks; point mode is click-to-place only.
+    if (
+      currentMode !== "select" &&
+      currentMode !== "point" &&
+      draft.length === 0 &&
+      !hit
+    ) {
+      isDrawing = true;
+      drawStart = pt;
+      draft = [pt];
+      setDeckLayers();
     }
   }
 
@@ -1821,18 +1880,15 @@ export function mountEngine({ model, host }) {
     // Draft / landmark hover tips: Deck getTooltip (deckTooltip).
 
     if (vertexDragIndex >= 0 && vertexDragLandmarkIndex >= 0) {
-      const focus = landmarkFocus();
-      if (focus && focus.index === vertexDragLandmarkIndex) {
-        const landmarks = model.get("landmarks") || [];
-        const lm = landmarks[focus.index];
-        if (lm && lm.vertices && vertexDragIndex < lm.vertices.length) {
-          lm.vertices[vertexDragIndex] = [pt.x, pt.y];
-          model.set("landmarks", landmarks);
-          setDeckLayers();
-        }
+      const landmarks = [...(model.get("landmarks") || [])];
+      const lm = landmarks[vertexDragLandmarkIndex];
+      if (lm && lm.vertices && vertexDragIndex < lm.vertices.length) {
+        const vertices = lm.vertices.slice();
+        vertices[vertexDragIndex] = [pt.x, pt.y];
+        landmarks[vertexDragLandmarkIndex] = { ...lm, vertices };
+        model.set("landmarks", landmarks);
+        setDeckLayers();
       }
-      vertexDragIndex = -1;
-      vertexDragLandmarkIndex = -1;
       return;
     }
 
@@ -1891,6 +1947,12 @@ export function mountEngine({ model, host }) {
       }
       boxStart = null; boxCurrent = null; updateUI(); setDeckLayers(); return;
     }
+    if (vertexDragIndex >= 0 || vertexDragLandmarkIndex >= 0) {
+      vertexDragIndex = -1;
+      vertexDragLandmarkIndex = -1;
+      model.save_changes();
+      return;
+    }
     if (isDragging) {
       isDragging = false; dragStart = null; dragKind = ""; dragIndex = -1;
       webglCanvas.style.cursor = "crosshair";
@@ -1901,7 +1963,11 @@ export function mountEngine({ model, host }) {
     if (isDrawing) {
       isDrawing = false;
       if (draft.length >= 2) {
+        // Dragged freehand stroke → commit.
         finishVertexDraft();
+      } else if (draft.length === 1) {
+        // Click without drag → keep first vertex for click-to-place authoring.
+        setDeckLayers();
       } else {
         draft = [];
         setDeckLayers();
@@ -1924,6 +1990,11 @@ export function mountEngine({ model, host }) {
 
   function handleMouseLeave() {
     if (isDragging) { isDragging = false; dragStart = null; }
+    if (vertexDragIndex >= 0 || vertexDragLandmarkIndex >= 0) {
+      vertexDragIndex = -1;
+      vertexDragLandmarkIndex = -1;
+      model.save_changes();
+    }
     if (isLassoing) { isLassoing = false; lassoPath = []; setDeckLayers(); }
     if (isBoxing) { isBoxing = false; boxStart = null; boxCurrent = null; setDeckLayers(); }
   }
@@ -1953,9 +2024,11 @@ export function mountEngine({ model, host }) {
         e.stopImmediatePropagation();
         const max = maxBufferWidth();
         const step = max / 40;
+        const delta = wheelDelta(e);
+        if (!delta) return;
         const w = Math.max(
           0,
-          Math.min(max, (Number(lm.buffer_width) || 0) + (e.deltaY > 0 ? -step : step))
+          Math.min(max, (Number(lm.buffer_width) || 0) + (delta > 0 ? -step : step))
         );
         updateSelectedLandmark({ buffer_width: w });
         return;
@@ -1964,11 +2037,13 @@ export function mountEngine({ model, host }) {
       if (!hood || hood.neighborhood === "off") return;
       e.preventDefault();
       e.stopImmediatePropagation();
+      const delta = wheelDelta(e);
+      if (!delta) return;
       if (hood.neighborhood === "knn") {
         const kMax = maxNeighborhoodK();
         const k = Math.max(
           1,
-          Math.min(kMax, (Number(hood.neighborhood_k) || 12) + (e.deltaY > 0 ? -1 : 1))
+          Math.min(kMax, (Number(hood.neighborhood_k) || 12) + (delta > 0 ? -1 : 1))
         );
         updateActiveNeighborhood({ neighborhood: "knn", neighborhood_k: k });
         return;
@@ -1978,7 +2053,7 @@ export function mountEngine({ model, host }) {
         const step = max / 40;
         const r = Math.max(
           0,
-          Math.min(max, (Number(hood.neighborhood_radius) || 0) + (e.deltaY > 0 ? -step : step))
+          Math.min(max, (Number(hood.neighborhood_radius) || 0) + (delta > 0 ? -step : step))
         );
         updateActiveNeighborhood({ neighborhood: "radius", neighborhood_radius: r });
       }
@@ -2105,13 +2180,46 @@ export function mountEngine({ model, host }) {
     deckgl = null;
     zoomWidget = null;
     resetWidget = null;
+    if (typeof window !== "undefined" && window.__landmarksEngine) {
+      delete window.__landmarksEngine;
+      delete window.__landmarksModel;
+    }
     host.replaceChildren();
   }
 
-  return {
+  const handle = {
     zoomBy: (d) => zoomBy(d),
     resetZoom: () => resetZoom(),
     resize: () => resizeDeck(),
+    getViewState: () => (currentViewState ? { ...currentViewState } : null),
+    getSelectionOverlay: () => {
+      const kind = model.get("selected_kind");
+      const selectedIdx = model.get("selected_index");
+      const pts = getPointsData();
+      const out = [];
+      (model.get("selections") || []).forEach((sel, i) => {
+        const polygon = selectionPolygonData(sel);
+        if (polygon.length < 3) return;
+        let count = 0;
+        for (let pi = 0; pi < pts.length; pi++) {
+          if (pointInRing(pts[pi], polygon)) count += 1;
+        }
+        const selected = kind === "selection" && i === selectedIdx;
+        out.push({
+          index: i,
+          selected,
+          pointCount: count,
+          lineWidth: selected ? 1.5 : 0,
+          lineAlpha: selected ? 1 : 0,
+        });
+      });
+      return out;
+    },
     destroy,
   };
+  if (typeof window !== "undefined") {
+    window.__landmarksEngine = handle;
+    window.__landmarksModel = model;
+  }
+  return handle;
 }

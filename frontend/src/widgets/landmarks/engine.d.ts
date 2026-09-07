@@ -2,6 +2,20 @@ export type EngineHandle = {
   zoomBy(delta: number): void;
   resetZoom(): void;
   resize(): void;
+  getViewState(): {
+    target?: number[];
+    zoom?: number;
+    minZoom?: number;
+    maxZoom?: number;
+    [key: string]: unknown;
+  } | null;
+  getSelectionOverlay(): Array<{
+    index: number;
+    selected: boolean;
+    pointCount: number;
+    lineWidth: number;
+    lineAlpha: number;
+  }>;
   destroy(): void;
 };
 
