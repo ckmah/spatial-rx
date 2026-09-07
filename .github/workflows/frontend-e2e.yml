@@ -10,6 +10,10 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   playwright:
     runs-on: ubuntu-latest
@@ -46,6 +50,19 @@ jobs:
           CI: true
           E2E_SCREENSHOTS: "1"
 
+      - name: Post Playwright visuals sticky PR comment
+        if: ${{ success() && github.event_name == 'pull_request' }}
+        working-directory: .
+        env:
+          # Classic PAT (repo scope) enables gh --attach uploads; else raw snapshot URLs.
+          GH_TOKEN: ${{ secrets.VISUALS_GH_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+        run: bash .github/scripts/post-playwright-visuals.sh
+
       - name: Upload Playwright HTML report
         if: always()
         uses: actions/upload-artifact@v4
@@ -61,6 +78,17 @@ jobs:
         with:
           name: playwright-test-results
           path: frontend/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload Playwright videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-videos
+          path: |
+            frontend/test-results/**/*.webm
+            frontend/test-results/**/*.mp4
           retention-days: 14
           if-no-files-found: ignore
 

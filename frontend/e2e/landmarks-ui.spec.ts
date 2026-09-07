@@ -309,7 +309,7 @@ test.describe("LandmarksWidget UI regressions", () => {
     await shot(page, "neighborhood-knn-edges", widget);
   });
 
-  test("selection outline only on active selection", async ({ page }) => {
+  test("selection points highlight without persisted outline", async ({ page }) => {
     const widget = page.locator(".landmarks").first();
     await setModel(page, { selected_kind: "landmark", selected_index: 0 });
     await page.waitForTimeout(150);
@@ -322,6 +322,8 @@ test.describe("LandmarksWidget UI regressions", () => {
       expect(row.lineWidth).toBe(0);
       expect(row.lineAlpha).toBe(0);
     }
+    // Landmark names render on-canvas; Inspect must not show a "Pinned" chip for landmarks.
+    await expect(page.getByTestId("inspect-pin")).toHaveCount(0);
     await shot(page, "landmark-selected", widget);
 
     await setModel(page, { selected_kind: "selection", selected_index: 0 });
@@ -331,8 +333,84 @@ test.describe("LandmarksWidget UI regressions", () => {
     );
     const active = overlay.find((r: any) => r.index === 0);
     expect(active?.selected).toBe(true);
+    expect(active?.pointCount).toBeGreaterThan(0);
+    // Active selection strengthens point stroke; outline geometry is draft-only / ephemeral.
     expect(active?.lineWidth).toBeGreaterThan(0);
     expect(active?.lineAlpha).toBeGreaterThan(0);
     await shot(page, "selection-selected", widget);
+  });
+
+  test("Pointer / Move / Selection mode switch (no geometry shape picker)", async ({ page }) => {
+    const widget = page.locator(".landmarks").first();
+
+    await expect(page.getByRole("radio", { name: "Pointer", exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Move", exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Selection", exact: true })).toBeVisible();
+
+    // Selection must not spawn a secondary lasso/polygon/rect/ellipse ModeToggle.
+    await expect(page.getByRole("radio", { name: "Lasso", exact: true })).toHaveCount(0);
+
+    await page.getByRole("radio", { name: "Selection", exact: true }).click();
+    await page.waitForTimeout(150);
+    expect(await getModel(page, "mode")).toBe("lasso");
+    await expect(page.getByRole("radio", { name: "Lasso", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("radio", { name: "Polygon", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("radio", { name: "Rectangle", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("radio", { name: "Ellipse", exact: true })).toHaveCount(0);
+    await shot(page, "selection-mode-geometry", widget);
+
+    await page.getByRole("radio", { name: "Move", exact: true }).click();
+    await page.waitForTimeout(100);
+    expect(await getModel(page, "mode")).toBe("move");
+    await expect(page.getByRole("radio", { name: "Lasso", exact: true })).toHaveCount(0);
+
+    await page.getByRole("radio", { name: "Pointer", exact: true }).click();
+    await page.waitForTimeout(100);
+    expect(await getModel(page, "mode")).toBe("pointer");
+  });
+
+  test("Pointer hover + click pin + Esc clear", async ({ page }) => {
+    const widget = page.locator(".landmarks").first();
+    await page.getByRole("radio", { name: "Pointer", exact: true }).click();
+    await setModel(page, { selected_kind: "", selected_index: -1 });
+    await page.waitForTimeout(150);
+
+    // Landmark selection is not shown as an Inspect "Pinned" chip.
+    await setModel(page, { selected_kind: "landmark", selected_index: 0 });
+    await page.waitForTimeout(200);
+    await expect(page.getByTestId("inspect-pin")).toHaveCount(0);
+
+    // Molecule pin is the Inspect contract (model set — canvas projection varies with fit).
+    await setModel(page, { selected_kind: "molecule", selected_index: 0 });
+    await page.waitForTimeout(200);
+    let pin = await page.evaluate(() => (window as any).__landmarksEngine.getInspectPin());
+    expect(pin).toEqual({ kind: "molecule", index: 0 });
+    await expect(page.getByTestId("inspect-pin")).toBeVisible();
+    await shot(page, "pointer-pin", widget);
+
+    // Canvas click on a dense region should be able to pin a molecule (pointer pick).
+    const box = await canvasBox(page);
+    await page.mouse.click(box.x + box.width * 0.55, box.y + box.height * 0.55);
+    await page.waitForTimeout(250);
+    pin = await page.evaluate(() => (window as any).__landmarksEngine.getInspectPin());
+    // Either pinned something new or cleared on miss — both valid pointer behaviors.
+    if (pin) {
+      expect(["landmark", "molecule", "type"]).toContain(pin.kind);
+    }
+
+    // Esc clears pin.
+    await page.locator("canvas.landmarks__webgl").first().focus();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const cleared = await page.evaluate(() => (window as any).__landmarksEngine.getInspectPin());
+    expect(cleared).toBeNull();
+    expect(await getModel(page, "selected_kind")).toBe("");
+
+    // Miss click clears without toast (re-pin then miss).
+    await setModel(page, { selected_kind: "molecule", selected_index: 0 });
+    await page.waitForTimeout(100);
+    await page.mouse.click(box.x + 12, box.y + 12);
+    await page.waitForTimeout(100);
+    expect(await getModel(page, "selected_kind")).toBe("");
   });
 });

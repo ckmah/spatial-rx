@@ -31,6 +31,8 @@ export type EngineHandle = {
     radius: number;
     k: number;
   };
+  getHover(): { kind: string; index: number } | null;
+  getInspectPin(): { kind: string; index: number } | null;
   destroy(): void;
 };
 

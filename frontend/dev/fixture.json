@@ -1,8 +1,12 @@
 {
-  "mode": "select",
+  "mode": "pointer",
   "modes": [
-    "select",
+    "pointer",
+    "move",
     "lasso",
+    "polygon",
+    "rectangle",
+    "ellipse",
     "point",
     "line",
     "spline",

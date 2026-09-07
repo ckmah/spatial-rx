@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import {
@@ -15,8 +16,10 @@ import {
   EyeIcon,
   EyeOffIcon,
   LassoIcon,
+  LassoSelectIcon,
   MaximizeIcon,
   MinusIcon,
+  MousePointer2Icon,
   MoveIcon,
   PentagonIcon,
   PlusIcon,
@@ -65,27 +68,38 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 import {
   BUFFERABLE,
   GENE_COLORS,
   LANDMARK_COLORS,
+  GEOMETRY_MODE_IDS,
+  INTERACTION_MODE_IDS,
   LANDMARK_MODE_IDS,
   MAX_ACTIVE_GENES,
   MODE_LABELS,
-  SELECT_MODE_IDS,
   SELECTION_COLORS,
   TENSION_TYPES,
   formatLegendValue,
   formatParam,
+  interactionFromMode,
+  isGeometryMode,
   maxBufferWidth,
   spatialDiag,
 } from "./helpers";
 import type { LandmarksModel } from "./use-landmarks-model";
 
 const MODE_ICONS: Record<string, typeof MoveIcon> = {
-  select: MoveIcon,
+  pointer: MousePointer2Icon,
+  move: MoveIcon,
+  selection: LassoSelectIcon,
   lasso: LassoIcon,
   polygon: PentagonIcon,
   rectangle: SquareIcon,
@@ -95,6 +109,27 @@ const MODE_ICONS: Record<string, typeof MoveIcon> = {
   spline: SplineIcon,
   shape: ShapesIcon,
 };
+
+function ChromeTooltip({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactElement;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        sideOffset={6}
+        className="landmarks-tooltip border-border/60 bg-card/95 text-foreground shadow-md"
+      >
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 function ModeToggle({
   modes,
@@ -125,11 +160,14 @@ function ModeToggle({
           <ToggleGroupItem
             key={mode}
             value={mode}
-            title={label}
             aria-label={label}
             className="size-8 min-w-8 rounded-full border-0 px-0 text-muted-foreground hover:bg-muted hover:text-foreground data-[state=on]:bg-foreground data-[state=on]:text-background data-[state=on]:shadow-none"
           >
-            <Icon className="size-4" />
+            <ChromeTooltip label={label}>
+              <span className="inline-flex size-full items-center justify-center">
+                <Icon className="size-4" />
+              </span>
+            </ChromeTooltip>
           </ToggleGroupItem>
         );
       })}
@@ -213,83 +251,113 @@ export function Topbar({
   onZoomOut: () => void;
   onReset: () => void;
 }) {
-  const selectModes = modes.filter((m) => SELECT_MODE_IDS.includes(m));
+  const interactionModes = INTERACTION_MODE_IDS.filter(
+    (id) =>
+      id === "selection"
+        ? modes.some((m) => isGeometryMode(m)) || modes.includes("selection")
+        : modes.includes(id),
+  );
+  const geometryModes = modes.filter((m) => GEOMETRY_MODE_IDS.includes(m));
   const landmarkModes = modes.filter((m) => LANDMARK_MODE_IDS.includes(m));
-  const showDivider = selectModes.length > 0 && landmarkModes.length > 0;
+  const interactionValue = interactionFromMode(mode);
+  // Selection mode uses the default geometry path (lasso) without a secondary
+  // shape-method ModeToggle — Selection itself is the tool.
+  const defaultGeometry = geometryModes[0] || "lasso";
+
+  const onInteraction = (next: string) => {
+    if (next === "selection") {
+      onMode(isGeometryMode(mode) ? mode : defaultGeometry);
+      return;
+    }
+    onMode(next);
+  };
+
+  const fullscreenLabel = fullscreen ? "Exit full screen" : "Full screen";
+
   return (
-    <div
-      className="landmarks-float landmarks-float--toolbar pointer-events-auto flex items-center gap-1 rounded-full px-1.5 py-1 text-card-foreground"
-      role="toolbar"
-      aria-label="Drawing tools"
-      onMouseDown={(e) => e.stopPropagation()}
-      onWheel={(e) => e.stopPropagation()}
-    >
-      {selectModes.length ? (
-        <ModeToggle modes={selectModes} value={mode} onChange={onMode} />
-      ) : null}
-      {showDivider ? (
+    <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+      <div
+        className="landmarks-float landmarks-float--toolbar pointer-events-auto flex items-center gap-1 rounded-full px-1.5 py-1 text-card-foreground"
+        role="toolbar"
+        aria-label="Drawing tools"
+        onMouseDown={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+      >
+        {interactionModes.length ? (
+          <ModeToggle
+            modes={interactionModes}
+            value={interactionValue}
+            onChange={onInteraction}
+          />
+        ) : null}
+        {landmarkModes.length ? (
+          <>
+            <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
+            <ModeToggle modes={landmarkModes} value={mode} onChange={onMode} />
+          </>
+        ) : null}
         <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
-      ) : null}
-      {landmarkModes.length ? (
-        <ModeToggle modes={landmarkModes} value={mode} onChange={onMode} />
-      ) : null}
-      <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        title="Zoom in"
-        aria-label="Zoom in"
-        className={chromeHitClass}
-        onClick={(e) => {
-          e.stopPropagation();
-          onZoomIn();
-        }}
-      >
-        <PlusIcon className="size-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        title="Zoom out"
-        aria-label="Zoom out"
-        className={chromeHitClass}
-        onClick={(e) => {
-          e.stopPropagation();
-          onZoomOut();
-        }}
-      >
-        <MinusIcon className="size-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        title="Reset view"
-        aria-label="Reset view"
-        className={chromeHitClass}
-        onClick={(e) => {
-          e.stopPropagation();
-          onReset();
-        }}
-      >
-        <MaximizeIcon className="size-4" />
-      </Button>
-      <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className={chromeHitClass}
-        title={fullscreen ? "Exit full screen" : "Full screen"}
-        aria-label={fullscreen ? "Exit full screen" : "Full screen"}
-        aria-pressed={fullscreen}
-        onClick={onToggleFullscreen}
-      >
-        {fullscreen ? <ShrinkIcon className="size-4" /> : <ExpandIcon className="size-4" />}
-      </Button>
-    </div>
+        <ChromeTooltip label="Zoom in">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Zoom in"
+            className={chromeHitClass}
+            onClick={(e) => {
+              e.stopPropagation();
+              onZoomIn();
+            }}
+          >
+            <PlusIcon className="size-4" />
+          </Button>
+        </ChromeTooltip>
+        <ChromeTooltip label="Zoom out">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Zoom out"
+            className={chromeHitClass}
+            onClick={(e) => {
+              e.stopPropagation();
+              onZoomOut();
+            }}
+          >
+            <MinusIcon className="size-4" />
+          </Button>
+        </ChromeTooltip>
+        <ChromeTooltip label="Reset view">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Reset view"
+            className={chromeHitClass}
+            onClick={(e) => {
+              e.stopPropagation();
+              onReset();
+            }}
+          >
+            <MaximizeIcon className="size-4" />
+          </Button>
+        </ChromeTooltip>
+        <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
+        <ChromeTooltip label={fullscreenLabel}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className={chromeHitClass}
+            aria-label={fullscreenLabel}
+            aria-pressed={fullscreen}
+            onClick={onToggleFullscreen}
+          >
+            {fullscreen ? <ShrinkIcon className="size-4" /> : <ExpandIcon className="size-4" />}
+          </Button>
+        </ChromeTooltip>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -1176,6 +1244,14 @@ export function ControlPanel({
   const kMax = Math.max(1, neighbor_k_max || 64);
   const radiusValue = Math.min(Number(hood?.neighborhood_radius || 0), rMax);
 
+  // Pointer pins only (molecule / type). Landmark selection is not a "pin".
+  const pinLabel =
+    lm.selected_kind === "molecule" && lm.selected_index >= 0
+      ? `molecule ${lm.selected_index}`
+      : lm.selected_kind === "type" && lm.selected_index >= 0
+        ? `type ${lm.selected_index}`
+        : null;
+
   const accordion = (
         <Accordion
           className={cn(forceSection && "landmarks-section-solo")}
@@ -1239,7 +1315,13 @@ export function ControlPanel({
           <AccordionItem value="stats" className="border-b">
             <AccordionTrigger className={SECTION_TRIGGER}>Stats</AccordionTrigger>
             <AccordionContent className="px-0 pb-2">
-              <dl className="landmarks-stat-grid">
+              <dl className="landmarks-stat-grid" data-testid="inspect-stats">
+                {lm.selected_kind === "molecule" && lm.selected_index >= 0 ? (
+                  <div className="landmarks-stat-chip col-span-2" data-testid="inspect-pin">
+                    <dt>Pinned</dt>
+                    <dd className="truncate">molecule {lm.selected_index}</dd>
+                  </div>
+                ) : null}
                 <div className="landmarks-stat-chip">
                   <dt>Points</dt>
                   <dd>{lm.n_points}</dd>
@@ -1436,31 +1518,6 @@ export function ControlPanel({
                     </>
                   ) : null}
                   <Field className="gap-1.5">
-                    <FieldLabel className="text-[0.6875rem] font-medium text-muted-foreground">
-                      Label
-                    </FieldLabel>
-                    <Input
-                      aria-label="Landmark label"
-                      value={selectedLm?.label as string || ""}
-                      className="h-6 text-xs"
-                      autoFocus
-                      onChange={(e) => {
-                        const v = (e.target as HTMLInputElement).value || "";
-                        lm.setLandmarkLabel(v);
-                      }}
-                      onKeyDown={(e) => {
-                        e.stopPropagation();
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          const v = (e.target as HTMLInputElement).value || "";
-                          lm.setLandmarkLabel(v);
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                        }
-                      }}
-                    />
-                  </Field>
-                  <Field className="gap-1.5">
                     <Button
                       type="button"
                       variant="ghost"
@@ -1495,9 +1552,20 @@ export function ControlPanel({
         </Accordion>
   );
 
+  const pinBanner = pinLabel ? (
+    <div
+      className="mb-2 rounded-md bg-muted/50 px-2 py-1.5 text-[0.6875rem]"
+      data-testid="inspect-pin"
+    >
+      <span className="text-muted-foreground">Pinned · </span>
+      <span className="font-medium text-foreground">{pinLabel}</span>
+    </div>
+  ) : null;
+
   if (embedded) {
     return (
       <div className={cn("min-h-0 overflow-y-auto py-0", PANEL_INSET)}>
+        {pinBanner}
         {accordion}
       </div>
     );
@@ -1506,6 +1574,7 @@ export function ControlPanel({
   return (
     <Card className={FLOAT_PANEL}>
       <CardContent className={cn("min-h-0 overflow-y-auto py-0", PANEL_INSET)}>
+        {pinBanner}
         {accordion}
       </CardContent>
     </Card>

@@ -8,7 +8,9 @@ import {
   PathLayer,
   PolygonLayer,
   BitmapLayer,
+  TextLayer,
 } from "@deck.gl/layers";
+import { PathStyleExtension } from "@deck.gl/extensions";
 import { ZoomWidget, ResetViewWidget } from "@deck.gl/widgets";
 import {
   neighborhoodFor as neighborhoodForArgs,
@@ -27,9 +29,14 @@ const DECK_MODULES = {
   PathLayer,
   PolygonLayer,
   BitmapLayer,
+  TextLayer,
+  PathStyleExtension,
   ZoomWidget,
   ResetViewWidget,
 };
+
+/** Selection outline dash: [dash, gap] in path units (pixels with widthUnits). */
+const SELECTION_DASH = [8, 5];
 
 /** Hide stock widget DOM; React/shadcn chrome calls the same handle methods. */
 const HIDDEN_WIDGET_STYLE = { display: "none" };
@@ -37,6 +44,10 @@ const OVERLAY_GL = { depthCompare: "always", depthWriteEnabled: false };
 
 const COLORS = ["#00e5ff", "#ff2d95", "#b8ff00", "#ffb000", "#7c4dff", "#00ffa3"];
 const SEL_COLORS = ["#94a3b8", "#64748b", "#a8a29e", "#78716c"];
+/** Soft hover/pin halos by inspect target type (DESIGN.md). */
+const HALO_LANDMARK = "#00e5ff";
+const HALO_CELL = "#94a3b8";
+const HALO_MOLECULE = "#ff0099";
 /** DESIGN.md neighborhood-teal */
 const NEIGH_COLOR = "#b3f2e8";
 const NEIGH_FILL_ALPHA = 0.3;
@@ -164,35 +175,91 @@ export function mountEngine({ model, host }) {
         style: tooltipStyle(),
       };
     }
-    // Select-mode hover labels intentionally omitted (closed tooltip branches).
-    if (currentMode === "select") return null;
-    const obj = info?.object;
-    if (obj?.kind === "landmark" || obj?.kind === "selection") {
-      const items =
-        obj.kind === "landmark" ? model.get("landmarks") : model.get("selections");
-      const name = items?.[obj.index]?.id;
-      const label = items?.[obj.index]?.label;
-      if (name) {
-        const text = label ? `${name} (${label})` : name;
-        return { text: String(text), style: tooltipStyle() };
-      }
+    // Pointer-only hover tooltips (Move / Selection / landmark draw: no hover paint).
+    if (currentMode !== "pointer") return null;
+    const hit = resolvePointerTarget(info);
+    if (!hit) return null;
+    const text = formatInspectTooltip(hit);
+    return text ? { text, style: tooltipStyle() } : null;
+  }
+
+  function formatInspectTooltip(hit) {
+    if (!hit) return "";
+    if (hit.kind === "landmark") {
+      const lm = (model.get("landmarks") || [])[hit.index];
+      if (!lm) return "";
+      const label = lm.label ? ` (${lm.label})` : "";
+      return `${lm.id || `landmark ${hit.index}`}${label}`;
     }
-    return null;
+    if (hit.kind === "type") {
+      const labels = model.get("legend_labels") || [];
+      const name = labels[hit.index] ?? `type ${hit.index}`;
+      const cat = model.get("active_category") || "category";
+      return `${cat}: ${name}`;
+    }
+    if (hit.kind === "molecule") {
+      const pts = getPointsData();
+      const p = pts[hit.index];
+      if (!p) return `molecule ${hit.index}`;
+      const bits = [`molecule ${hit.index}`, `x ${p.x.toFixed(1)}`, `y ${p.y.toFixed(1)}`];
+      const activeGenes = model.get("active_genes") || [];
+      const genesOn =
+        model.get("color_by") === "continuous" && activeGenes.length > 0;
+      if (genesOn) {
+        for (const name of activeGenes) {
+          const raw = geneRawAt(hit.index, name);
+          if (raw == null || !Number.isFinite(raw)) continue;
+          bits.push(`${name} ${Number(raw).toPrecision(3)}`);
+        }
+      } else {
+        const labels = model.get("legend_labels") || [];
+        const code = categoryCodeAt(hit.index);
+        if (code >= 0 && labels[code] != null) bits.push(String(labels[code]));
+      }
+      return bits.join(" · ");
+    }
+    return "";
+  }
+
+  function haloColorFor(kind) {
+    if (kind === "landmark") return HALO_LANDMARK;
+    if (kind === "type") return HALO_CELL;
+    return HALO_MOLECULE;
   }
 
   legend.addEventListener("mousedown", (e) => e.stopPropagation());
   legend.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
 
   const availableModes = model.get("modes") || [];
-  const SELECT_MODES = ["select", "lasso"].filter((m) =>
+  const INTERACTION_MODES = ["pointer", "move"].filter((m) =>
+    availableModes.includes(m)
+  );
+  const GEOMETRY_MODES = ["lasso", "polygon", "rectangle", "ellipse"].filter((m) =>
     availableModes.includes(m)
   );
   const LANDMARK_MODES = ["point", "line", "spline", "shape"].filter((m) =>
     availableModes.includes(m)
   );
-  const modes = [...SELECT_MODES, ...LANDMARK_MODES];
-  let currentMode = model.get("mode") || "select";
-  if (!modes.includes(currentMode)) currentMode = modes[0] || "select";
+  const modes = [...INTERACTION_MODES, ...GEOMETRY_MODES, ...LANDMARK_MODES];
+  let currentMode = model.get("mode") || "pointer";
+  // Migrate legacy "select" (pan+inspect) → move.
+  if (currentMode === "select") currentMode = availableModes.includes("move") ? "move" : "pointer";
+  if (!modes.includes(currentMode)) currentMode = modes[0] || "pointer";
+
+  let hoverTarget = null; // { kind, index } | null — Pointer-only
+  let hoverRaf = 0;
+
+  function isGeometryMode(mode) {
+    return ["lasso", "polygon", "rectangle", "ellipse"].includes(mode);
+  }
+  function isLandmarkDrawMode(mode) {
+    return ["point", "line", "spline", "shape"].includes(mode);
+  }
+  function sameTarget(a, b) {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    return a.kind === b.kind && a.index === b.index;
+  }
 
 
   let deckgl = null;
@@ -283,6 +350,17 @@ export function mountEngine({ model, host }) {
     const pts = getPointsData();
     if (gi < 0 || !geneValues || !geneValues.length || !pts.length) return null;
     return geneValues[gi * pts.length + i];
+  }
+
+  /** Data-space gene value (pre-log1p) from packed [0, 1]. */
+  function geneRawAt(i, geneName) {
+    const t01 = geneValueAt(i, geneName);
+    if (t01 == null || !Number.isFinite(t01)) return null;
+    const meta = geneMeta(geneName);
+    const lo = Number.isFinite(meta?.vmin) ? meta.vmin : 0;
+    const hi = Number.isFinite(meta?.vmax) && meta.vmax > lo ? meta.vmax : lo + 1;
+    const t = Math.max(0, Math.min(1, t01));
+    return Math.max(0, lo + t * (hi - lo));
   }
 
   /** Reconstruct data-space value from packed [0, 1], then optional log1p. */
@@ -432,7 +510,7 @@ export function mountEngine({ model, host }) {
   }
 
   function controllerProps() {
-    const pan = currentMode === "select";
+    const pan = currentMode === "move";
     return {
       dragPan: pan,
       scrollZoom: true,
@@ -441,9 +519,15 @@ export function mountEngine({ model, host }) {
     };
   }
 
+  function defaultCursor() {
+    if (currentMode === "move") return "grab";
+    if (currentMode === "pointer") return "default";
+    return "crosshair";
+  }
+
   function syncInteractionMode() {
-    const pan = currentMode === "select";
-    webglCanvas.style.cursor = pan ? "grab" : "crosshair";
+    if (currentMode !== "pointer") hoverTarget = null;
+    webglCanvas.style.cursor = defaultCursor();
     if (deckgl) deckgl.setProps({ controller: controllerProps() });
   }
 
@@ -795,10 +879,14 @@ export function mountEngine({ model, host }) {
       model.get("gene_log1p"),
       ...roleTrigger,
     ];
+    const pointerPick = currentMode === "pointer";
+    const pickData = pointerPick
+      ? data.map((d) => ({ ...d, kind: "molecule", index: d.i }))
+      : data;
     return [
       new ScatterplotLayer({
         id: "landmarks-points",
-        data,
+        data: pickData,
         getPosition: (d) => [d.x, d.y, 0],
         getFillColor: (d) => fillColorForPoint(d),
         getRadius: (d) => radiusForPoint(d),
@@ -806,10 +894,11 @@ export function mountEngine({ model, host }) {
         radiusMinPixels: 1.5,
         stroked: false,
         filled: true,
-        pickable: false,
+        pickable: pointerPick,
         updateTriggers: {
           getFillColor: fillTriggers,
           getRadius: roleTrigger,
+          pickable: pointerPick,
         },
       }),
     ];
@@ -828,7 +917,7 @@ export function mountEngine({ model, host }) {
       if (polygon.length < 3) return;
       const selected = kind === "selection" && i === selectedIdx;
       const hex = SEL_COLORS[i % SEL_COLORS.length];
-      // Tint all selections; outline stroke only on the active selection.
+      // Tint selected points; active selection gets a stronger point stroke (no outline geometry).
       const fill = hexToRgbaBytes(hex, selected ? 0.22 : 0.1);
       const line = hexToRgbaBytes(hex, selected ? 1 : 0);
       const radius = selected ? size * 1.15 : size;
@@ -863,7 +952,7 @@ export function mountEngine({ model, host }) {
         lineWidthUnits: "pixels",
         stroked: true,
         filled: true,
-        pickable: true,
+        pickable: isGeometryMode(currentMode),
         parameters: OVERLAY_GL,
         updateTriggers: {
           getFillColor: [kind, selectedIdx, model.get("selections")],
@@ -875,9 +964,53 @@ export function mountEngine({ model, host }) {
     ];
   }
 
+  /**
+   * Selection outlines are ephemeral: dashed geometry is draft-only
+   * (buildDraftLayers). After commit, keep tinted selected points — no
+   * persisted lasso/polygon outline on the canvas.
+   */
+
+  function landmarkLabelAnchor(lm, pathPts) {
+    const name = String(lm.label || lm.id || "").trim();
+    if (!name) return null;
+    if (lm.type === "point") {
+      const v = (lm.vertices || [])[0];
+      if (!v) return null;
+      return {
+        text: name,
+        position: [v[0], v[1], 0],
+        angle: 0,
+        pixelOffset: [10, -10],
+        textAnchor: "start",
+        alignmentBaseline: "bottom",
+      };
+    }
+    const pts = pathPts && pathPts.length ? pathPts : landmarkPathData(lm);
+    if (!pts.length) return null;
+    // Place near mid-geometry; angle follows local tangent for line-like types.
+    const mid = Math.floor(pts.length / 2);
+    const p = pts[mid];
+    let angle = 0;
+    if (["line", "spline", "gradient"].includes(lm.type) && pts.length >= 2) {
+      const a = pts[Math.max(0, mid - 1)];
+      const b = pts[Math.min(pts.length - 1, mid + 1)];
+      angle = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+      // Keep text upright-ish (avoid reading upside-down).
+      if (angle > 90 || angle < -90) angle += 180;
+    }
+    return {
+      text: name,
+      position: [p.x, p.y, 0],
+      angle,
+      pixelOffset: lm.type === "shape" ? [0, -8] : [0, -10],
+      textAnchor: "middle",
+      alignmentBaseline: "bottom",
+    };
+  }
+
   function buildLandmarkLayers() {
     if (!deckModules) return [];
-    const { PathLayer, PolygonLayer, ScatterplotLayer } = deckModules;
+    const { PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } = deckModules;
     const kind = model.get("selected_kind");
     const selectedIdx = model.get("selected_index");
     const stroke = model.get("stroke_width") || 2;
@@ -886,6 +1019,7 @@ export function mountEngine({ model, host }) {
     const paths = [];
     const markers = [];
     const arrows = [];
+    const labels = [];
     const arrowWorld = pixelsToWorld(14);
     (model.get("landmarks") || []).forEach((lm, i) => {
       if (lm.hidden) return;
@@ -906,6 +1040,16 @@ export function mountEngine({ model, host }) {
           radius: selected ? 7 : 6,
           ...pick,
         });
+        const anchor = landmarkLabelAnchor(lm);
+        if (anchor) {
+          labels.push({
+            ...anchor,
+            color: hexToRgbaBytes(hex, 1),
+            // Soft same-color halo for contrast on variable tissue backgrounds.
+            background: hexToRgbaBytes(hex, 0.22),
+            ...pick,
+          });
+        }
         return;
       }
       const pathPts = landmarkPathData(lm);
@@ -927,6 +1071,15 @@ export function mountEngine({ model, host }) {
             ...pick,
           });
         });
+        const anchor = landmarkLabelAnchor(lm, pathPts);
+        if (anchor) {
+          labels.push({
+            ...anchor,
+            color: hexToRgbaBytes(hex, 1),
+            background: hexToRgbaBytes(hex, 0.22),
+            ...pick,
+          });
+        }
         return;
       }
       const buffer = bufferPolygonData(lm);
@@ -961,6 +1114,15 @@ export function mountEngine({ model, host }) {
             ...pick,
           });
         });
+        const anchor = landmarkLabelAnchor(lm, pathPts);
+        if (anchor) {
+          labels.push({
+            ...anchor,
+            color: hexToRgbaBytes(hex, 1),
+            background: hexToRgbaBytes(hex, 0.22),
+            ...pick,
+          });
+        }
       }
     });
     const layers = [];
@@ -1018,14 +1180,54 @@ export function mountEngine({ model, host }) {
         })
       );
     }
+    if (labels.length) {
+      layers.push(
+        new TextLayer({
+          id: "landmark-labels",
+          data: labels,
+          getText: (d) => d.text,
+          getPosition: (d) => d.position,
+          getColor: (d) => d.color,
+          getAngle: (d) => d.angle || 0,
+          getPixelOffset: (d) => d.pixelOffset || [0, 0],
+          getTextAnchor: (d) => d.textAnchor || "middle",
+          getAlignmentBaseline: (d) => d.alignmentBaseline || "center",
+          getSize: 12,
+          sizeUnits: "pixels",
+          fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+          fontWeight: 600,
+          billboard: true,
+          background: true,
+          backgroundPadding: [6, 3],
+          backgroundBorderRadius: 6,
+          getBackgroundColor: (d) => d.background,
+          // Soft same-color halo (background) + thin SDF outline for edge contrast.
+          outlineWidth: 2,
+          outlineColor: [0, 0, 0, 120],
+          fontSettings: { sdf: true, radius: 12, cutoff: 0.25 },
+          pickable: false,
+          parameters: OVERLAY_GL,
+          updateTriggers: {
+            getText: [model.get("landmarks")],
+            getColor: [model.get("landmarks"), kind, selectedIdx],
+            getBackgroundColor: [model.get("landmarks")],
+            getPosition: [model.get("landmarks")],
+            getAngle: [model.get("landmarks")],
+          },
+        })
+      );
+    }
     return layers;
   }
 
   function buildDraftLayers() {
     if (!deckModules) return [];
-    const { PathLayer, PolygonLayer, ScatterplotLayer } = deckModules;
+    const { PathLayer, PolygonLayer, ScatterplotLayer, PathStyleExtension } = deckModules;
     const isSel = ["lasso", "polygon", "rectangle", "ellipse"].includes(currentMode);
-    const hex = isSel ? "#94a3b8" : "#00e5ff";
+    // Preview color matches the next committed entity color.
+    const hex = isSel
+      ? SEL_COLORS[(model.get("selections") || []).length % SEL_COLORS.length]
+      : COLORS[(model.get("landmarks") || []).length % COLORS.length];
     const line = hexToRgbaBytes(hex, 1);
     const fill = hexToRgbaBytes(hex, 0.15);
     const stroke = model.get("stroke_width") || 4;
@@ -1070,19 +1272,39 @@ export function mountEngine({ model, host }) {
     }
 
     if (polygon && polygon.length >= 3) {
+      // Fill without stroke; dashed outline via PathLayer when selection.
       layers.push(
         new PolygonLayer({
           id: "draft-polygon",
-          data: [{ polygon, fill, line, width: 2 }],
+          data: [{ polygon, fill }],
           getPolygon: (d) => d.polygon,
           getFillColor: (d) => d.fill,
-          getLineColor: (d) => d.line,
-          getLineWidth: (d) => d.width,
-          lineWidthUnits: "pixels",
-          stroked: true,
+          stroked: false,
           filled: true,
           pickable: false,
           parameters: OVERLAY_GL,
+        })
+      );
+      const outline = asClosedPath(polygon.map((pt) => ({ x: pt[0], y: pt[1] })));
+      layers.push(
+        new PathLayer({
+          id: "draft-polygon-outline",
+          data: [{ path: outline, color: line, width: isSel ? 2 : stroke }],
+          getPath: (d) => d.path,
+          getColor: (d) => d.color,
+          getWidth: (d) => d.width,
+          widthUnits: "pixels",
+          jointRounded: true,
+          capRounded: true,
+          pickable: false,
+          parameters: OVERLAY_GL,
+          ...(isSel
+            ? {
+                getDashArray: SELECTION_DASH,
+                dashJustified: true,
+                extensions: [new PathStyleExtension({ dash: true, highPrecisionDash: true })],
+              }
+            : {}),
         })
       );
     } else if (path && path.length >= 2) {
@@ -1098,6 +1320,13 @@ export function mountEngine({ model, host }) {
           capRounded: true,
           pickable: false,
           parameters: OVERLAY_GL,
+          ...(isSel
+            ? {
+                getDashArray: SELECTION_DASH,
+                dashJustified: true,
+                extensions: [new PathStyleExtension({ dash: true, highPrecisionDash: true })],
+              }
+            : {}),
         })
       );
     }
@@ -1224,12 +1453,131 @@ export function mountEngine({ model, host }) {
           getColor: hexToRgbaBytes(NEIGH_COLOR, NEIGH_EDGE_ALPHA),
           getWidth: NEIGH_EDGE_WIDTH,
           widthUnits: "pixels",
-          pickable: true,
+          pickable: false,
           parameters: OVERLAY_GL,
         })
       );
     }
     return layers;
+  }
+
+  function resolvePointerTarget(info) {
+    if (!info) return null;
+    // Prefer multi-pick stack: landmark → type/cell → molecule. Never selection.
+    if (deckgl?.isInitialized && info.x != null && info.y != null) {
+      const stack = deckgl.pickObjects({
+        x: info.x,
+        y: info.y,
+        radius: 8,
+        depth: 12,
+      }) || [];
+      const objs = stack.map((s) => s.object).filter(Boolean);
+      const landmark = objs.find((o) => o.kind === "landmark");
+      if (landmark) return { kind: "landmark", index: landmark.index };
+      const typ = objs.find((o) => o.kind === "type");
+      if (typ) return { kind: "type", index: typ.index };
+      const mol = objs.find((o) => o.kind === "molecule");
+      if (mol) return { kind: "molecule", index: mol.index };
+    }
+    const obj = info.object;
+    if (!obj?.kind || obj.kind === "selection") return null;
+    if (obj.kind === "landmark" || obj.kind === "type" || obj.kind === "molecule") {
+      return { kind: obj.kind, index: obj.index };
+    }
+    return null;
+  }
+
+  function inspectHaloTargets() {
+    const out = [];
+    const pinKind = model.get("selected_kind");
+    const pinIndex = model.get("selected_index");
+    if (
+      (pinKind === "landmark" || pinKind === "type" || pinKind === "molecule") &&
+      pinIndex >= 0
+    ) {
+      out.push({ kind: pinKind, index: pinIndex, pinned: true });
+    }
+    if (
+      hoverTarget &&
+      !(hoverTarget.kind === pinKind && hoverTarget.index === pinIndex)
+    ) {
+      out.push({ ...hoverTarget, pinned: false });
+    }
+    return out;
+  }
+
+  function haloPositionsFor(hit) {
+    const pts = getPointsData();
+    if (hit.kind === "molecule") {
+      const p = pts[hit.index];
+      return p ? [[p.x, p.y, 0]] : [];
+    }
+    if (hit.kind === "landmark") {
+      const lm = (model.get("landmarks") || [])[hit.index];
+      if (!lm?.vertices?.length) return [];
+      // Soft halo at first vertex / centroid of vertices.
+      let sx = 0;
+      let sy = 0;
+      for (const v of lm.vertices) {
+        sx += v[0];
+        sy += v[1];
+      }
+      const n = lm.vertices.length;
+      return [[sx / n, sy / n, 0]];
+    }
+    if (hit.kind === "type") {
+      // Light sample of matching points (cap for perf).
+      const positions = [];
+      for (let i = 0; i < pts.length && positions.length < 64; i++) {
+        if (categoryCodeAt(i) === hit.index) {
+          positions.push([pts[i].x, pts[i].y, 0]);
+        }
+      }
+      return positions;
+    }
+    return [];
+  }
+
+  function buildInspectHaloLayer() {
+    if (!deckModules || currentMode !== "pointer") return null;
+    const { ScatterplotLayer } = deckModules;
+    const size = model.get("point_size") ?? 2;
+    const data = [];
+    for (const hit of inspectHaloTargets()) {
+      const hex = haloColorFor(hit.kind);
+      const fill = hexToRgbaBytes(hex, hit.pinned ? 0.28 : 0.16);
+      const line = hexToRgbaBytes(hex, hit.pinned ? 0.95 : 0.55);
+      const radius = size * (hit.pinned ? 2.4 : 2.0);
+      for (const position of haloPositionsFor(hit)) {
+        data.push({
+          position,
+          fill,
+          line,
+          radius,
+          lineWidth: hit.pinned ? 2 : 1.25,
+        });
+      }
+    }
+    if (!data.length) return null;
+    return new ScatterplotLayer({
+      id: "inspect-halo",
+      data,
+      getPosition: (d) => d.position,
+      getFillColor: (d) => d.fill,
+      getLineColor: (d) => d.line,
+      getRadius: (d) => d.radius,
+      getLineWidth: (d) => d.lineWidth,
+      radiusUnits: "common",
+      lineWidthUnits: "pixels",
+      stroked: true,
+      filled: true,
+      pickable: false,
+      parameters: OVERLAY_GL,
+      updateTriggers: {
+        getFillColor: [hoverTarget, model.get("selected_kind"), model.get("selected_index")],
+        getRadius: [model.get("point_size")],
+      },
+    });
   }
 
   function buildDeckLayers() {
@@ -1239,6 +1587,7 @@ export function mountEngine({ model, host }) {
       ...buildNeighborhoodLayers(),
       ...buildPointsLayer(),
       ...buildSelectionLayers(),
+      buildInspectHaloLayer(),
       ...buildLandmarkLayers(),
       ...buildDraftLayers(),
     ].filter(Boolean);
@@ -1440,8 +1789,8 @@ export function mountEngine({ model, host }) {
         getTooltip: deckTooltip,
         getCursor: ({ isDragging, isHovering }) => {
           if (isDragging) return "grabbing";
-          if (isHovering) return "pointer";
-          return currentMode === "select" ? "grab" : "crosshair";
+          if (currentMode === "pointer" && isHovering) return "pointer";
+          return defaultCursor();
         },
         onViewStateChange: ({ viewState }) => {
           currentViewState = viewState;
@@ -1449,22 +1798,29 @@ export function mountEngine({ model, host }) {
           maybeRefreshGrid();
         },
         onClick: (info) => {
-          if (currentMode !== "select") return;
-          const obj = info?.object;
-          if (obj?.kind === "landmark" || obj?.kind === "selection" || obj?.kind === "type") {
-            setSelected(obj.kind, obj.index);
-          } else {
-            setSelected("", -1);
-          }
+          if (currentMode !== "pointer") return;
+          const hit = resolvePointerTarget(info);
+          if (hit) setSelected(hit.kind, hit.index);
+          else setSelected("", -1);
         },
         onHover: (info) => {
-          const obj = info?.object;
-          if (obj?.kind === "landmark" || obj?.kind === "selection" || obj?.kind === "type") {
-            webglCanvas.style.cursor = "pointer";
+          if (currentMode !== "pointer") {
+            if (hoverTarget) {
+              hoverTarget = null;
+              setDeckLayers();
+            }
+            webglCanvas.style.cursor = defaultCursor();
             return;
           }
-          if (currentMode === "select") webglCanvas.style.cursor = "grab";
-          else webglCanvas.style.cursor = "crosshair";
+          const hit = resolvePointerTarget(info);
+          webglCanvas.style.cursor = hit ? "pointer" : "default";
+          if (sameTarget(hoverTarget, hit)) return;
+          hoverTarget = hit;
+          if (hoverRaf) cancelAnimationFrame(hoverRaf);
+          hoverRaf = requestAnimationFrame(() => {
+            hoverRaf = 0;
+            setDeckLayers();
+          });
         },
         onLoad: () => {
           updatePointLegend();
@@ -2034,7 +2390,7 @@ export function mountEngine({ model, host }) {
   }
 
   function handleMouseDown(event) {
-    if (currentMode === "select") return;
+    if (currentMode === "pointer" || currentMode === "move") return;
     event.preventDefault();
     webglCanvas.focus();
     const pt = eventPoint(event);
@@ -2044,20 +2400,21 @@ export function mountEngine({ model, host }) {
     const hit = findHit(pt);
 
     if (currentMode === "lasso") {
-      if (hit && hit.kind === model.get("selected_kind") && hit.index === model.get("selected_index")) {
+      if (hit && hit.kind === "selection" && hit.kind === model.get("selected_kind") && hit.index === model.get("selected_index")) {
         isDragging = true; dragStart = pt; dragKind = hit.kind; dragIndex = hit.index;
         return;
       }
-      if (hit) { setSelected(hit.kind, hit.index); suppressClick = true; return; }
+      // Selection mode: no inspect-pin; only activate existing selection regions.
+      if (hit?.kind === "selection") { setSelected(hit.kind, hit.index); suppressClick = true; return; }
       isLassoing = true; lassoPath = [pt]; setDeckLayers(); return;
     }
 
     if (currentMode === "rectangle" || currentMode === "ellipse") {
-      if (hit && hit.kind === model.get("selected_kind") && hit.index === model.get("selected_index")) {
+      if (hit && hit.kind === "selection" && hit.kind === model.get("selected_kind") && hit.index === model.get("selected_index")) {
         isDragging = true; dragStart = pt; dragKind = hit.kind; dragIndex = hit.index;
         return;
       }
-      if (hit) { setSelected(hit.kind, hit.index); suppressClick = true; return; }
+      if (hit?.kind === "selection") { setSelected(hit.kind, hit.index); suppressClick = true; return; }
       isBoxing = true; boxStart = pt; boxCurrent = pt; setDeckLayers(); return;
     }
 
@@ -2073,7 +2430,7 @@ export function mountEngine({ model, host }) {
     }
 
     const vertexHit = hitTestVertex(pt);
-    if (vertexHit && currentMode !== "select") {
+    if (vertexHit && currentMode !== "pointer" && currentMode !== "move") {
       startVertexDrag(vertexHit.index, vertexHit.landmarkIndex);
       return;
     }
@@ -2128,7 +2485,7 @@ export function mountEngine({ model, host }) {
   }
 
   function handleMouseUp(event) {
-    if (currentMode === "select" && !isDragging) return;
+    if ((currentMode === "pointer" || currentMode === "move") && !isDragging) return;
     const pt = eventPoint(event);
     if (isLassoing) {
       isLassoing = false;
@@ -2183,7 +2540,7 @@ export function mountEngine({ model, host }) {
     }
     if (suppressClick) { suppressClick = false; return; }
     if (!pt) return;
-    if (currentMode === "select" || currentMode === "lasso" || currentMode === "rectangle" || currentMode === "ellipse") return;
+    if (currentMode === "pointer" || currentMode === "move" || isGeometryMode(currentMode)) return;
 
     // Point: place at mouseup position (not mousedown).
     if (currentMode === "point") {
@@ -2342,6 +2699,8 @@ export function mountEngine({ model, host }) {
   });
   onChange("mode", () => {
     currentMode = model.get("mode");
+    if (currentMode === "select") currentMode = "move";
+    hoverTarget = null;
     resetDraft();
     syncInteractionMode();
     setDeckLayers();
@@ -2499,6 +2858,18 @@ export function mountEngine({ model, host }) {
         radius,
         k: Number(hood?.neighborhood_k) || 0,
       };
+    },
+    getHover: () => (hoverTarget ? { ...hoverTarget } : null),
+    getInspectPin: () => {
+      const kind = model.get("selected_kind") || "";
+      const index = model.get("selected_index");
+      if (
+        (kind === "landmark" || kind === "type" || kind === "molecule") &&
+        index >= 0
+      ) {
+        return { kind, index };
+      }
+      return null;
     },
     destroy,
   };
