@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import {
@@ -67,6 +68,12 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 import {
@@ -103,6 +110,27 @@ const MODE_ICONS: Record<string, typeof MoveIcon> = {
   shape: ShapesIcon,
 };
 
+function ChromeTooltip({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactElement;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        sideOffset={6}
+        className="landmarks-tooltip border-border/60 bg-card/95 text-foreground shadow-md"
+      >
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ModeToggle({
   modes,
   value,
@@ -132,11 +160,14 @@ function ModeToggle({
           <ToggleGroupItem
             key={mode}
             value={mode}
-            title={label}
             aria-label={label}
             className="size-8 min-w-8 rounded-full border-0 px-0 text-muted-foreground hover:bg-muted hover:text-foreground data-[state=on]:bg-foreground data-[state=on]:text-background data-[state=on]:shadow-none"
           >
-            <Icon className="size-4" />
+            <ChromeTooltip label={label}>
+              <span className="inline-flex size-full items-center justify-center">
+                <Icon className="size-4" />
+              </span>
+            </ChromeTooltip>
           </ToggleGroupItem>
         );
       })}
@@ -229,102 +260,104 @@ export function Topbar({
   const geometryModes = modes.filter((m) => GEOMETRY_MODE_IDS.includes(m));
   const landmarkModes = modes.filter((m) => LANDMARK_MODE_IDS.includes(m));
   const interactionValue = interactionFromMode(mode);
-  const selectionActive = interactionValue === "selection";
-  const lastGeometry =
-    geometryModes.find((m) => m === mode) || geometryModes[0] || "lasso";
+  // Selection mode uses the default geometry path (lasso) without a secondary
+  // shape-method ModeToggle — Selection itself is the tool.
+  const defaultGeometry = geometryModes[0] || "lasso";
 
   const onInteraction = (next: string) => {
     if (next === "selection") {
-      onMode(isGeometryMode(mode) ? mode : lastGeometry);
+      onMode(isGeometryMode(mode) ? mode : defaultGeometry);
       return;
     }
     onMode(next);
   };
 
+  const fullscreenLabel = fullscreen ? "Exit full screen" : "Full screen";
+
   return (
-    <div
-      className="landmarks-float landmarks-float--toolbar pointer-events-auto flex items-center gap-1 rounded-full px-1.5 py-1 text-card-foreground"
-      role="toolbar"
-      aria-label="Drawing tools"
-      onMouseDown={(e) => e.stopPropagation()}
-      onWheel={(e) => e.stopPropagation()}
-    >
-      {interactionModes.length ? (
-        <ModeToggle
-          modes={interactionModes}
-          value={interactionValue}
-          onChange={onInteraction}
-        />
-      ) : null}
-      {selectionActive && geometryModes.length ? (
-        <>
-          <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
-          <ModeToggle modes={geometryModes} value={mode} onChange={onMode} />
-        </>
-      ) : null}
-      {landmarkModes.length ? (
-        <>
-          <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
-          <ModeToggle modes={landmarkModes} value={mode} onChange={onMode} />
-        </>
-      ) : null}
-      <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        title="Zoom in"
-        aria-label="Zoom in"
-        className={chromeHitClass}
-        onClick={(e) => {
-          e.stopPropagation();
-          onZoomIn();
-        }}
+    <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+      <div
+        className="landmarks-float landmarks-float--toolbar pointer-events-auto flex items-center gap-1 rounded-full px-1.5 py-1 text-card-foreground"
+        role="toolbar"
+        aria-label="Drawing tools"
+        onMouseDown={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
       >
-        <PlusIcon className="size-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        title="Zoom out"
-        aria-label="Zoom out"
-        className={chromeHitClass}
-        onClick={(e) => {
-          e.stopPropagation();
-          onZoomOut();
-        }}
-      >
-        <MinusIcon className="size-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        title="Reset view"
-        aria-label="Reset view"
-        className={chromeHitClass}
-        onClick={(e) => {
-          e.stopPropagation();
-          onReset();
-        }}
-      >
-        <MaximizeIcon className="size-4" />
-      </Button>
-      <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        className={chromeHitClass}
-        title={fullscreen ? "Exit full screen" : "Full screen"}
-        aria-label={fullscreen ? "Exit full screen" : "Full screen"}
-        aria-pressed={fullscreen}
-        onClick={onToggleFullscreen}
-      >
-        {fullscreen ? <ShrinkIcon className="size-4" /> : <ExpandIcon className="size-4" />}
-      </Button>
-    </div>
+        {interactionModes.length ? (
+          <ModeToggle
+            modes={interactionModes}
+            value={interactionValue}
+            onChange={onInteraction}
+          />
+        ) : null}
+        {landmarkModes.length ? (
+          <>
+            <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
+            <ModeToggle modes={landmarkModes} value={mode} onChange={onMode} />
+          </>
+        ) : null}
+        <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
+        <ChromeTooltip label="Zoom in">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Zoom in"
+            className={chromeHitClass}
+            onClick={(e) => {
+              e.stopPropagation();
+              onZoomIn();
+            }}
+          >
+            <PlusIcon className="size-4" />
+          </Button>
+        </ChromeTooltip>
+        <ChromeTooltip label="Zoom out">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Zoom out"
+            className={chromeHitClass}
+            onClick={(e) => {
+              e.stopPropagation();
+              onZoomOut();
+            }}
+          >
+            <MinusIcon className="size-4" />
+          </Button>
+        </ChromeTooltip>
+        <ChromeTooltip label="Reset view">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Reset view"
+            className={chromeHitClass}
+            onClick={(e) => {
+              e.stopPropagation();
+              onReset();
+            }}
+          >
+            <MaximizeIcon className="size-4" />
+          </Button>
+        </ChromeTooltip>
+        <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
+        <ChromeTooltip label={fullscreenLabel}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className={chromeHitClass}
+            aria-label={fullscreenLabel}
+            aria-pressed={fullscreen}
+            onClick={onToggleFullscreen}
+          >
+            {fullscreen ? <ShrinkIcon className="size-4" /> : <ExpandIcon className="size-4" />}
+          </Button>
+        </ChromeTooltip>
+      </div>
+    </TooltipProvider>
   );
 }
 

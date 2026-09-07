@@ -30,7 +30,7 @@ export const MODE_LABELS: Record<string, string> = {
 
 /** Top-level interaction tools (left ToggleGroup). */
 export const INTERACTION_MODE_IDS = ["pointer", "move", "selection"];
-/** Selection geometry submodes (visible only when Selection is active). */
+/** Selection geometry engine modes (Selection tool uses default; no Topbar shape picker). */
 export const GEOMETRY_MODE_IDS = ["lasso", "polygon", "rectangle", "ellipse"];
 export const LANDMARK_MODE_IDS = ["point", "line", "spline", "shape"];
 

@@ -336,23 +336,23 @@ test.describe("LandmarksWidget UI regressions", () => {
     await shot(page, "selection-selected", widget);
   });
 
-  test("Pointer / Move / Selection mode switch + geometry visibility", async ({ page }) => {
+  test("Pointer / Move / Selection mode switch (no geometry shape picker)", async ({ page }) => {
     const widget = page.locator(".landmarks").first();
 
     await expect(page.getByRole("radio", { name: "Pointer", exact: true })).toBeVisible();
     await expect(page.getByRole("radio", { name: "Move", exact: true })).toBeVisible();
     await expect(page.getByRole("radio", { name: "Selection", exact: true })).toBeVisible();
 
-    // Default pointer: geometry tools hidden.
+    // Selection must not spawn a secondary lasso/polygon/rect/ellipse ModeToggle.
     await expect(page.getByRole("radio", { name: "Lasso", exact: true })).toHaveCount(0);
 
     await page.getByRole("radio", { name: "Selection", exact: true }).click();
     await page.waitForTimeout(150);
     expect(await getModel(page, "mode")).toBe("lasso");
-    await expect(page.getByRole("radio", { name: "Lasso", exact: true })).toBeVisible();
-    await expect(page.getByRole("radio", { name: "Polygon", exact: true })).toBeVisible();
-    await expect(page.getByRole("radio", { name: "Rectangle", exact: true })).toBeVisible();
-    await expect(page.getByRole("radio", { name: "Ellipse", exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Lasso", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("radio", { name: "Polygon", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("radio", { name: "Rectangle", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("radio", { name: "Ellipse", exact: true })).toHaveCount(0);
     await shot(page, "selection-mode-geometry", widget);
 
     await page.getByRole("radio", { name: "Move", exact: true }).click();

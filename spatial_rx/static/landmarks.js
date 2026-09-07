@@ -9,6 +9,7 @@ import {
   PolygonLayer,
   BitmapLayer,
 } from "@deck.gl/layers";
+import { PathStyleExtension } from "@deck.gl/extensions";
 import { ZoomWidget, ResetViewWidget } from "@deck.gl/widgets";
 import {
   neighborhoodFor as neighborhoodForArgs,
@@ -27,9 +28,13 @@ const DECK_MODULES = {
   PathLayer,
   PolygonLayer,
   BitmapLayer,
+  PathStyleExtension,
   ZoomWidget,
   ResetViewWidget,
 };
+
+/** Selection outline dash: [dash, gap] in path units (pixels with widthUnits). */
+const SELECTION_DASH = [8, 5];
 
 /** Hide stock widget DOM; React/shadcn chrome calls the same handle methods. */
 const HIDDEN_WIDGET_STYLE = { display: "none" };
@@ -195,11 +200,19 @@ export function mountEngine({ model, host }) {
       const p = pts[hit.index];
       if (!p) return `molecule ${hit.index}`;
       const bits = [`molecule ${hit.index}`, `x ${p.x.toFixed(1)}`, `y ${p.y.toFixed(1)}`];
-      const labels = model.get("legend_labels") || [];
-      const code = categoryCodeAt(hit.index);
-      if (code >= 0 && labels[code] != null) bits.push(String(labels[code]));
-      if (model.get("color_by") === "continuous" && Number.isFinite(p.valueA)) {
-        bits.push(`val ${Number(p.valueA).toPrecision(3)}`);
+      const activeGenes = model.get("active_genes") || [];
+      const genesOn =
+        model.get("color_by") === "continuous" && activeGenes.length > 0;
+      if (genesOn) {
+        for (const name of activeGenes) {
+          const raw = geneRawAt(hit.index, name);
+          if (raw == null || !Number.isFinite(raw)) continue;
+          bits.push(`${name} ${Number(raw).toPrecision(3)}`);
+        }
+      } else {
+        const labels = model.get("legend_labels") || [];
+        const code = categoryCodeAt(hit.index);
+        if (code >= 0 && labels[code] != null) bits.push(String(labels[code]));
       }
       return bits.join(" · ");
     }
@@ -335,6 +348,17 @@ export function mountEngine({ model, host }) {
     const pts = getPointsData();
     if (gi < 0 || !geneValues || !geneValues.length || !pts.length) return null;
     return geneValues[gi * pts.length + i];
+  }
+
+  /** Data-space gene value (pre-log1p) from packed [0, 1]. */
+  function geneRawAt(i, geneName) {
+    const t01 = geneValueAt(i, geneName);
+    if (t01 == null || !Number.isFinite(t01)) return null;
+    const meta = geneMeta(geneName);
+    const lo = Number.isFinite(meta?.vmin) ? meta.vmin : 0;
+    const hi = Number.isFinite(meta?.vmax) && meta.vmax > lo ? meta.vmax : lo + 1;
+    const t = Math.max(0, Math.min(1, t01));
+    return Math.max(0, lo + t * (hi - lo));
   }
 
   /** Reconstruct data-space value from packed [0, 1], then optional log1p. */
@@ -935,6 +959,51 @@ export function mountEngine({ model, host }) {
           getLineWidth: [kind, selectedIdx, model.get("selections")],
         },
       }),
+      ...buildSelectionOutlineLayers(),
+    ];
+  }
+
+  /** Dashed geometric outlines for committed selections (draft uses buildDraftLayers). */
+  function buildSelectionOutlineLayers() {
+    if (!deckModules) return [];
+    const { PathLayer, PathStyleExtension } = deckModules;
+    const kind = model.get("selected_kind");
+    const selectedIdx = model.get("selected_index");
+    const paths = [];
+    (model.get("selections") || []).forEach((sel, i) => {
+      const polygon = selectionPolygonData(sel);
+      if (polygon.length < 3) return;
+      const selected = kind === "selection" && i === selectedIdx;
+      const hex = SEL_COLORS[i % SEL_COLORS.length];
+      const outline = asClosedPath(polygon.map((pt) => ({ x: pt[0], y: pt[1] })));
+      paths.push({
+        path: outline,
+        color: hexToRgbaBytes(hex, selected ? 1 : 0.55),
+        width: selected ? 2 : 1.25,
+      });
+    });
+    if (!paths.length) return [];
+    return [
+      new PathLayer({
+        id: "selection-outlines",
+        data: paths,
+        getPath: (d) => d.path,
+        getColor: (d) => d.color,
+        getWidth: (d) => d.width,
+        widthUnits: "pixels",
+        jointRounded: true,
+        capRounded: true,
+        pickable: false,
+        parameters: OVERLAY_GL,
+        getDashArray: SELECTION_DASH,
+        dashJustified: true,
+        extensions: [new PathStyleExtension({ dash: true, highPrecisionDash: true })],
+        updateTriggers: {
+          getColor: [kind, selectedIdx, model.get("selections")],
+          getWidth: [kind, selectedIdx, model.get("selections")],
+          getPath: [model.get("selections")],
+        },
+      }),
     ];
   }
 
@@ -1086,9 +1155,12 @@ export function mountEngine({ model, host }) {
 
   function buildDraftLayers() {
     if (!deckModules) return [];
-    const { PathLayer, PolygonLayer, ScatterplotLayer } = deckModules;
+    const { PathLayer, PolygonLayer, ScatterplotLayer, PathStyleExtension } = deckModules;
     const isSel = ["lasso", "polygon", "rectangle", "ellipse"].includes(currentMode);
-    const hex = isSel ? "#94a3b8" : "#00e5ff";
+    // Preview color matches the next committed entity color.
+    const hex = isSel
+      ? SEL_COLORS[(model.get("selections") || []).length % SEL_COLORS.length]
+      : COLORS[(model.get("landmarks") || []).length % COLORS.length];
     const line = hexToRgbaBytes(hex, 1);
     const fill = hexToRgbaBytes(hex, 0.15);
     const stroke = model.get("stroke_width") || 4;
@@ -1133,19 +1205,39 @@ export function mountEngine({ model, host }) {
     }
 
     if (polygon && polygon.length >= 3) {
+      // Fill without stroke; dashed outline via PathLayer when selection.
       layers.push(
         new PolygonLayer({
           id: "draft-polygon",
-          data: [{ polygon, fill, line, width: 2 }],
+          data: [{ polygon, fill }],
           getPolygon: (d) => d.polygon,
           getFillColor: (d) => d.fill,
-          getLineColor: (d) => d.line,
-          getLineWidth: (d) => d.width,
-          lineWidthUnits: "pixels",
-          stroked: true,
+          stroked: false,
           filled: true,
           pickable: false,
           parameters: OVERLAY_GL,
+        })
+      );
+      const outline = asClosedPath(polygon.map((pt) => ({ x: pt[0], y: pt[1] })));
+      layers.push(
+        new PathLayer({
+          id: "draft-polygon-outline",
+          data: [{ path: outline, color: line, width: isSel ? 2 : stroke }],
+          getPath: (d) => d.path,
+          getColor: (d) => d.color,
+          getWidth: (d) => d.width,
+          widthUnits: "pixels",
+          jointRounded: true,
+          capRounded: true,
+          pickable: false,
+          parameters: OVERLAY_GL,
+          ...(isSel
+            ? {
+                getDashArray: SELECTION_DASH,
+                dashJustified: true,
+                extensions: [new PathStyleExtension({ dash: true, highPrecisionDash: true })],
+              }
+            : {}),
         })
       );
     } else if (path && path.length >= 2) {
@@ -1161,6 +1253,13 @@ export function mountEngine({ model, host }) {
           capRounded: true,
           pickable: false,
           parameters: OVERLAY_GL,
+          ...(isSel
+            ? {
+                getDashArray: SELECTION_DASH,
+                dashJustified: true,
+                extensions: [new PathStyleExtension({ dash: true, highPrecisionDash: true })],
+              }
+            : {}),
         })
       );
     }

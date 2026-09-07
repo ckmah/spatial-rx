@@ -545,7 +545,7 @@
 /* Selection: dotted outline — reads as a point collection, not a solid region. */
 .landmarks-layer-swatch--selection {
   box-sizing: border-box;
-  border: 1.5px dotted;
+  border: 1.5px dashed;
   background-color: transparent;
 }
 
@@ -941,4 +941,24 @@
 .landmarks-float--panel [data-slot="accordion-item"]:first-child,
 .landmarks-float-panel [data-slot="accordion-item"]:first-child {
   margin-top: 0;
+}
+
+/* Soft Float chrome tooltips (shadcn TooltipContent). */
+.landmarks-tooltip {
+  max-width: 16rem;
+  border: 1px solid var(--lm-float-border, color-mix(in srgb, var(--border) 70%, transparent));
+  background: var(--lm-float-bg, color-mix(in srgb, var(--card) 88%, transparent));
+  color: var(--foreground);
+  box-shadow: var(--lm-float-shadow, 0 8px 24px rgba(0, 0, 0, 0.12));
+  backdrop-filter: blur(var(--lm-float-blur, 12px));
+  -webkit-backdrop-filter: blur(var(--lm-float-blur, 12px));
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.3;
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.5rem;
+}
+.landmarks-tooltip-arrow {
+  background: var(--lm-float-bg, color-mix(in srgb, var(--card) 88%, transparent)) !important;
+  fill: var(--lm-float-bg, color-mix(in srgb, var(--card) 88%, transparent)) !important;
 }

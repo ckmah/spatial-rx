@@ -28,6 +28,7 @@ const sharedResolve = {
     "@": path.resolve(rootDir, "src"),
     "@deck.gl/core": path.resolve(rootDir, "node_modules/@deck.gl/core"),
     "@deck.gl/layers": path.resolve(rootDir, "node_modules/@deck.gl/layers"),
+    "@deck.gl/extensions": path.resolve(rootDir, "node_modules/@deck.gl/extensions"),
     "@deck.gl/widgets": path.resolve(rootDir, "node_modules/@deck.gl/widgets"),
   },
 };
