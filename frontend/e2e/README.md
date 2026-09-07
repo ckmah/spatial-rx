@@ -86,6 +86,7 @@ Workflow: `.github/workflows/frontend-e2e.yml` (`Frontend e2e`)
 
 - Triggers: `pull_request`, `push` to `main`, and `workflow_dispatch`
 - Permissions: `contents: read`, `pull-requests: write` (sticky PR comment + attach uploads)
+- Optional repo secret `VISUALS_GH_TOKEN` (classic PAT, `repo` scope): enables inline `gh --attach` uploads; without it CI embeds committed snapshots via raw.githubusercontent.com and links the videos artifact
 - On successful `pull_request` runs: sticky PR comment via `.github/scripts/post-playwright-visuals.sh`
 - Runs `npm run test:e2e` (never `--update-snapshots` on PRs)
 - Always uploads artifacts as backup (retention 14 days):

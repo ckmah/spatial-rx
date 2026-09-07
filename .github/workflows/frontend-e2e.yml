@@ -54,10 +54,13 @@ jobs:
         if: ${{ success() && github.event_name == 'pull_request' }}
         working-directory: .
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Classic PAT (repo scope) enables gh --attach uploads; else raw snapshot URLs.
+          GH_TOKEN: ${{ secrets.VISUALS_GH_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GITHUB_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
         run: bash .github/scripts/post-playwright-visuals.sh
 
       - name: Upload Playwright HTML report
