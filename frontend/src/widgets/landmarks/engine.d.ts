@@ -19,7 +19,13 @@ export type EngineHandle = {
   getNeighborhoodOverlay(): {
     mode: string;
     edgeCount: number;
+    /** Always 0 — stroked per-seed disks removed in favor of soft gradient. */
     radiusDiskCount: number;
+    radiusGradient: boolean;
+    gradientKind: "bitmap" | null;
+    gradientSeedCount: number;
+    gradientTextureSize: [number, number] | null;
+    gradientBounds: [number, number, number, number] | null;
     radius: number;
     k: number;
   };

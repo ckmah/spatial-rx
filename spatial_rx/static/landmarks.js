@@ -7,6 +7,7 @@ import {
   ScatterplotLayer,
   PathLayer,
   PolygonLayer,
+  BitmapLayer,
 } from "@deck.gl/layers";
 import { ZoomWidget, ResetViewWidget } from "@deck.gl/widgets";
 import {
@@ -25,6 +26,7 @@ const DECK_MODULES = {
   ScatterplotLayer,
   PathLayer,
   PolygonLayer,
+  BitmapLayer,
   ZoomWidget,
   ResetViewWidget,
 };
@@ -42,10 +44,10 @@ const NEIGH_LINE_ALPHA = 0.9;
 /** kNN edge restyle: thin, low-opacity teal wash */
 const NEIGH_EDGE_ALPHA = 0.28;
 const NEIGH_EDGE_WIDTH = 0.75;
-/** Radius disks: light fill + outlined stroke (not edge spaghetti) */
-const NEIGH_DISK_FILL_ALPHA = 0.07;
-const NEIGH_DISK_LINE_ALPHA = 0.55;
-const NEIGH_DISK_LINE_WIDTH = 1.5;
+/** Radius soft-gradient field (baked BitmapLayer; no per-seed disk strokes). */
+const NEIGH_GRADIENT_PEAK_ALPHA = 0.32;
+const NEIGH_GRADIENT_MAX_DIM = 512;
+const NEIGH_GRADIENT_MAX_DIM_LARGE = 256;
 const SEED_ROLE = 2;
 const NEIGH_ROLE = 1;
 /** Unselected points shrink when a type/selection is focused. */
@@ -205,7 +207,7 @@ export function mountEngine({ model, host }) {
   let pointRoles = null;
   let pointRoleMode = false;
   let hoodEdges = [];
-  let hoodRadiusDisks = [];
+  let hoodRadiusGradient = null; // { key, image, bounds, seedCount, radius }
   let zoomBy = () => { };
   let resetZoom = () => { };
   let zoomInterpolator = null;
@@ -1187,25 +1189,24 @@ export function mountEngine({ model, host }) {
     const hood = neighborhoodFor(focus);
     if (!focus || !hood || hood.neighborhood === "off") return [];
     const layers = [];
-    const { PathLayer, ScatterplotLayer } = deckModules;
+    const { PathLayer, BitmapLayer } = deckModules;
     const pick = { kind: focus.kind, index: focus.index };
-    // Radius: GPU-batched outlined disks at neighborhood_radius (not edge spaghetti).
-    if (hood.neighborhood === "radius" && hoodRadiusDisks.length) {
+    // Radius: soft gradient field baked in world/common units (µm); no per-seed disks.
+    if (hood.neighborhood === "radius" && hoodRadiusGradient?.image) {
       layers.push(
-        new ScatterplotLayer({
-          id: "neighborhood-radius-disks",
-          data: hoodRadiusDisks.map((d) => ({ ...d, ...pick })),
-          getPosition: (d) => d.position,
-          getRadius: (d) => d.radius,
-          radiusUnits: "common",
-          stroked: true,
-          filled: true,
-          getFillColor: hexToRgbaBytes(NEIGH_COLOR, NEIGH_DISK_FILL_ALPHA),
-          getLineColor: hexToRgbaBytes(NEIGH_COLOR, NEIGH_DISK_LINE_ALPHA),
-          lineWidthUnits: "pixels",
-          getLineWidth: NEIGH_DISK_LINE_WIDTH,
-          pickable: true,
+        new BitmapLayer({
+          id: "neighborhood-radius-gradient",
+          image: hoodRadiusGradient.image,
+          bounds: hoodRadiusGradient.bounds,
+          pickable: false,
+          textureParameters: {
+            minFilter: "linear",
+            magFilter: "linear",
+          },
           parameters: OVERLAY_GL,
+          updateTriggers: {
+            image: hoodRadiusGradient.key,
+          },
         })
       );
     }
@@ -1679,23 +1680,129 @@ export function mountEngine({ model, host }) {
     return inside;
   }
 
+
+  function hashSeedIndices(seeds) {
+    let h = seeds.length * 73856093;
+    for (let i = 0; i < seeds.length; i++) h = (Math.imul(h, 31) + (seeds[i] | 0)) | 0;
+    return h;
+  }
+
+  /**
+   * Bake a soft radial gradient field for radius-neighborhood seeds.
+   * Kernel radius is in world/common (µm) units so orthographic zoom stays correct.
+   * Overlaps use max-blend into a float alpha buffer, then clamp to peak alpha.
+   * Rebaked when seeds / r change (cache key) — not on pan.
+   */
+  function bakeRadiusGradientField(pts, seeds, radius) {
+    if (!seeds.length || !(radius > 0)) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    const positions = [];
+    for (let i = 0; i < seeds.length; i++) {
+      const s = pts[seeds[i]];
+      if (!s) continue;
+      positions.push(s);
+      if (s.x < minX) minX = s.x;
+      if (s.y < minY) minY = s.y;
+      if (s.x > maxX) maxX = s.x;
+      if (s.y > maxY) maxY = s.y;
+    }
+    if (!positions.length) return null;
+    minX -= radius;
+    minY -= radius;
+    maxX += radius;
+    maxY += radius;
+    const spanX = Math.max(maxX - minX, 1e-6);
+    const spanY = Math.max(maxY - minY, 1e-6);
+    const maxDim =
+      positions.length > 800 ? NEIGH_GRADIENT_MAX_DIM_LARGE : NEIGH_GRADIENT_MAX_DIM;
+    const scale = maxDim / Math.max(spanX, spanY);
+    const w = Math.max(1, Math.min(maxDim, Math.ceil(spanX * scale)));
+    const h = Math.max(1, Math.min(maxDim, Math.ceil(spanY * scale)));
+    const sx = w / spanX;
+    const sy = h / spanY;
+    const alpha = new Float32Array(w * h);
+    const rPxX = radius * sx;
+    const rPxY = radius * sy;
+    const [cr, cg, cb] = hexToRgbaBytes(NEIGH_COLOR, 1);
+
+    for (let si = 0; si < positions.length; si++) {
+      const s = positions[si];
+      // Canvas y=0 is top; map world maxY → row 0 so BitmapLayer bounds top matches.
+      const cx = (s.x - minX) * sx;
+      const cy = (maxY - s.y) * sy;
+      const x0 = Math.max(0, Math.floor(cx - rPxX));
+      const x1 = Math.min(w - 1, Math.ceil(cx + rPxX));
+      const y0 = Math.max(0, Math.floor(cy - rPxY));
+      const y1 = Math.min(h - 1, Math.ceil(cy + rPxY));
+      for (let y = y0; y <= y1; y++) {
+        const dy = (y + 0.5 - cy) / rPxY;
+        const row = y * w;
+        for (let x = x0; x <= x1; x++) {
+          const dx = (x + 0.5 - cx) / rPxX;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d >= 1) continue;
+          // Smooth soft falloff (smoothstep), peak 1 at center.
+          const t = 1 - d;
+          const a = t * t * (3 - 2 * t);
+          const idx = row + x;
+          if (a > alpha[idx]) alpha[idx] = a;
+        }
+      }
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const img = ctx.createImageData(w, h);
+    const data = img.data;
+    const peak = Math.round(255 * NEIGH_GRADIENT_PEAK_ALPHA);
+    for (let i = 0; i < alpha.length; i++) {
+      const a = alpha[i];
+      if (a <= 0) continue;
+      const o = i * 4;
+      data[o] = cr;
+      data[o + 1] = cg;
+      data[o + 2] = cb;
+      data[o + 3] = Math.min(255, Math.round(a * peak));
+    }
+    ctx.putImageData(img, 0, 0);
+    return {
+      image: canvas,
+      // [left, bottom, right, top] in world/common units
+      bounds: [minX, minY, maxX, maxY],
+      seedCount: positions.length,
+      radius,
+      textureSize: [w, h],
+    };
+  }
+
   function prepareFocusGeom() {
     const pts = getPointsData();
     pointRoles = new Uint8Array(pts.length);
     pointRoleMode = false;
     hoodEdges = [];
-    hoodRadiusDisks = [];
     const focus = cellLayerFocus();
-    if (!focus) return;
+    if (!focus) {
+      hoodRadiusGradient = null;
+      return;
+    }
     const seeds = seedIndicesFor(focus);
     if (!seeds.length) {
       pointRoleMode = true;
+      hoodRadiusGradient = null;
       return;
     }
     pointRoleMode = true;
     for (const i of seeds) pointRoles[i] = SEED_ROLE;
     const hood = neighborhoodFor(focus);
-    if (!hood || hood.neighborhood === "off") return;
+    if (!hood || hood.neighborhood === "off") {
+      hoodRadiusGradient = null;
+      return;
+    }
     const graph = hood.neighborhood === "radius" ? radiusGraph : knnGraph;
     if (hood.neighborhood === "radius" || hood.neighborhood === "knn") {
       const k = Math.min(Number(hood.neighborhood_k) || 12, maxNeighborhoodK());
@@ -1713,15 +1820,16 @@ export function mountEngine({ model, host }) {
         if (pointRoles[i] !== SEED_ROLE) pointRoles[i] = NEIGH_ROLE;
       }
       if (hood.neighborhood === "radius" && r > 0) {
-        for (const si of seeds) {
-          const s = pts[si];
-          if (!s) continue;
-          hoodRadiusDisks.push({
-            position: [s.x, s.y, 0],
-            radius: r,
-          });
+        const key = `${r.toFixed(5)}:${hashSeedIndices(seeds)}:${seeds.length}`;
+        if (!hoodRadiusGradient || hoodRadiusGradient.key !== key) {
+          const baked = bakeRadiusGradientField(pts, seeds, r);
+          hoodRadiusGradient = baked ? { ...baked, key } : null;
         }
+      } else {
+        hoodRadiusGradient = null;
       }
+    } else {
+      hoodRadiusGradient = null;
     }
   }
 
@@ -2321,10 +2429,19 @@ export function mountEngine({ model, host }) {
       let radius = Number(hood?.neighborhood_radius) || 0;
       const rMax = maxNeighborhoodRadius();
       if (rMax > 0) radius = Math.min(radius, rMax);
+      const gradient = mode === "radius" && hoodRadiusGradient?.image
+        ? hoodRadiusGradient
+        : null;
       return {
         mode,
         edgeCount: hoodEdges.length,
-        radiusDiskCount: hoodRadiusDisks.length,
+        // Legacy: stroked per-seed disks removed; always 0 in radius gradient mode.
+        radiusDiskCount: 0,
+        radiusGradient: Boolean(gradient),
+        gradientKind: gradient ? "bitmap" : null,
+        gradientSeedCount: gradient ? gradient.seedCount : 0,
+        gradientTextureSize: gradient ? gradient.textureSize : null,
+        gradientBounds: gradient ? gradient.bounds : null,
         radius,
         k: Number(hood?.neighborhood_k) || 0,
       };
