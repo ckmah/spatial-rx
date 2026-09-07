@@ -268,7 +268,7 @@ test.describe("LandmarksWidget UI regressions", () => {
     await page.keyboard.up("Shift");
   });
 
-  test("radius shows disks not edges; knn shows edges", async ({ page }) => {
+  test("radius shows soft gradient not disks/edges; knn shows edges", async ({ page }) => {
     const widget = page.locator(".landmarks").first();
 
     // Fixture selection is radius mode.
@@ -278,10 +278,16 @@ test.describe("LandmarksWidget UI regressions", () => {
       (window as any).__landmarksEngine.getNeighborhoodOverlay(),
     );
     expect(hood.mode).toBe("radius");
-    expect(hood.radiusDiskCount).toBeGreaterThan(0);
+    expect(hood.radiusGradient).toBe(true);
+    expect(hood.gradientKind).toBe("bitmap");
+    expect(hood.gradientSeedCount).toBeGreaterThan(0);
+    expect(hood.radiusDiskCount).toBe(0);
     expect(hood.edgeCount).toBe(0);
     expect(hood.radius).toBeGreaterThan(0);
-    await shot(page, "neighborhood-radius-disks", widget);
+    expect(hood.gradientBakeRadius).toBeGreaterThanOrEqual(hood.radius);
+    expect(hood.gradientTextureSize?.[0]).toBeGreaterThan(0);
+    expect(hood.gradientBounds?.length).toBe(4);
+    await shot(page, "neighborhood-radius-gradient", widget);
 
     // Switch same selection to knn.
     const sels = (await getModel(page, "selections")) as any[];
@@ -298,6 +304,7 @@ test.describe("LandmarksWidget UI regressions", () => {
     );
     expect(hood.mode).toBe("knn");
     expect(hood.edgeCount).toBeGreaterThan(0);
+    expect(hood.radiusGradient).toBe(false);
     expect(hood.radiusDiskCount).toBe(0);
     await shot(page, "neighborhood-knn-edges", widget);
   });
