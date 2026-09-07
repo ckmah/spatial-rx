@@ -128,7 +128,7 @@ export function LayersPanel({
                             color={
                               (col.palette || [])[
                                 i % Math.max((col.palette || []).length, 1)
-                              ] || "#888888"
+                              ]
                             }
                             label={label}
                             onSelect={() => lm.selectType(col, i)}

@@ -40,7 +40,7 @@ function GenesHorizontalBar({
 }) {
   const gradient =
     colors.length === 1
-      ? `linear-gradient(to right, #0a0a0a, ${colors[0]})`
+      ? `linear-gradient(to right, var(--background), ${colors[0]})`
       : `linear-gradient(to right, ${colors[0]}, ${blendHex(colors[0], colors[1])}, ${colors[1]})`;
 
   return (
@@ -51,7 +51,7 @@ function GenesHorizontalBar({
             key={`${label}-${i}`}
             className="inline-flex min-w-0 items-center gap-1 truncate text-foreground"
           >
-            <ColorSwatch color={colors[i] || "#94a3b8"} />
+            <ColorSwatch color={colors[i]} />
             <span className="truncate">{label}</span>
           </span>
         ))}
@@ -276,7 +276,7 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
                     color={
                       selIdx >= 0
                         ? GENE_COLORS[selIdx % GENE_COLORS.length]
-                        : "#94a3b8"
+                        : undefined
                     }
                   />
                   {name}
