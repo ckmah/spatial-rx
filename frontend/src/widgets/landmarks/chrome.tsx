@@ -1,4 +1,13 @@
-import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   ChevronRightIcon,
   CircleIcon,
@@ -13,6 +22,7 @@ import {
   PlusIcon,
   ShrinkIcon,
   ShapesIcon,
+  SlashIcon,
   SplineIcon,
   SquareIcon,
   XIcon,
@@ -25,8 +35,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
@@ -49,7 +58,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Item, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item";
+import { ItemGroup } from "@/components/ui/item";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -80,7 +89,7 @@ const MODE_ICONS: Record<string, typeof MoveIcon> = {
   rectangle: SquareIcon,
   ellipse: CircleIcon,
   point: CircleIcon,
-  line: MinusIcon,
+  line: SlashIcon,
   spline: SplineIcon,
   shape: ShapesIcon,
 };
@@ -98,10 +107,11 @@ function ModeToggle({
   return (
     <ToggleGroup
       type="single"
-      variant="outline"
+      variant="default"
       size="sm"
-      spacing={0}
+      spacing={2}
       value={value}
+      className="landmarks-mode-toggle rounded-full bg-muted/45 p-0.5"
       onValueChange={(next) => {
         if (next) onChange(next);
       }}
@@ -115,9 +125,9 @@ function ModeToggle({
             value={mode}
             title={label}
             aria-label={label}
-            className="size-6 min-w-6 px-0"
+            className="size-8 min-w-8 rounded-full border-0 px-0 text-muted-foreground hover:bg-muted hover:text-foreground data-[state=on]:bg-foreground data-[state=on]:text-background data-[state=on]:shadow-none"
           >
-            <Icon />
+            <Icon className="size-4" />
           </ToggleGroupItem>
         );
       })}
@@ -125,11 +135,52 @@ function ModeToggle({
   );
 }
 
-function ColorSwatch({ color, className }: { color: string; className?: string }) {
+type SwatchVariant = "solid" | "landmark" | "selection";
+
+function ColorSwatch({
+  color,
+  variant = "solid",
+  fillOpacity = 0.25,
+  className,
+}: {
+  color: string;
+  variant?: SwatchVariant;
+  /** Landmark fill alpha (matches canvas landmark_opacity). */
+  fillOpacity?: number;
+  className?: string;
+}) {
+  if (variant === "landmark") {
+    const pct = Math.round(Math.min(1, Math.max(0, fillOpacity)) * 100);
+    return (
+      <span
+        className={cn(
+          "landmarks-layer-swatch landmarks-layer-swatch--landmark inline-block shrink-0 rounded-full",
+          className,
+        )}
+        style={{
+          borderColor: color,
+          backgroundColor: `color-mix(in srgb, ${color} ${pct}%, transparent)`,
+        }}
+        aria-hidden
+      />
+    );
+  }
+  if (variant === "selection") {
+    return (
+      <span
+        className={cn(
+          "landmarks-layer-swatch landmarks-layer-swatch--selection inline-block shrink-0 rounded-full",
+          className,
+        )}
+        style={{ borderColor: color }}
+        aria-hidden
+      />
+    );
+  }
   return (
     <span
       className={cn(
-        "inline-block size-2.5 shrink-0 rounded-full ring-1 ring-border",
+        "landmarks-layer-swatch inline-block shrink-0 rounded-full ring-1 ring-border",
         className,
       )}
       style={{ backgroundColor: color }}
@@ -138,18 +189,8 @@ function ColorSwatch({ color, className }: { color: string; className?: string }
   );
 }
 
-/** Filled = active coloring column; open = inactive. Same size as category value dots. */
-function CategoryStatusDot({ active }: { active: boolean }) {
-  return (
-    <span
-      className={cn(
-        "inline-block size-2.5 shrink-0 rounded-full border border-foreground",
-        active ? "bg-foreground" : "bg-transparent",
-      )}
-      aria-hidden
-    />
-  );
-}
+const chromeHitClass =
+  "size-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground";
 
 export function Topbar({
   modes,
@@ -157,49 +198,95 @@ export function Topbar({
   onMode,
   fullscreen,
   onToggleFullscreen,
+  onZoomIn,
+  onZoomOut,
+  onReset,
 }: {
   modes: string[];
   mode: string;
   onMode: (mode: string) => void;
   fullscreen: boolean;
   onToggleFullscreen: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onReset: () => void;
 }) {
   const selectModes = modes.filter((m) => SELECT_MODE_IDS.includes(m));
   const landmarkModes = modes.filter((m) => LANDMARK_MODE_IDS.includes(m));
+  const showDivider = selectModes.length > 0 && landmarkModes.length > 0;
   return (
     <div
-      className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-2 py-1 text-card-foreground"
+      className="landmarks-float landmarks-float--toolbar pointer-events-auto flex items-center gap-1 rounded-full px-1.5 py-1 text-card-foreground"
       role="toolbar"
       aria-label="Drawing tools"
+      onMouseDown={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
     >
       {selectModes.length ? (
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-xs font-medium">Select</span>
-          <ModeToggle modes={selectModes} value={mode} onChange={onMode} />
-        </div>
+        <ModeToggle modes={selectModes} value={mode} onChange={onMode} />
       ) : null}
-      {selectModes.length && landmarkModes.length ? (
-        <Separator orientation="vertical" className="h-5" />
+      {showDivider ? (
+        <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
       ) : null}
       {landmarkModes.length ? (
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-xs font-medium">Landmarks</span>
-          <ModeToggle modes={landmarkModes} value={mode} onChange={onMode} />
-        </div>
+        <ModeToggle modes={landmarkModes} value={mode} onChange={onMode} />
       ) : null}
-      <div className="ml-auto">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title={fullscreen ? "Exit full screen" : "Full screen"}
-          aria-label={fullscreen ? "Exit full screen" : "Full screen"}
-          aria-pressed={fullscreen}
-          onClick={onToggleFullscreen}
-        >
-          {fullscreen ? <ShrinkIcon /> : <ExpandIcon />}
-        </Button>
-      </div>
+      <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        title="Zoom in"
+        aria-label="Zoom in"
+        className={chromeHitClass}
+        onClick={(e) => {
+          e.stopPropagation();
+          onZoomIn();
+        }}
+      >
+        <PlusIcon className="size-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        title="Zoom out"
+        aria-label="Zoom out"
+        className={chromeHitClass}
+        onClick={(e) => {
+          e.stopPropagation();
+          onZoomOut();
+        }}
+      >
+        <MinusIcon className="size-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        title="Reset view"
+        aria-label="Reset view"
+        className={chromeHitClass}
+        onClick={(e) => {
+          e.stopPropagation();
+          onReset();
+        }}
+      >
+        <MaximizeIcon className="size-4" />
+      </Button>
+      <Separator orientation="vertical" className="mx-0.5 h-5 bg-border/50" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className={chromeHitClass}
+        title={fullscreen ? "Exit full screen" : "Full screen"}
+        aria-label={fullscreen ? "Exit full screen" : "Full screen"}
+        aria-pressed={fullscreen}
+        onClick={onToggleFullscreen}
+      >
+        {fullscreen ? <ShrinkIcon className="size-4" /> : <ExpandIcon className="size-4" />}
+      </Button>
     </div>
   );
 }
@@ -207,9 +294,10 @@ export function Topbar({
 function LayerRow({
   active,
   color,
+  swatchVariant = "solid",
+  swatchFillOpacity,
   label,
   hidden,
-  shown,
   onSelect,
   onRename,
   onDelete,
@@ -217,9 +305,10 @@ function LayerRow({
 }: {
   active: boolean;
   color?: string;
+  swatchVariant?: SwatchVariant;
+  swatchFillOpacity?: number;
   label: string;
   hidden?: boolean;
-  shown?: boolean;
   onSelect: () => void;
   onRename?: (next: string) => void;
   onDelete?: () => void;
@@ -229,33 +318,31 @@ function LayerRow({
   const [draft, setDraft] = useState(label);
 
   return (
-    <Item
-      variant={active ? "muted" : "default"}
-      size="sm"
+    <div
+      role="listitem"
       className={cn(
-        "w-full min-w-0 cursor-pointer flex-nowrap gap-1 px-0 py-0.5",
-        active && "border-ring ring-[3px] ring-ring/35",
+        "landmarks-layer-row cursor-pointer text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        active && "landmarks-layer-row--active",
         hidden && "opacity-50",
       )}
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
     >
-      {onToggleHidden ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label={hidden ? "Show landmark" : "Hide landmark"}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleHidden();
-          }}
-        >
-          {hidden ? <EyeOffIcon /> : <EyeIcon />}
-        </Button>
+      {color ? (
+        <ColorSwatch
+          color={color}
+          variant={swatchVariant}
+          fillOpacity={swatchFillOpacity}
+          className="landmarks-layer-swatch"
+        />
       ) : null}
-      {color ? <ColorSwatch color={color} /> : null}
-      {shown !== undefined ? <CategoryStatusDot active={shown} /> : null}
-      <ItemContent className="min-w-0 gap-0">
+      <div className="landmarks-layer-label">
         {editing && onRename ? (
           <Input
             aria-label="Rename layer"
@@ -282,8 +369,11 @@ function LayerRow({
             }}
           />
         ) : (
-          <ItemTitle
-            className="max-w-full truncate text-xs font-normal text-foreground"
+          <span
+            className={cn(
+              "max-w-full truncate text-xs text-foreground",
+              active ? "font-medium" : "font-normal",
+            )}
             title={onRename ? "Double-click to rename" : label}
             onDoubleClick={(e) => {
               if (!onRename) return;
@@ -294,29 +384,140 @@ function LayerRow({
             }}
           >
             {label}
-          </ItemTitle>
+          </span>
         )}
-      </ItemContent>
-      {onDelete ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label="Delete"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-        >
-          <XIcon />
-        </Button>
-      ) : null}
-    </Item>
+      </div>
+      <div className="landmarks-trail">
+        {onToggleHidden ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="landmarks-trail-hit"
+            aria-label={hidden ? "Show landmark" : "Hide landmark"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleHidden();
+            }}
+          >
+            {hidden ? <EyeOffIcon /> : <EyeIcon />}
+          </Button>
+        ) : (
+          <span className="landmarks-trail-cell" aria-hidden />
+        )}
+        {onDelete ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="landmarks-trail-hit"
+            aria-label="Delete"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <XIcon />
+          </Button>
+        ) : (
+          <span className="landmarks-trail-cell" aria-hidden />
+        )}
+      </div>
+    </div>
   );
 }
 
-/** Shared inset for panel title, section triggers, and content. */
-const PANEL_INSET = "px-3";
+const PANEL_INSET = "px-2.5";
+const SECTION_TRIGGER =
+  "landmarks-section-trigger px-0 py-1.5 text-left hover:no-underline";
+const FLOAT_PANEL =
+  "landmarks-float landmarks-float--panel pointer-events-auto max-h-full gap-1 overflow-hidden py-1";
+
+export type PanelSectionId =
+  | "selections"
+  | "categories"
+  | "genes"
+  | "landmarks"
+  | "style"
+  | "stats"
+  | "neighbors"
+  | "landmark";
+
+const LAYER_SECTION_IDS = new Set<PanelSectionId>([
+  "selections",
+  "categories",
+  "genes",
+  "landmarks",
+]);
+
+const SECTION_META: Record<PanelSectionId, { label: string }> = {
+  selections: { label: "Selections" },
+  categories: { label: "Categories" },
+  genes: { label: "Genes" },
+  landmarks: { label: "Landmarks" },
+  style: { label: "Style" },
+  stats: { label: "Stats" },
+  neighbors: { label: "Neighbors" },
+  landmark: { label: "Landmark" },
+};
+
+function SliderRow({
+  label,
+  valueLabel,
+  children,
+}: {
+  label: string;
+  valueLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <Field className="gap-0">
+      <div className="landmarks-slider-row">
+        <FieldLabel className="landmarks-slider-label">{label}</FieldLabel>
+        <div className="landmarks-slider-capsule">
+          <div className="landmarks-slider-control">{children}</div>
+          <span className="landmarks-slider-value" aria-hidden>
+            {valueLabel}
+          </span>
+        </div>
+      </div>
+    </Field>
+  );
+}
+
+function SoftToggleGroup({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <ToggleGroup
+      type="single"
+      variant="default"
+      size="sm"
+      spacing={2}
+      value={value}
+      className="w-full justify-stretch rounded-lg bg-muted/55 p-0.5"
+      onValueChange={(next) => {
+        if (next) onChange(next);
+      }}
+    >
+      {options.map((opt) => (
+        <ToggleGroupItem
+          key={opt.value}
+          value={opt.value}
+          className="h-7 min-w-0 flex-1 rounded-md border-0 px-2 text-[0.6875rem] text-muted-foreground data-[state=on]:bg-background data-[state=on]:text-foreground"
+        >
+          {opt.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  );
+}
 
 function geneDisplayBounds(gene: { vmin?: number; vmax?: number } | undefined, log1p: boolean) {
   const vmin = gene?.vmin ?? 0;
@@ -696,9 +897,9 @@ function GenesCombobox({ lm }: { lm: LandmarksModel }) {
         <ComboboxTrigger
           render={
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="h-8 w-full justify-between px-2 font-normal text-xs"
+              className="h-8 w-full justify-between bg-muted/45 px-2 font-normal text-xs hover:bg-muted/70"
             >
               <ComboboxValue>
                 {(value: string[] | null) => {
@@ -736,7 +937,7 @@ function GenesCombobox({ lm }: { lm: LandmarksModel }) {
             showTrigger={false}
             showClear
             placeholder="Search"
-            className="w-auto text-xs"
+            className="w-auto bg-transparent text-xs shadow-none ring-0"
           />
           <ComboboxEmpty className="text-xs">No genes found.</ComboboxEmpty>
           <ComboboxList>
@@ -771,7 +972,15 @@ function GenesCombobox({ lm }: { lm: LandmarksModel }) {
   );
 }
 
-export function LayersPanel({ lm }: { lm: LandmarksModel }) {
+export function LayersPanel({
+  lm,
+  forceSection,
+  embedded = false,
+}: {
+  lm: LandmarksModel;
+  forceSection?: PanelSectionId;
+  embedded?: boolean;
+}) {
   const {
     selections,
     landmarks,
@@ -782,23 +991,22 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
     gene_columns,
     active_genes,
     color_by,
+    landmark_opacity,
   } = lm;
   const genesActive = color_by === "continuous" && (active_genes?.length || 0) > 0;
 
-  return (
-    <Card className="pointer-events-auto max-h-full gap-1 overflow-hidden py-2 shadow-md">
-      <CardHeader className={cn("shrink-0 py-0", PANEL_INSET)}>
-        <CardTitle className="text-sm font-semibold tracking-tight">Layers</CardTitle>
-      </CardHeader>
-      <CardContent className={cn("min-h-0 overflow-y-auto pb-2", PANEL_INSET)}>
+  const accordion = (
         <Accordion
-          type="multiple"
-          defaultValue={["selections", "categories", "genes", "landmarks"]}
+          className={cn(forceSection && "landmarks-section-solo")}
+          {...(forceSection
+            ? { type: "single" as const, value: forceSection, collapsible: true }
+            : {
+                type: "multiple" as const,
+                defaultValue: ["selections", "categories", "genes", "landmarks"],
+              })}
         >
           <AccordionItem value="selections" className="border-b">
-            <AccordionTrigger className="px-0 py-1.5 text-left text-xs font-semibold hover:no-underline">
-              Selections
-            </AccordionTrigger>
+            <AccordionTrigger className={SECTION_TRIGGER}>Selections</AccordionTrigger>
             <AccordionContent className="px-0 pb-2">
               {selections.length ? (
                 <ItemGroup className="max-h-40 gap-0.5 overflow-y-auto">
@@ -807,6 +1015,7 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
                       key={`${sel.id}-${i}`}
                       active={selected_kind === "selection" && selected_index === i}
                       color={SELECTION_COLORS[i % SELECTION_COLORS.length]}
+                      swatchVariant="selection"
                       label={sel.id}
                       onSelect={() => lm.select("selection", i)}
                       onRename={(next) => lm.renameSelection(i, next)}
@@ -822,9 +1031,7 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
 
           {category_columns.length ? (
             <AccordionItem value="categories" className="border-b">
-              <AccordionTrigger className="px-0 py-1.5 text-left text-xs font-semibold hover:no-underline">
-                Categories
-              </AccordionTrigger>
+              <AccordionTrigger className={SECTION_TRIGGER}>Categories</AccordionTrigger>
               <AccordionContent className="px-0 pb-2">
                 <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
                   {category_columns.map((col) => {
@@ -833,8 +1040,8 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
                       <Collapsible key={col.name} className="group/cat">
                         <CollapsibleTrigger
                           className={cn(
-                            "flex w-full items-center gap-1.5 py-1.5 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground",
-                            isShown && "text-foreground",
+                            "landmarks-cat-trigger cursor-pointer text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                            isShown && "landmarks-cat-trigger--active text-foreground",
                           )}
                           onClick={() => {
                             if (col.name === active_category && !genesActive) {
@@ -844,9 +1051,12 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
                             lm.select("", -1);
                           }}
                         >
-                          <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-data-[state=open]/cat:rotate-90" />
-                          <CategoryStatusDot active={isShown} />
+                          <ChevronRightIcon className="landmarks-layer-icon shrink-0 transition-transform group-data-[state=open]/cat:rotate-90" />
                           <span className="min-w-0 flex-1 truncate">{col.name}</span>
+                          <span className="landmarks-trail" aria-hidden>
+                            <span className="landmarks-trail-cell" />
+                            <span className="landmarks-trail-cell" />
+                          </span>
                         </CollapsibleTrigger>
                         <CollapsibleContent className="pl-4">
                           <ItemGroup className="gap-0.5">
@@ -879,9 +1089,7 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
 
           {gene_columns.length ? (
             <AccordionItem value="genes" className="border-b">
-              <AccordionTrigger className="px-0 py-1.5 text-left text-xs font-semibold hover:no-underline">
-                Genes
-              </AccordionTrigger>
+              <AccordionTrigger className={SECTION_TRIGGER}>Genes</AccordionTrigger>
               <AccordionContent className="px-0 pb-2">
                 <GenesCombobox lm={lm} />
               </AccordionContent>
@@ -889,9 +1097,7 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
           ) : null}
 
           <AccordionItem value="landmarks" className="border-b-0">
-            <AccordionTrigger className="px-0 py-1.5 text-left text-xs font-semibold hover:no-underline">
-              Landmarks
-            </AccordionTrigger>
+            <AccordionTrigger className={SECTION_TRIGGER}>Landmarks</AccordionTrigger>
             <AccordionContent className="px-0 pb-2">
               {landmarks.length ? (
                 <ItemGroup className="max-h-40 gap-0.5 overflow-y-auto">
@@ -900,6 +1106,8 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
                       key={`${lmItem.id}-${i}`}
                       active={selected_kind === "landmark" && selected_index === i}
                       color={LANDMARK_COLORS[i % LANDMARK_COLORS.length]}
+                      swatchVariant="landmark"
+                      swatchFillOpacity={landmark_opacity}
                       label={lmItem.id}
                       hidden={!!lmItem.hidden}
                       onSelect={() => lm.select("landmark", i)}
@@ -915,121 +1123,34 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
             </AccordionContent>
           </AccordionItem>
         </Accordion>
-      </CardContent>
-    </Card>
   );
-}
 
-export function InspectPanel({ lm }: { lm: LandmarksModel }) {
-  const diag = spatialDiag(lm.x_bounds, lm.y_bounds);
-  const radiusMax = Math.max(diag * 0.05, lm.point_size * 5, 1e-6);
-  const radius = Math.min(Math.max(lm.point_size, 0), radiusMax);
-  const extent = `${formatParam(diag, "0")} across`;
+  if (embedded) {
+    return (
+      <div className={cn("min-h-0 overflow-y-auto py-0", PANEL_INSET)}>
+        {accordion}
+      </div>
+    );
+  }
 
   return (
-    <Card className="pointer-events-auto shrink-0 gap-1 overflow-hidden py-2 shadow-md">
-      <CardHeader className={cn("shrink-0 py-0", PANEL_INSET)}>
-        <CardTitle className="text-sm font-semibold tracking-tight">Inspect</CardTitle>
-      </CardHeader>
-      <CardContent className={cn("min-h-0 overflow-hidden pb-2", PANEL_INSET)}>
-        <Accordion type="multiple" defaultValue={["style"]}>
-          <AccordionItem value="style" className="border-b">
-            <AccordionTrigger className="px-0 py-1.5 text-left text-xs font-semibold hover:no-underline">
-              Style
-            </AccordionTrigger>
-            <AccordionContent className="px-0 pb-2">
-              <FieldGroup className="gap-2">
-                <Field>
-                  <FieldLabel>Point radius</FieldLabel>
-                  <Slider
-                    min={0}
-                    max={radiusMax}
-                    step={radiusMax / 200}
-                    value={[radius]}
-                    onValueChange={(v) => lm.setPointSize(v[0] ?? 0)}
-                  />
-                  <FieldDescription>{formatParam(lm.point_size, "0")}</FieldDescription>
-                </Field>
-                <Field>
-                  <FieldLabel>Point opacity</FieldLabel>
-                  <Slider
-                    min={0.05}
-                    max={1}
-                    step={0.01}
-                    value={[lm.point_opacity]}
-                    onValueChange={(v) => lm.setPointOpacity(v[0] ?? 0.8)}
-                  />
-                  <FieldDescription>{lm.point_opacity.toFixed(2)}</FieldDescription>
-                </Field>
-                <Field>
-                  <FieldLabel>Landmark opacity</FieldLabel>
-                  <Slider
-                    min={0.05}
-                    max={1}
-                    step={0.01}
-                    value={[lm.landmark_opacity]}
-                    onValueChange={(v) => lm.setLandmarkOpacity(v[0] ?? 0.28)}
-                  />
-                  <FieldDescription>{lm.landmark_opacity.toFixed(2)}</FieldDescription>
-                </Field>
-                <Field>
-                  <FieldLabel>Stroke</FieldLabel>
-                  <Slider
-                    min={1}
-                    max={8}
-                    step={1}
-                    value={[lm.stroke_width]}
-                    onValueChange={(v) => lm.setStrokeWidth(v[0] ?? 2)}
-                  />
-                  <FieldDescription>{String(lm.stroke_width)} px</FieldDescription>
-                </Field>
-              </FieldGroup>
-            </AccordionContent>
-          </AccordionItem>
-          <AccordionItem value="stats">
-            <AccordionTrigger className="px-0 py-1.5 text-left text-xs font-semibold hover:no-underline">
-              Stats
-            </AccordionTrigger>
-            <AccordionContent className="px-0 pb-2">
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                <dt className="text-muted-foreground">Points</dt>
-                <dd className="text-right font-medium tabular-nums">{lm.n_points}</dd>
-                <dt className="text-muted-foreground">Categories</dt>
-                <dd className="text-right font-medium tabular-nums">
-                  {lm.category_columns.length}
-                </dd>
-                <dt className="text-muted-foreground">Genes</dt>
-                <dd className="text-right font-medium tabular-nums">
-                  {lm.gene_columns.length}
-                </dd>
-                <dt className="text-muted-foreground">Selections</dt>
-                <dd className="text-right font-medium tabular-nums">
-                  {lm.selections.length}
-                </dd>
-                <dt className="text-muted-foreground">Landmarks</dt>
-                <dd className="text-right font-medium tabular-nums">
-                  {lm.landmarks.length}
-                </dd>
-                <dt className="text-muted-foreground">Color</dt>
-                <dd className="truncate text-right font-medium">{lm.color_by}</dd>
-                <dt className="text-muted-foreground">k max</dt>
-                <dd className="text-right font-medium tabular-nums">{lm.neighbor_k_max}</dd>
-                <dt className="text-muted-foreground">r max</dt>
-                <dd className="text-right font-medium tabular-nums">
-                  {formatParam(lm.neighbor_radius_max, "0")}
-                </dd>
-                <dt className="text-muted-foreground">Extent</dt>
-                <dd className="truncate text-right font-medium">{extent}</dd>
-              </dl>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
+    <Card className={FLOAT_PANEL}>
+      <CardContent className={cn("min-h-0 overflow-y-auto py-0", PANEL_INSET)}>
+        {accordion}
       </CardContent>
     </Card>
   );
 }
 
-export function ToolsPanel({ lm }: { lm: LandmarksModel }) {
+export function ControlPanel({
+  lm,
+  forceSection,
+  embedded = false,
+}: {
+  lm: LandmarksModel;
+  forceSection?: PanelSectionId;
+  embedded?: boolean;
+}) {
   const {
     default_tension,
     neighbor_radius_max,
@@ -1037,6 +1158,11 @@ export function ToolsPanel({ lm }: { lm: LandmarksModel }) {
     x_bounds,
     y_bounds,
   } = lm;
+
+  const diag = spatialDiag(lm.x_bounds, lm.y_bounds);
+  const radiusMax = Math.max(diag * 0.05, lm.point_size * 5, 1e-6);
+  const radius = Math.min(Math.max(lm.point_size, 0), radiusMax);
+  const extent = `${formatParam(diag, "0")} across`;
 
   const selectedLm = lm.selectedLandmark();
   const usesTension = !!selectedLm && TENSION_TYPES.includes(selectedLm.type);
@@ -1048,263 +1174,431 @@ export function ToolsPanel({ lm }: { lm: LandmarksModel }) {
   const kMax = Math.max(1, neighbor_k_max || 64);
   const radiusValue = Math.min(Number(hood?.neighborhood_radius || 0), rMax);
 
-  return (
-    <Card className="pointer-events-auto max-h-full gap-1 overflow-hidden py-2 shadow-md">
-      <CardHeader className={cn("shrink-0 py-0", PANEL_INSET)}>
-        <CardTitle className="text-sm font-semibold tracking-tight">Tools</CardTitle>
-      </CardHeader>
-      <CardContent className={cn("min-h-0 overflow-hidden pb-2", PANEL_INSET)}>
+  const accordion = (
         <Accordion
-          type="multiple"
-          defaultValue={["neighbors", "landmark"]}
+          className={cn(forceSection && "landmarks-section-solo")}
+          {...(forceSection
+            ? { type: "single" as const, value: forceSection, collapsible: true }
+            : {
+                type: "multiple" as const,
+                defaultValue: ["style", "neighbors", "landmark"],
+              })}
         >
-          <AccordionItem value="neighbors" className="border-b">
-            <AccordionTrigger className="px-0 py-1.5 text-left text-xs font-semibold hover:no-underline">
-              Neighbors
-            </AccordionTrigger>
+          <AccordionItem value="style" className="border-b">
+            <AccordionTrigger className={SECTION_TRIGGER}>Style</AccordionTrigger>
             <AccordionContent className="px-0 pb-2">
-                <FieldGroup className="gap-2">
-                  {usesHood ? (
-                    <>
-                      <FieldDescription>
-                        {hood.id ? String(hood.id) : "Selection"}
-                      </FieldDescription>
-                      <div className="flex flex-wrap gap-3 text-muted-foreground text-xs">
-                        <span className="inline-flex items-center gap-1">
-                          <span className="size-2.5 shrink-0 rounded-full bg-foreground ring-1 ring-border" />
-                          seed
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <ColorSwatch color="#00e5cc" />
-                          neighborhood
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <span className="size-2.5 shrink-0 rounded-full bg-muted-foreground/40 ring-1 ring-border" />
-                          other
-                        </span>
-                      </div>
-                      <Field>
-                        <FieldLabel>Neighborhood</FieldLabel>
-                        <ToggleGroup
-                          type="single"
-                          variant="outline"
-                          size="sm"
-                          spacing={0}
-                          value={hood.neighborhood || "off"}
-                          onValueChange={(next) => {
-                            if (!next) return;
-                            lm.patchNeighborhood({ neighborhood: next });
-                          }}
-                        >
-                          <ToggleGroupItem value="off">Off</ToggleGroupItem>
-                          <ToggleGroupItem value="radius">Radius</ToggleGroupItem>
-                          <ToggleGroupItem value="knn">k-NN</ToggleGroupItem>
-                        </ToggleGroup>
-                      </Field>
-                      {hood.neighborhood === "radius" ? (
-                        <Field>
-                          <FieldLabel>Radius</FieldLabel>
-                          <Slider
-                            min={0}
-                            max={rMax}
-                            step={rMax / 200 || 1}
-                            value={[radiusValue]}
-                            onValueChange={(v) => {
-                              const next = Math.min(Math.max(v[0] ?? 0, 0), rMax);
-                              lm.patchNeighborhood({
-                                neighborhood: "radius",
-                                neighborhood_radius: next,
-                              });
-                            }}
-                          />
-                          <FieldDescription>
-                            {formatParam(radiusValue, "0")}
-                            {rMax > 0 ? ` / ${formatParam(rMax, "0")}` : ""}
-                          </FieldDescription>
-                        </Field>
-                      ) : null}
-                      {hood.neighborhood === "knn" ? (
-                        <Field>
-                          <FieldLabel>k</FieldLabel>
-                          <Slider
-                            min={1}
-                            max={kMax}
-                            step={1}
-                            value={[
-                              Math.min(Number(hood.neighborhood_k || 12), kMax),
-                            ]}
-                            onValueChange={(v) =>
-                              lm.patchNeighborhood({
-                                neighborhood: "knn",
-                                neighborhood_k: v[0] ?? 12,
-                              })
-                            }
-                          />
-                          <FieldDescription>
-                            {String(
-                              Math.min(Number(hood.neighborhood_k || 12), kMax),
-                            )}
-                          </FieldDescription>
-                        </Field>
-                      ) : null}
-                      <FieldDescription>
-                        Sliders subset the precomputed k-max / radius-max graphs.
-                        Shift+wheel sizes the neighborhood.
-                      </FieldDescription>
-                    </>
-                  ) : (
-                    <FieldDescription>
-                      Select a type or selection to edit neighbors.
+              <FieldGroup className="gap-2.5">
+                <SliderRow label="Point radius" valueLabel={formatParam(lm.point_size, "0")}>
+                  <Slider
+                    min={0}
+                    max={radiusMax}
+                    step={radiusMax / 200}
+                    value={[radius]}
+                    onValueChange={(v) => lm.setPointSize(v[0] ?? 0)}
+                  />
+                </SliderRow>
+                <SliderRow
+                  label="Point opacity"
+                  valueLabel={lm.point_opacity.toFixed(2)}
+                >
+                  <Slider
+                    min={0.05}
+                    max={1}
+                    step={0.01}
+                    value={[lm.point_opacity]}
+                    onValueChange={(v) => lm.setPointOpacity(v[0] ?? 0.8)}
+                  />
+                </SliderRow>
+                <SliderRow
+                  label="Landmark opacity"
+                  valueLabel={lm.landmark_opacity.toFixed(2)}
+                >
+                  <Slider
+                    min={0.05}
+                    max={1}
+                    step={0.01}
+                    value={[lm.landmark_opacity]}
+                    onValueChange={(v) => lm.setLandmarkOpacity(v[0] ?? 0.28)}
+                  />
+                </SliderRow>
+                <SliderRow label="Stroke" valueLabel={`${lm.stroke_width} px`}>
+                  <Slider
+                    min={1}
+                    max={8}
+                    step={1}
+                    value={[lm.stroke_width]}
+                    onValueChange={(v) => lm.setStrokeWidth(v[0] ?? 2)}
+                  />
+                </SliderRow>
+              </FieldGroup>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="stats" className="border-b">
+            <AccordionTrigger className={SECTION_TRIGGER}>Stats</AccordionTrigger>
+            <AccordionContent className="px-0 pb-2">
+              <dl className="landmarks-stat-grid">
+                <div className="landmarks-stat-chip">
+                  <dt>Points</dt>
+                  <dd>{lm.n_points}</dd>
+                </div>
+                <div className="landmarks-stat-chip">
+                  <dt>Categories</dt>
+                  <dd>{lm.category_columns.length}</dd>
+                </div>
+                <div className="landmarks-stat-chip">
+                  <dt>Genes</dt>
+                  <dd>{lm.gene_columns.length}</dd>
+                </div>
+                <div className="landmarks-stat-chip">
+                  <dt>Selections</dt>
+                  <dd>{lm.selections.length}</dd>
+                </div>
+                <div className="landmarks-stat-chip">
+                  <dt>Landmarks</dt>
+                  <dd>{lm.landmarks.length}</dd>
+                </div>
+                <div className="landmarks-stat-chip">
+                  <dt>Color</dt>
+                  <dd className="truncate">{lm.color_by}</dd>
+                </div>
+                <div className="landmarks-stat-chip">
+                  <dt>k max</dt>
+                  <dd>{lm.neighbor_k_max}</dd>
+                </div>
+                <div className="landmarks-stat-chip">
+                  <dt>r max</dt>
+                  <dd>{formatParam(lm.neighbor_radius_max, "0")}</dd>
+                </div>
+                <div className="landmarks-stat-chip col-span-2">
+                  <dt>Extent</dt>
+                  <dd className="truncate">{extent}</dd>
+                </div>
+              </dl>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem
+            value="neighbors"
+            className={usesTension || usesBuffer ? "border-b" : "border-b-0"}
+          >
+            <AccordionTrigger className={SECTION_TRIGGER}>Neighbors</AccordionTrigger>
+            <AccordionContent className="px-0 pb-2">
+              <FieldGroup className="gap-2.5">
+                {usesHood ? (
+                  <>
+                    <FieldDescription className="text-[0.6875rem]">
+                      {hood.id ? String(hood.id) : "Selection"}
                     </FieldDescription>
-                  )}
-                </FieldGroup>
+                    <div className="flex flex-wrap gap-3 text-muted-foreground text-[0.6875rem]">
+                      <span className="inline-flex items-center gap-1">
+                        <span className="size-2.5 shrink-0 rounded-full bg-foreground ring-1 ring-border" />
+                        seed
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <ColorSwatch color="#00e5cc" />
+                        neighborhood
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <span className="size-2.5 shrink-0 rounded-full bg-muted-foreground/40 ring-1 ring-border" />
+                        other
+                      </span>
+                    </div>
+                    <Field className="gap-1.5">
+                      <FieldLabel className="text-[0.6875rem] font-medium text-muted-foreground">
+                        Neighborhood
+                      </FieldLabel>
+                      <SoftToggleGroup
+                        value={hood.neighborhood || "off"}
+                        onChange={(next) => lm.patchNeighborhood({ neighborhood: next })}
+                        options={[
+                          { value: "off", label: "Off" },
+                          { value: "radius", label: "Radius" },
+                          { value: "knn", label: "k-NN" },
+                        ]}
+                      />
+                    </Field>
+                    {hood.neighborhood === "radius" ? (
+                      <SliderRow
+                        label="Radius"
+                        valueLabel={`${formatParam(radiusValue, "0")}${
+                          rMax > 0 ? ` / ${formatParam(rMax, "0")}` : ""
+                        }`}
+                      >
+                        <Slider
+                          min={0}
+                          max={rMax}
+                          step={rMax / 200 || 1}
+                          value={[radiusValue]}
+                          onValueChange={(v) => {
+                            const next = Math.min(Math.max(v[0] ?? 0, 0), rMax);
+                            lm.patchNeighborhood({
+                              neighborhood: "radius",
+                              neighborhood_radius: next,
+                            });
+                          }}
+                        />
+                      </SliderRow>
+                    ) : null}
+                    {hood.neighborhood === "knn" ? (
+                      <SliderRow
+                        label="k"
+                        valueLabel={String(
+                          Math.min(Number(hood.neighborhood_k || 12), kMax),
+                        )}
+                      >
+                        <Slider
+                          min={1}
+                          max={kMax}
+                          step={1}
+                          value={[Math.min(Number(hood.neighborhood_k || 12), kMax)]}
+                          onValueChange={(v) =>
+                            lm.patchNeighborhood({
+                              neighborhood: "knn",
+                              neighborhood_k: v[0] ?? 12,
+                            })
+                          }
+                        />
+                      </SliderRow>
+                    ) : null}
+                    <FieldDescription className="text-[0.6875rem]">
+                      Sliders subset precomputed graphs. Shift+wheel sizes the
+                      neighborhood.
+                    </FieldDescription>
+                  </>
+                ) : (
+                  <FieldDescription className="text-[0.6875rem]">
+                    Select a type or selection to edit neighbors.
+                  </FieldDescription>
+                )}
+              </FieldGroup>
             </AccordionContent>
           </AccordionItem>
 
           {usesTension || usesBuffer ? (
             <AccordionItem value="landmark" className="border-b-0">
-              <AccordionTrigger className="px-0 py-1.5 text-left text-xs font-semibold hover:no-underline">
-                Landmark
-              </AccordionTrigger>
+              <AccordionTrigger className={SECTION_TRIGGER}>Landmark</AccordionTrigger>
               <AccordionContent className="px-0 pb-2">
-                  <FieldGroup className="gap-2">
-                    {usesTension ? (
-                      <Field>
-                        <FieldLabel>Tension</FieldLabel>
+                <FieldGroup className="gap-2.5">
+                  {usesTension ? (
+                    <SliderRow
+                      label="Tension"
+                      valueLabel={Number(
+                        selectedLm?.tension ?? default_tension ?? 0,
+                      ).toPrecision(3)}
+                    >
+                      <Slider
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={[Number(selectedLm?.tension ?? default_tension ?? 0)]}
+                        onValueChange={(v) => lm.patchLandmark({ tension: v[0] ?? 0 })}
+                      />
+                    </SliderRow>
+                  ) : null}
+                  {usesBuffer ? (
+                    <>
+                      <Field className="gap-1.5">
+                        <FieldLabel className="text-[0.6875rem] font-medium text-muted-foreground">
+                          Buffer
+                        </FieldLabel>
+                        <SoftToggleGroup
+                          value={selectedLm?.buffer_side || "both"}
+                          onChange={(next) => lm.patchLandmark({ buffer_side: next })}
+                          options={[
+                            { value: "left", label: "Left" },
+                            { value: "both", label: "Both" },
+                            { value: "right", label: "Right" },
+                          ]}
+                        />
+                      </Field>
+                      <SliderRow
+                        label="Width"
+                        valueLabel={formatParam(Number(selectedLm?.buffer_width || 0))}
+                      >
                         <Slider
                           min={0}
-                          max={1}
-                          step={0.01}
+                          max={bufMax}
+                          step={bufMax / 200}
                           value={[
-                            Number(selectedLm?.tension ?? default_tension ?? 0),
+                            Math.min(Number(selectedLm?.buffer_width || 0), bufMax),
                           ]}
                           onValueChange={(v) =>
-                            lm.patchLandmark({ tension: v[0] ?? 0 })
+                            lm.patchLandmark({ buffer_width: v[0] ?? 0 })
                           }
                         />
-                        <FieldDescription>
-                          {Number(
-                            selectedLm?.tension ?? default_tension ?? 0,
-                          ).toPrecision(3)}
-                          . 0 = smooth, 1 = straight.
-                        </FieldDescription>
-                      </Field>
-                    ) : null}
-                    {usesBuffer ? (
-                      <>
-                        <Field>
-                          <FieldLabel>Buffer</FieldLabel>
-                          <ToggleGroup
-                            type="single"
-                            variant="outline"
-                            size="sm"
-                            spacing={0}
-                            value={selectedLm?.buffer_side || "both"}
-                            onValueChange={(next) => {
-                              if (!next) return;
-                              lm.patchLandmark({ buffer_side: next });
-                            }}
-                          >
-                            <ToggleGroupItem value="left">Left</ToggleGroupItem>
-                            <ToggleGroupItem value="both">Both</ToggleGroupItem>
-                            <ToggleGroupItem value="right">Right</ToggleGroupItem>
-                          </ToggleGroup>
-                        </Field>
-                        <Field>
-                          <FieldLabel>Width</FieldLabel>
-                          <Slider
-                            min={0}
-                            max={bufMax}
-                            step={bufMax / 200}
-                            value={[
-                              Math.min(
-                                Number(selectedLm?.buffer_width || 0),
-                                bufMax,
-                              ),
-                            ]}
-                            onValueChange={(v) =>
-                              lm.patchLandmark({ buffer_width: v[0] ?? 0 })
-                            }
-                          />
-                          <FieldDescription>
-                            {formatParam(Number(selectedLm?.buffer_width || 0))}
-                          </FieldDescription>
-                        </Field>
-                        <FieldDescription>
-                          Shift+wheel sizes the buffer.
-                        </FieldDescription>
-                      </>
-                    ) : null}
-                  </FieldGroup>
+                      </SliderRow>
+                      <FieldDescription className="text-[0.6875rem]">
+                        Shift+wheel sizes the buffer.
+                      </FieldDescription>
+                    </>
+                  ) : null}
+                </FieldGroup>
               </AccordionContent>
             </AccordionItem>
           ) : null}
         </Accordion>
+  );
+
+  if (embedded) {
+    return (
+      <div className={cn("min-h-0 overflow-y-auto py-0", PANEL_INSET)}>
+        {accordion}
+      </div>
+    );
+  }
+
+  return (
+    <Card className={FLOAT_PANEL}>
+      <CardContent className={cn("min-h-0 overflow-y-auto py-0", PANEL_INSET)}>
+        {accordion}
       </CardContent>
     </Card>
   );
 }
 
-export function ZoomControls({
-  onZoomIn,
-  onZoomOut,
-  onReset,
+/** @deprecated Prefer ControlPanel. */
+export const InspectPanel = ControlPanel;
+
+export function MobileSectionChrome({
+  lm,
+  open,
+  onOpenChange,
 }: {
-  onZoomIn: () => void;
-  onZoomOut: () => void;
-  onReset: () => void;
+  lm: LandmarksModel;
+  open: PanelSectionId | null;
+  onOpenChange: (id: PanelSectionId | null) => void;
 }) {
+  const selectedLm = lm.selectedLandmark();
+  const usesTension = !!selectedLm && TENSION_TYPES.includes(selectedLm.type);
+  const usesBuffer = !!selectedLm && BUFFERABLE.includes(selectedLm.type);
+  const categoryCount = lm.category_columns.length;
+  const geneCount = lm.gene_columns.length;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [fadeStart, setFadeStart] = useState(false);
+  const [fadeEnd, setFadeEnd] = useState(false);
+
+  const sections = useMemo(() => {
+    const ids: PanelSectionId[] = ["selections"];
+    if (categoryCount) ids.push("categories");
+    if (geneCount) ids.push("genes");
+    ids.push("landmarks", "style", "stats", "neighbors");
+    if (usesTension || usesBuffer) ids.push("landmark");
+    return ids;
+  }, [categoryCount, geneCount, usesTension, usesBuffer]);
+
+  useEffect(() => {
+    if (open && !sections.includes(open)) onOpenChange(null);
+  }, [open, sections, onOpenChange]);
+
+  const syncScrollFades = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    if (max <= 1) {
+      setFadeStart(false);
+      setFadeEnd(false);
+      return;
+    }
+    setFadeStart(el.scrollLeft > 1);
+    setFadeEnd(el.scrollLeft < max - 1);
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    syncScrollFades();
+    const ro =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => syncScrollFades());
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [sections, syncScrollFades]);
+
+  useLayoutEffect(() => {
+    if (!open || !scrollRef.current) return;
+    const active = scrollRef.current.querySelector<HTMLElement>(
+      `[data-section-id="${open}"]`,
+    );
+    active?.scrollIntoView({ inline: "nearest", block: "nearest" });
+    syncScrollFades();
+  }, [open, syncScrollFades]);
+
+  const meta = open ? SECTION_META[open] : null;
+
   return (
     <div
-      className="absolute right-5 bottom-5 z-10 overflow-hidden rounded-md border border-border bg-card text-card-foreground shadow-sm"
+      className="landmarks__chrome-sections"
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
-      onDoubleClick={(e) => e.stopPropagation()}
     >
-      <ButtonGroup orientation="vertical">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Zoom in"
-          aria-label="Zoom in"
-          className="rounded-none"
-          onClick={(e) => {
-            e.stopPropagation();
-            onZoomIn();
-          }}
+      {open && meta ? (
+        <div
+          className="landmarks__chrome-sheet landmarks-float landmarks-float--panel"
+          role="dialog"
+          aria-label={meta.label}
         >
-          <PlusIcon />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Zoom out"
-          aria-label="Zoom out"
-          className="rounded-none border-t border-border"
-          onClick={(e) => {
-            e.stopPropagation();
-            onZoomOut();
-          }}
+          <div className="landmarks__chrome-sheet-head">
+            <span className="text-sm font-medium">{meta.label}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="size-7 shrink-0 text-muted-foreground"
+              aria-label={`Close ${meta.label}`}
+              onClick={() => onOpenChange(null)}
+            >
+              <XIcon className="size-3.5" />
+            </Button>
+          </div>
+          <div className="landmarks__chrome-sheet-body">
+            {LAYER_SECTION_IDS.has(open) ? (
+              <LayersPanel lm={lm} forceSection={open} embedded />
+            ) : (
+              <ControlPanel lm={lm} forceSection={open} embedded />
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      <div
+        className={cn(
+          "landmarks__chrome-section-bar landmarks-float landmarks-float--toolbar",
+          fadeStart && "landmarks__chrome-section-bar--fade-start",
+          fadeEnd && "landmarks__chrome-section-bar--fade-end",
+        )}
+      >
+        <div
+          ref={scrollRef}
+          className="landmarks__chrome-section-scroll"
+          role="toolbar"
+          aria-label="Panel sections"
+          onScroll={syncScrollFades}
         >
-          <MinusIcon />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          title="Reset view"
-          aria-label="Reset view"
-          className="rounded-none border-t border-border"
-          onClick={(e) => {
-            e.stopPropagation();
-            onReset();
-          }}
-        >
-          <MaximizeIcon />
-        </Button>
-      </ButtonGroup>
+          {sections.map((id) => {
+            const { label } = SECTION_META[id];
+            const active = open === id;
+            return (
+              <Button
+                key={id}
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-section-id={id}
+                aria-pressed={active}
+                className={cn(
+                  "h-7 shrink-0 rounded-full px-2.5 text-[0.6875rem] font-medium text-muted-foreground hover:bg-muted hover:text-foreground",
+                  active && "bg-muted text-foreground",
+                )}
+                onClick={() => onOpenChange(active ? null : id)}
+              >
+                {label}
+              </Button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
