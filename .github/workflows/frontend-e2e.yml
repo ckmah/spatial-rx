@@ -10,6 +10,10 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   playwright:
     runs-on: ubuntu-latest
@@ -45,6 +49,16 @@ jobs:
         env:
           CI: true
           E2E_SCREENSHOTS: "1"
+
+      - name: Post Playwright visuals sticky PR comment
+        if: ${{ success() && github.event_name == 'pull_request' }}
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .github/scripts/post-playwright-visuals.sh
 
       - name: Upload Playwright HTML report
         if: always()

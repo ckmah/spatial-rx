@@ -6,15 +6,16 @@ Short per-test **videos** are recorded (`video: "on"`) for demos and CI review.
 
 ## Decision: how screenshots are reviewed
 
-**Primary review path:** committed PNG snapshots under
-`frontend/e2e/landmarks-ui.spec.ts-snapshots/`. On a PR, reviewers see image diffs in the
-GitHub **Files changed** tab (added/changed `*.png`). That is the main loop — no random
-image hosts, and no need to open artifacts just to review UI.
+**Primary review path:** the sticky PR comment posted by CI (see `.github/scripts/post-playwright-visuals.sh`).
+After a green `pull_request` e2e run, snapshots + videos are uploaded onto that comment.
+**The PR sticky comment is the primary visual review surface.**
 
-**Committed `*-snapshots/*.png` in PR Files changed are the primary visual review surface.**
+Committed snapshot PNGs and Actions artifacts remain backups.
 
-**CI artifacts** (Actions → run → Artifacts) are for debugging / demos, **not** where
-committed snapshot PNGs live:
+**Secondary:** Files changed image diffs + CI artifacts (`playwright-report`, `playwright-test-results`, `playwright-videos`).
+
+**CI artifacts** (Actions → run → Artifacts) remain a backup for debugging / demos; they are not
+where committed snapshot PNGs live:
 
 - `playwright-report` — HTML report
 - `playwright-test-results` — failure screenshots, diffs, traces, and per-test videos
@@ -84,8 +85,10 @@ Paths: `frontend/e2e/landmarks-ui.spec.ts-snapshots/<name>-chromium.png`
 Workflow: `.github/workflows/frontend-e2e.yml` (`Frontend e2e`)
 
 - Triggers: `pull_request`, `push` to `main`, and `workflow_dispatch`
+- Permissions: `contents: read`, `pull-requests: write` (sticky PR comment + attach uploads)
+- On successful `pull_request` runs: sticky PR comment via `.github/scripts/post-playwright-visuals.sh`
 - Runs `npm run test:e2e` (never `--update-snapshots` on PRs)
-- Always uploads artifacts (retention 14 days):
+- Always uploads artifacts as backup (retention 14 days):
   - `playwright-report` — HTML report
   - `playwright-test-results` — failure screenshots / traces / videos
   - `playwright-videos` — recorded `*.webm` / `*.mp4`
@@ -97,7 +100,11 @@ Workflow: `.github/workflows/frontend-e2e.yml` (`Frontend e2e`)
 Playwright records a short video for every test (`use.video: "on"` in
 `playwright.config.ts`). Locally they land under `frontend/test-results/**/video.webm`.
 
-### Download / play from GitHub Actions
+### Review videos on the PR (preferred)
+
+After a green PR e2e run, videos are attached on the sticky **Playwright visuals** comment.
+
+### Download / play from GitHub Actions (backup)
 
 1. Open the **Frontend e2e** workflow run
 2. Scroll to **Artifacts**
@@ -108,9 +115,9 @@ The HTML report (`playwright-report`) links to videos for each test when present
 
 ## Reviewing a PR
 
-1. Open the PR → **Files changed**
-2. Filter or scroll to `*-snapshots/*.png` — **this is the primary visual review**
-3. GitHub shows before/after image diffs for chrome changes
-4. If CI failed on screenshots, or you want motion context, download
+1. Open the PR → sticky **Playwright visuals** comment (primary review)
+2. Skim captioned screenshots (default chrome, pointer pin, after zoom, etc.) and videos
+3. Optional: **Files changed** still shows committed `*-snapshots/*.png` image diffs
+4. Backup: if the comment is missing or CI failed, download
    `playwright-test-results` / `playwright-videos` / `playwright-report` from the
-   Actions run (artifacts ≠ committed snapshot PNGs)
+   Actions run
