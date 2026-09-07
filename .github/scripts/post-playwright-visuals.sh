@@ -12,7 +12,8 @@ ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 FRONTEND="${ROOT}/frontend"
 DRY_RUN="${DRY_RUN:-0}"
 MAX_VIDEOS="${MAX_VIDEOS:-12}"
-SHA="${GITHUB_SHA:-$(git -C "${ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)}"
+SHA="${PR_HEAD_SHA:-${GITHUB_SHA:-$(git -C "${ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)}}"
+echo "Using SHA=${SHA} for embeds (PR_HEAD_SHA=${PR_HEAD_SHA:-unset})"
 RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs/${GITHUB_RUN_ID:-}"
 
 if [[ -z "${PR_NUMBER}" ]]; then
@@ -246,8 +247,8 @@ post_raw() {
     --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" 2>/dev/null | head -1 || true)"
   if [[ -n "${EXISTING_ID}" ]]; then
     echo "Updating sticky comment ${EXISTING_ID}…"
-    gh api -X PATCH "repos/${REPO}/issues/comments/${EXISTING_ID}" \
-      -f body="$(cat "${BODY_FILE}")" >/dev/null
+    jq -n --rawfile body "${BODY_FILE}" '{body: $body}' \
+      | gh api -X PATCH "repos/${REPO}/issues/comments/${EXISTING_ID}" --input - >/dev/null
     echo "https://github.com/${REPO}/pull/${PR_NUMBER}#issuecomment-${EXISTING_ID}"
   else
     gh pr comment "${PR_NUMBER}" -R "${REPO}" --body-file "${BODY_FILE}"
