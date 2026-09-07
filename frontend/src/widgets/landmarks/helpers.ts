@@ -103,3 +103,28 @@ export function formatLegendValue(value: number | undefined | null) {
   if (a >= 10) return value.toFixed(1);
   return value.toFixed(2);
 }
+
+export type LandmarkPoint = { x: number; y: number };
+
+export const LABELABLE_TYPES = ["point", "line", "spline", "shape"];
+
+export function copyLandmark(id: string, landmarks: LandmarkItem[]): LandmarkItem | null {
+  const lm = landmarks.find((l) => l.id === id);
+  return lm ? { ...lm } : null;
+}
+
+export function pasteLandmark(
+  lm: LandmarkItem,
+  existingIds: Set<string>,
+): LandmarkItem {
+  const nextId = nextNumberedId("landmark", [...existingIds, lm] as LandmarkItem[]);
+  return { ...lm, id: nextId };
+}
+
+function nextNumberedId(prefix: string, items: LandmarkItem[]): string {
+  const used = new Set(items.map((x) => String(x.id)));
+  for (let i = 1; ; i++) {
+    const id = `${prefix} ${i}`;
+    if (!used.has(id)) return id;
+  }
+}

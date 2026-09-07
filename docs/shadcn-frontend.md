@@ -3,7 +3,8 @@
 React/shadcn anywidgets live in `frontend/` and compile to ESM under
 `spatial_rx/static/bundled/`.
 
-Docs: [widget packaging](./widget-packaging.md),
+Docs: [widget UI dev quick reference](./widget-ui-dev.md),
+[widget packaging](./widget-packaging.md),
 [widget scaffold](./widget-scaffold.md) (traitlet-driven, not gallery-shaped).
 Agent workflow:
 [`.agents/skills/shadcn-anywidget/SKILL.md`](../.agents/skills/shadcn-anywidget/SKILL.md).
@@ -45,12 +46,7 @@ npx shadcn@latest add @reui/c-alert-1
 
 Free ReUI components use the `c-*` prefix.
 
-Authoring reload (anywidget file watcher, not Vite `dev`):
-
-```bash
-cd frontend && npm run watch:landmarks
-ANYWIDGET_HMR=1 uv run --extra demo marimo edit demos/<demo>.py
-```
+Widget authoring loops: [widget-ui-dev.md](./widget-ui-dev.md).
 
 CI builds `frontend/` before tests and publish so wheels include bundles.
 `pip install` does not require Node.

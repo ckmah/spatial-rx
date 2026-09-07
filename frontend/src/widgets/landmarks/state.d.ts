@@ -119,3 +119,22 @@ export declare function setPointSize(model: AnyModel, value: number): void;
 export declare function setPointOpacity(model: AnyModel, value: number): void;
 export declare function setLandmarkOpacity(model: AnyModel, value: number): void;
 export declare function setStrokeWidth(model: AnyModel, value: number): void;
+
+export declare function copyLandmark(
+  model: AnyModel,
+  index: number,
+  landmarks: LandmarkItem[],
+): void;
+
+export declare function pasteLandmark(
+  model: AnyModel,
+  index: number,
+  landmarks: LandmarkItem[],
+): void;
+
+export declare function setLandmarkLabel(
+  model: AnyModel,
+  index: number,
+  label: string,
+  landmarks: LandmarkItem[],
+): void;
