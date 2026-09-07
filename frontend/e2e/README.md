@@ -67,6 +67,8 @@ Asserts against `window.__landmarksEngine` / `__landmarksModel` hooks exposed by
 | `selection-neighborhood` | Selection + neighborhood active |
 | `landmark-selected` | Landmark selection (no selection outline) |
 | `selection-selected` | Active selection outline |
+| `selection-mode-geometry` | Selection tool + geometry ModeToggle |
+| `pointer-pin` | Pointer mode with inspect pin |
 
 Paths: `frontend/e2e/landmarks-ui.spec.ts-snapshots/<name>-chromium.png`
 

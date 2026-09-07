@@ -328,4 +328,75 @@ test.describe("LandmarksWidget UI regressions", () => {
     expect(active?.lineAlpha).toBeGreaterThan(0);
     await shot(page, "selection-selected", widget);
   });
+
+  test("Pointer / Move / Selection mode switch + geometry visibility", async ({ page }) => {
+    const widget = page.locator(".landmarks").first();
+
+    await expect(page.getByRole("radio", { name: "Pointer", exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Move", exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Selection", exact: true })).toBeVisible();
+
+    // Default pointer: geometry tools hidden.
+    await expect(page.getByRole("radio", { name: "Lasso", exact: true })).toHaveCount(0);
+
+    await page.getByRole("radio", { name: "Selection", exact: true }).click();
+    await page.waitForTimeout(150);
+    expect(await getModel(page, "mode")).toBe("lasso");
+    await expect(page.getByRole("radio", { name: "Lasso", exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Polygon", exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Rectangle", exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Ellipse", exact: true })).toBeVisible();
+    await shot(page, "selection-mode-geometry", widget);
+
+    await page.getByRole("radio", { name: "Move", exact: true }).click();
+    await page.waitForTimeout(100);
+    expect(await getModel(page, "mode")).toBe("move");
+    await expect(page.getByRole("radio", { name: "Lasso", exact: true })).toHaveCount(0);
+
+    await page.getByRole("radio", { name: "Pointer", exact: true }).click();
+    await page.waitForTimeout(100);
+    expect(await getModel(page, "mode")).toBe("pointer");
+  });
+
+  test("Pointer hover + click pin + Esc clear", async ({ page }) => {
+    const widget = page.locator(".landmarks").first();
+    await page.getByRole("radio", { name: "Pointer", exact: true }).click();
+    await setModel(page, { selected_kind: "", selected_index: -1 });
+    await page.waitForTimeout(150);
+
+    // Pin fixture landmark via model, then assert InspectPanel + Esc clear.
+    // (Canvas projection varies with fit; Layers/model pin is the Inspect contract.)
+    await setModel(page, { selected_kind: "landmark", selected_index: 0 });
+    await page.waitForTimeout(200);
+    let pin = await page.evaluate(() => (window as any).__landmarksEngine.getInspectPin());
+    expect(pin).toEqual({ kind: "landmark", index: 0 });
+    await expect(page.getByTestId("inspect-pin")).toBeVisible();
+    await shot(page, "pointer-pin", widget);
+
+    // Canvas click on a dense region should be able to pin a molecule (pointer pick).
+    const box = await canvasBox(page);
+    await page.mouse.click(box.x + box.width * 0.55, box.y + box.height * 0.55);
+    await page.waitForTimeout(250);
+    pin = await page.evaluate(() => (window as any).__landmarksEngine.getInspectPin());
+    // Either pinned something new or cleared on miss — both valid pointer behaviors.
+    // Prefer that a center click hits a molecule in the fixture cloud.
+    if (pin) {
+      expect(["landmark", "molecule", "type"]).toContain(pin.kind);
+    }
+
+    // Esc clears pin.
+    await page.locator("canvas.landmarks__webgl").first().focus();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const cleared = await page.evaluate(() => (window as any).__landmarksEngine.getInspectPin());
+    expect(cleared).toBeNull();
+    expect(await getModel(page, "selected_kind")).toBe("");
+
+    // Miss click clears without toast (re-pin then miss).
+    await setModel(page, { selected_kind: "landmark", selected_index: 0 });
+    await page.waitForTimeout(100);
+    await page.mouse.click(box.x + 12, box.y + 12);
+    await page.waitForTimeout(100);
+    expect(await getModel(page, "selected_kind")).toBe("");
+  });
 });

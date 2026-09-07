@@ -15,7 +15,9 @@ export const BUFFERABLE = ["line", "spline", "gradient"];
 export const TENSION_TYPES = ["spline", "shape", "gradient"];
 
 export const MODE_LABELS: Record<string, string> = {
-  select: "Pan/Zoom",
+  pointer: "Pointer",
+  move: "Move",
+  selection: "Selection",
   lasso: "Lasso",
   polygon: "Polygon",
   rectangle: "Rectangle",
@@ -26,8 +28,29 @@ export const MODE_LABELS: Record<string, string> = {
   shape: "Shape",
 };
 
-export const SELECT_MODE_IDS = ["select", "lasso"];
+/** Top-level interaction tools (left ToggleGroup). */
+export const INTERACTION_MODE_IDS = ["pointer", "move", "selection"];
+/** Selection geometry submodes (visible only when Selection is active). */
+export const GEOMETRY_MODE_IDS = ["lasso", "polygon", "rectangle", "ellipse"];
 export const LANDMARK_MODE_IDS = ["point", "line", "spline", "shape"];
+
+/** @deprecated use INTERACTION_MODE_IDS + GEOMETRY_MODE_IDS */
+export const SELECT_MODE_IDS = ["pointer", "move", "lasso", "polygon", "rectangle", "ellipse"];
+
+export function isGeometryMode(mode: string) {
+  return GEOMETRY_MODE_IDS.includes(mode);
+}
+
+export function isLandmarkMode(mode: string) {
+  return LANDMARK_MODE_IDS.includes(mode);
+}
+
+/** Map concrete mode → left-group interaction value (empty when landmark). */
+export function interactionFromMode(mode: string) {
+  if (mode === "pointer" || mode === "move") return mode;
+  if (isGeometryMode(mode)) return "selection";
+  return "";
+}
 
 export type AnyModel = {
   get(key: string): unknown;

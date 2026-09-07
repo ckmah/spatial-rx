@@ -11,7 +11,7 @@ def test_constructor_defaults():
     y = np.array([0.0, 1.0, 0.0, 1.0])
     color = np.array(["a", "b", "a", "c"])
     w = LandmarksWidget(adata_xy(x, y, color=color), color="label")
-    assert w.mode == "select"
+    assert w.mode == "pointer"
     assert w.height == 700
     assert w.n_points == 4
     assert len(w.point_palette) == 3
@@ -50,7 +50,7 @@ def test_marker_radius_from_knn():
     assert w.n_points == 4
     assert "spline" in w.modes and "shape" in w.modes
     assert "lasso" in w.modes
-    assert "polygon" not in w.modes
+    assert "polygon" in w.modes
     w.selections = [
         {
             "id": "selection 1",

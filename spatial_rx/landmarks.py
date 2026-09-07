@@ -24,8 +24,12 @@ if TYPE_CHECKING:
     import numpy as np
 
 _DEFAULT_MODES = [
-    "select",
+    "pointer",
+    "move",
     "lasso",
+    "polygon",
+    "rectangle",
+    "ellipse",
     "point",
     "line",
     "spline",
@@ -257,7 +261,7 @@ class LandmarksWidget(AnyWidget):
     _esm = widget_esm("landmarks")
     _css = widget_css()
 
-    mode = traitlets.Unicode("select").tag(sync=True)
+    mode = traitlets.Unicode("pointer").tag(sync=True)
     modes = traitlets.List(traitlets.Unicode(), default_value=list(_DEFAULT_MODES)).tag(
         sync=True
     )
@@ -474,7 +478,7 @@ class LandmarksWidget(AnyWidget):
 
         AnyWidget.__init__(
             self,
-            mode="select",
+            mode="pointer",
             modes=list(_DEFAULT_MODES),
             x_bounds=(xmin, xmax),
             y_bounds=(ymin, ymax),

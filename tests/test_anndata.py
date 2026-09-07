@@ -69,7 +69,7 @@ def test_constructor_packs_obs_palette_and_genes():
     assert w.n_points == 4
     assert w.point_opacity == 0.8
     assert w.stroke_width == 2
-    assert w.mode == "select"
+    assert w.mode == "pointer"
     assert w.point_size == pytest.approx(0.4)
 
 
