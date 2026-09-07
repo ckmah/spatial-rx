@@ -16,6 +16,13 @@ export type EngineHandle = {
     lineWidth: number;
     lineAlpha: number;
   }>;
+  getNeighborhoodOverlay(): {
+    mode: string;
+    edgeCount: number;
+    radiusDiskCount: number;
+    radius: number;
+    k: number;
+  };
   destroy(): void;
 };
 

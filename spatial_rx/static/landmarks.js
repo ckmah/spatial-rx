@@ -35,9 +35,17 @@ const OVERLAY_GL = { depthCompare: "always", depthWriteEnabled: false };
 
 const COLORS = ["#00e5ff", "#ff2d95", "#b8ff00", "#ffb000", "#7c4dff", "#00ffa3"];
 const SEL_COLORS = ["#94a3b8", "#64748b", "#a8a29e", "#78716c"];
-const NEIGH_COLOR = "#00e5cc";
+/** DESIGN.md neighborhood-teal */
+const NEIGH_COLOR = "#b3f2e8";
 const NEIGH_FILL_ALPHA = 0.3;
 const NEIGH_LINE_ALPHA = 0.9;
+/** kNN edge restyle: thin, low-opacity teal wash */
+const NEIGH_EDGE_ALPHA = 0.28;
+const NEIGH_EDGE_WIDTH = 0.75;
+/** Radius disks: light fill + outlined stroke (not edge spaghetti) */
+const NEIGH_DISK_FILL_ALPHA = 0.07;
+const NEIGH_DISK_LINE_ALPHA = 0.55;
+const NEIGH_DISK_LINE_WIDTH = 1.5;
 const SEED_ROLE = 2;
 const NEIGH_ROLE = 1;
 /** Unselected points shrink when a type/selection is focused. */
@@ -197,6 +205,7 @@ export function mountEngine({ model, host }) {
   let pointRoles = null;
   let pointRoleMode = false;
   let hoodEdges = [];
+  let hoodRadiusDisks = [];
   let zoomBy = () => { };
   let resetZoom = () => { };
   let zoomInterpolator = null;
@@ -366,8 +375,12 @@ export function mountEngine({ model, host }) {
   let dragKind = "";
   let dragIndex = -1;
   let didDrag = false;
-  let isDrawing = false;
-  let drawStart = null;
+  /** World/pixel cursor for rubber-band draft preview (line/spline/shape/polygon). */
+  let draftCursor = null;
+  /** True while button is held after placing the first line vertex (drag-to-end). */
+  let lineStrokeActive = false;
+  /** Pixel-distance² below this on mouseup → click, not drag (line authoring). */
+  const LINE_CLICK_PX2 = 25;
   let vertexDragIndex = -1;
   let vertexDragLandmarkIndex = -1;
   let isLassoing = false;
@@ -392,6 +405,8 @@ export function mountEngine({ model, host }) {
 
   function resetDraft() {
     draft = [];
+    draftCursor = null;
+    lineStrokeActive = false;
     lassoPath = [];
     isLassoing = false;
     isBoxing = false;
@@ -1018,12 +1033,18 @@ export function mountEngine({ model, host }) {
     } else if (isBoxing && boxStart && boxCurrent) {
       polygon = boxPolygon(boxStart, boxCurrent);
     } else if (draft.length) {
+      // Rubber-band: append live cursor after the last committed vertex.
+      const preview =
+        draftCursor &&
+        ["line", "spline", "shape", "polygon"].includes(currentMode)
+          ? [...draft, draftCursor]
+          : draft;
       const sampled =
         currentMode === "spline"
-          ? cardinalSample(draft, model.get("default_tension") ?? 0, 20, false)
+          ? cardinalSample(preview, model.get("default_tension") ?? 0, 20, false)
           : currentMode === "shape"
-            ? cardinalSample(draft, model.get("default_tension") ?? 0, 20, true)
-            : draft;
+            ? cardinalSample(preview, model.get("default_tension") ?? 0, 20, true)
+            : preview;
       if (currentMode === "polygon" || currentMode === "shape") {
         polygon = asPath(sampled);
         path = asClosedPath(sampled);
@@ -1031,6 +1052,15 @@ export function mountEngine({ model, host }) {
         path = asPath(sampled);
       }
       markers = draft.map((p) => ({ position: [p.x, p.y, 0], fill: line }));
+      if (
+        draftCursor &&
+        ["line", "spline", "shape", "polygon"].includes(currentMode)
+      ) {
+        markers.push({
+          position: [draftCursor.x, draftCursor.y, 0],
+          fill: hexToRgbaBytes(hex, 0.55),
+        });
+      }
     }
 
     if (polygon && polygon.length >= 3) {
@@ -1117,6 +1147,8 @@ export function mountEngine({ model, host }) {
     const mode = opts?.mode || "knn";
     const takeK = Math.max(0, opts?.k | 0);
     const radius = Number(opts?.radius) || 0;
+    // Radius mode uses outlined disks, not edge spaghetti — skip path building.
+    const wantEdges = opts?.edges === true || (opts?.edges !== false && mode === "knn");
     if (mode === "knn" && takeK <= 0) return { edges, neighbors };
     if (mode === "radius" && !(radius > 0)) return { edges, neighbors };
     const { indptr, indices, distances } = graph;
@@ -1136,12 +1168,14 @@ export function mountEngine({ model, host }) {
           seen.add(j);
           neighbors.push(j);
         }
-        edges.push({
-          path: [
-            [s.x, s.y],
-            [pts[j].x, pts[j].y],
-          ],
-        });
+        if (wantEdges) {
+          edges.push({
+            path: [
+              [s.x, s.y],
+              [pts[j].x, pts[j].y],
+            ],
+          });
+        }
       }
     }
     return { edges, neighbors };
@@ -1152,21 +1186,38 @@ export function mountEngine({ model, host }) {
     const focus = cellLayerFocus();
     const hood = neighborhoodFor(focus);
     if (!focus || !hood || hood.neighborhood === "off") return [];
-    const pts = getPointsData();
     const layers = [];
-    const { PathLayer } = deckModules;
+    const { PathLayer, ScatterplotLayer } = deckModules;
     const pick = { kind: focus.kind, index: focus.index };
-    if (
-      (hood.neighborhood === "radius" || hood.neighborhood === "knn") &&
-      hoodEdges.length
-    ) {
+    // Radius: GPU-batched outlined disks at neighborhood_radius (not edge spaghetti).
+    if (hood.neighborhood === "radius" && hoodRadiusDisks.length) {
+      layers.push(
+        new ScatterplotLayer({
+          id: "neighborhood-radius-disks",
+          data: hoodRadiusDisks.map((d) => ({ ...d, ...pick })),
+          getPosition: (d) => d.position,
+          getRadius: (d) => d.radius,
+          radiusUnits: "common",
+          stroked: true,
+          filled: true,
+          getFillColor: hexToRgbaBytes(NEIGH_COLOR, NEIGH_DISK_FILL_ALPHA),
+          getLineColor: hexToRgbaBytes(NEIGH_COLOR, NEIGH_DISK_LINE_ALPHA),
+          lineWidthUnits: "pixels",
+          getLineWidth: NEIGH_DISK_LINE_WIDTH,
+          pickable: true,
+          parameters: OVERLAY_GL,
+        })
+      );
+    }
+    // kNN: restyled seed→neighbor edges (thin, low-opacity design-token teal).
+    if (hood.neighborhood === "knn" && hoodEdges.length) {
       layers.push(
         new PathLayer({
-          id: `neighborhood-${hood.neighborhood}`,
+          id: "neighborhood-knn",
           data: hoodEdges.map((e) => ({ ...e, ...pick })),
           getPath: (d) => d.path,
-          getColor: hexToRgbaBytes(NEIGH_COLOR, 0.45),
-          getWidth: 1.25,
+          getColor: hexToRgbaBytes(NEIGH_COLOR, NEIGH_EDGE_ALPHA),
+          getWidth: NEIGH_EDGE_WIDTH,
           widthUnits: "pixels",
           pickable: true,
           parameters: OVERLAY_GL,
@@ -1633,6 +1684,7 @@ export function mountEngine({ model, host }) {
     pointRoles = new Uint8Array(pts.length);
     pointRoleMode = false;
     hoodEdges = [];
+    hoodRadiusDisks = [];
     const focus = cellLayerFocus();
     if (!focus) return;
     const seeds = seedIndicesFor(focus);
@@ -1654,10 +1706,21 @@ export function mountEngine({ model, host }) {
         mode: hood.neighborhood,
         k,
         radius: r,
+        edges: hood.neighborhood === "knn",
       });
       hoodEdges = result.edges;
       for (const i of result.neighbors) {
         if (pointRoles[i] !== SEED_ROLE) pointRoles[i] = NEIGH_ROLE;
+      }
+      if (hood.neighborhood === "radius" && r > 0) {
+        for (const si of seeds) {
+          const s = pts[si];
+          if (!s) continue;
+          hoodRadiusDisks.push({
+            position: [s.x, s.y, 0],
+            radius: r,
+          });
+        }
       }
     }
   }
@@ -1692,6 +1755,8 @@ export function mountEngine({ model, host }) {
     const minVerts = currentMode === "line" || currentMode === "spline" ? 2 : 3;
     if (draft.length < minVerts) {
       draft = [];
+      draftCursor = null;
+      lineStrokeActive = false;
       setDeckLayers();
       return;
     }
@@ -1703,6 +1768,8 @@ export function mountEngine({ model, host }) {
         vertices: draft.map((p) => [p.x, p.y]),
       }));
       draft = [];
+      draftCursor = null;
+      lineStrokeActive = false;
       model.set("selections", selections);
       model.set("selected_kind", "selection");
       model.set("selected_index", selections.length - 1);
@@ -1726,6 +1793,8 @@ export function mountEngine({ model, host }) {
     }
     landmarks.push(item);
     draft = [];
+    draftCursor = null;
+    lineStrokeActive = false;
     model.set("landmarks", landmarks);
     model.set("selected_kind", "landmark");
     model.set("selected_index", landmarks.length - 1);
@@ -1849,16 +1918,12 @@ export function mountEngine({ model, host }) {
       return;
     }
 
-    // Freehand stroke for multi-vertex landmarks; point mode is click-to-place only.
-    if (
-      currentMode !== "select" &&
-      currentMode !== "point" &&
-      draft.length === 0 &&
-      !hit
-    ) {
-      isDrawing = true;
-      drawStart = pt;
+    // Line: mousedown places start; rubber-band until mouseup (or click-then-click).
+    // Spline/shape/polygon: click-to-add only (no drag stroke). Point: mouseup only.
+    if (currentMode === "line" && draft.length === 0 && !hit) {
       draft = [pt];
+      draftCursor = pt;
+      lineStrokeActive = true;
       setDeckLayers();
     }
   }
@@ -1892,15 +1957,13 @@ export function mountEngine({ model, host }) {
       return;
     }
 
-    if (isDrawing && drawStart) {
-      const dx = pt.px - drawStart.px;
-      const dy = pt.py - drawStart.py;
-      if (dx * dx + dy * dy > 9) {
-        draft.push(pt);
-        drawStart = pt;
-        setDeckLayers();
-      }
-      return;
+    // Rubber-band draft preview from last vertex → cursor (line/spline/shape/polygon).
+    if (
+      draft.length > 0 &&
+      ["line", "spline", "shape", "polygon"].includes(currentMode)
+    ) {
+      draftCursor = pt;
+      setDeckLayers();
     }
   }
 
@@ -1960,22 +2023,9 @@ export function mountEngine({ model, host }) {
     }
     if (suppressClick) { suppressClick = false; return; }
     if (!pt) return;
-    if (isDrawing) {
-      isDrawing = false;
-      if (draft.length >= 2) {
-        // Dragged freehand stroke → commit.
-        finishVertexDraft();
-      } else if (draft.length === 1) {
-        // Click without drag → keep first vertex for click-to-place authoring.
-        setDeckLayers();
-      } else {
-        draft = [];
-        setDeckLayers();
-      }
-      return;
-    }
     if (currentMode === "select" || currentMode === "lasso" || currentMode === "rectangle" || currentMode === "ellipse") return;
 
+    // Point: place at mouseup position (not mousedown).
     if (currentMode === "point") {
       const landmarks = [...(model.get("landmarks") || [])];
       landmarks.push({ id: nextLandmarkId(landmarks), type: "point", vertices: [[pt.x, pt.y]] });
@@ -1984,8 +2034,51 @@ export function mountEngine({ model, host }) {
       model.set("selected_index", landmarks.length - 1);
       model.save_changes(); updateUI(); setDeckLayers(); return;
     }
-    draft.push({ x: pt.x, y: pt.y });
-    setDeckLayers();
+
+    // Line: mousedown=start; mouseup=end with rubber-band. Near-zero drag → wait for 2nd click.
+    if (currentMode === "line") {
+      if (lineStrokeActive) {
+        lineStrokeActive = false;
+        const start = draft[0];
+        if (!start) {
+          draft = [];
+          draftCursor = null;
+          setDeckLayers();
+          return;
+        }
+        const dx = pt.px - start.px;
+        const dy = pt.py - start.py;
+        if (dx * dx + dy * dy > LINE_CLICK_PX2) {
+          draft = [start, pt];
+          draftCursor = null;
+          finishVertexDraft();
+        } else {
+          // Click-like: keep first point only; second click sets the end.
+          draftCursor = pt;
+          setDeckLayers();
+        }
+        return;
+      }
+      if (draft.length === 1) {
+        draft = [draft[0], pt];
+        draftCursor = null;
+        finishVertexDraft();
+        return;
+      }
+      // Fallback: treat this click as the start if somehow empty.
+      draft = [pt];
+      draftCursor = pt;
+      setDeckLayers();
+      return;
+    }
+
+    // Spline / shape / polygon: click-to-add vertices only (no click-drag stroke).
+    if (["spline", "shape", "polygon"].includes(currentMode)) {
+      draft.push(pt);
+      draftCursor = pt;
+      setDeckLayers();
+      return;
+    }
   }
 
   function handleMouseLeave() {
@@ -1995,8 +2088,14 @@ export function mountEngine({ model, host }) {
       vertexDragLandmarkIndex = -1;
       model.save_changes();
     }
+    if (lineStrokeActive) {
+      // Keep first line vertex; end line-drag so a later click can finish.
+      lineStrokeActive = false;
+    }
+    draftCursor = null;
     if (isLassoing) { isLassoing = false; lassoPath = []; setDeckLayers(); }
     if (isBoxing) { isBoxing = false; boxStart = null; boxCurrent = null; setDeckLayers(); }
+    else if (draft.length) setDeckLayers();
   }
   function handleDblClick(e) {
     e.preventDefault();
@@ -2214,6 +2313,21 @@ export function mountEngine({ model, host }) {
         });
       });
       return out;
+    },
+    getNeighborhoodOverlay: () => {
+      const focus = cellLayerFocus();
+      const hood = neighborhoodFor(focus);
+      const mode = hood?.neighborhood || "off";
+      let radius = Number(hood?.neighborhood_radius) || 0;
+      const rMax = maxNeighborhoodRadius();
+      if (rMax > 0) radius = Math.min(radius, rMax);
+      return {
+        mode,
+        edgeCount: hoodEdges.length,
+        radiusDiskCount: hoodRadiusDisks.length,
+        radius,
+        k: Number(hood?.neighborhood_k) || 0,
+      };
     },
     destroy,
   };
