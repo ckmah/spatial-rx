@@ -284,6 +284,7 @@ test.describe("LandmarksWidget UI regressions", () => {
     expect(hood.radiusDiskCount).toBe(0);
     expect(hood.edgeCount).toBe(0);
     expect(hood.radius).toBeGreaterThan(0);
+    expect(hood.gradientBakeRadius).toBeGreaterThanOrEqual(hood.radius);
     expect(hood.gradientTextureSize?.[0]).toBeGreaterThan(0);
     expect(hood.gradientBounds?.length).toBe(4);
     await shot(page, "neighborhood-radius-gradient", widget);

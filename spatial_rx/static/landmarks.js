@@ -45,7 +45,10 @@ const NEIGH_LINE_ALPHA = 0.9;
 const NEIGH_EDGE_ALPHA = 0.28;
 const NEIGH_EDGE_WIDTH = 0.75;
 /** Radius soft-gradient field (baked BitmapLayer; no per-seed disk strokes). */
-const NEIGH_GRADIENT_PEAK_ALPHA = 0.32;
+/** Peak alpha kept low so scatter + seed/neighbor roles stay primary. */
+const NEIGH_GRADIENT_PEAK_ALPHA = 0.18;
+/** Muted teal wash (DESIGN neighborhood-teal desaturated) for the field only. */
+const NEIGH_GRADIENT_COLOR = "#8ebfb6";
 const NEIGH_GRADIENT_MAX_DIM = 512;
 const NEIGH_GRADIENT_MAX_DIM_LARGE = 256;
 const SEED_ROLE = 2;
@@ -207,7 +210,8 @@ export function mountEngine({ model, host }) {
   let pointRoles = null;
   let pointRoleMode = false;
   let hoodEdges = [];
-  let hoodRadiusGradient = null; // { key, image, bounds, seedCount, radius }
+  let hoodRadiusBake = null; // { key, dist, w, h, bounds, seedCount, textureSize, rMax }
+  let hoodRadiusGradient = null; // remapped view { key, image, bounds, seedCount, textureSize, radius, bakeRMax }
   let zoomBy = () => { };
   let resetZoom = () => { };
   let zoomInterpolator = null;
@@ -1688,13 +1692,13 @@ export function mountEngine({ model, host }) {
   }
 
   /**
-   * Bake a soft radial gradient field for radius-neighborhood seeds.
-   * Kernel radius is in world/common (µm) units so orthographic zoom stays correct.
-   * Overlaps use max-blend into a float alpha buffer, then clamp to peak alpha.
-   * Rebaked when seeds / r change (cache key) — not on pan.
+   * Bake a min-distance-to-nearest-seed field at r_max (world/common µm).
+   * AABB is expanded by r_max once; seed world positions stay fixed (never
+   * uniformly scale the AABB when r changes — that would pull seeds together).
+   * Rebaked only when seeds or r_max change — not on pan/zoom or current-r slider.
    */
-  function bakeRadiusGradientField(pts, seeds, radius) {
-    if (!seeds.length || !(radius > 0)) return null;
+  function bakeRadiusDistanceField(pts, seeds, rMax) {
+    if (!seeds.length || !(rMax > 0)) return null;
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
@@ -1710,10 +1714,10 @@ export function mountEngine({ model, host }) {
       if (s.y > maxY) maxY = s.y;
     }
     if (!positions.length) return null;
-    minX -= radius;
-    minY -= radius;
-    maxX += radius;
-    maxY += radius;
+    minX -= rMax;
+    minY -= rMax;
+    maxX += rMax;
+    maxY += rMax;
     const spanX = Math.max(maxX - minX, 1e-6);
     const spanY = Math.max(maxY - minY, 1e-6);
     const maxDim =
@@ -1723,10 +1727,11 @@ export function mountEngine({ model, host }) {
     const h = Math.max(1, Math.min(maxDim, Math.ceil(spanY * scale)));
     const sx = w / spanX;
     const sy = h / spanY;
-    const alpha = new Float32Array(w * h);
-    const rPxX = radius * sx;
-    const rPxY = radius * sy;
-    const [cr, cg, cb] = hexToRgbaBytes(NEIGH_COLOR, 1);
+    // World-unit distance; Infinity sentinel → no seed within r_max.
+    const dist = new Float32Array(w * h);
+    dist.fill(Number.POSITIVE_INFINITY);
+    const rPxX = rMax * sx;
+    const rPxY = rMax * sy;
 
     for (let si = 0; si < positions.length; si++) {
       const s = positions[si];
@@ -1738,31 +1743,53 @@ export function mountEngine({ model, host }) {
       const y0 = Math.max(0, Math.floor(cy - rPxY));
       const y1 = Math.min(h - 1, Math.ceil(cy + rPxY));
       for (let y = y0; y <= y1; y++) {
-        const dy = (y + 0.5 - cy) / rPxY;
+        const dyWorld = ((y + 0.5 - cy) / sy);
         const row = y * w;
         for (let x = x0; x <= x1; x++) {
-          const dx = (x + 0.5 - cx) / rPxX;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d >= 1) continue;
-          // Smooth soft falloff (smoothstep), peak 1 at center.
-          const t = 1 - d;
-          const a = t * t * (3 - 2 * t);
+          const dxWorld = ((x + 0.5 - cx) / sx);
+          const d = Math.hypot(dxWorld, dyWorld);
+          if (d > rMax) continue;
           const idx = row + x;
-          if (a > alpha[idx]) alpha[idx] = a;
+          if (d < dist[idx]) dist[idx] = d;
         }
       }
     }
 
+    return {
+      dist,
+      w,
+      h,
+      // [left, bottom, right, top] in world/common units (fixed at r_max)
+      bounds: [minX, minY, maxX, maxY],
+      seedCount: positions.length,
+      rMax,
+      textureSize: [w, h],
+    };
+  }
+
+  /**
+   * Remap a baked distance field to the visible soft-gradient canvas for current r.
+   * O(texture) — no per-seed restamp. Min-distance + monotonic falloff ≡ max-blend
+   * of per-seed kernels. Peak alpha clamped so unions do not overwhelm.
+   */
+  function remapRadiusGradientFromDist(bake, radius) {
+    if (!bake || !(radius > 0)) return null;
+    const { dist, w, h, bounds, seedCount, textureSize, rMax } = bake;
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     const img = ctx.createImageData(w, h);
     const data = img.data;
+    const [cr, cg, cb] = hexToRgbaBytes(NEIGH_GRADIENT_COLOR, 1);
     const peak = Math.round(255 * NEIGH_GRADIENT_PEAK_ALPHA);
-    for (let i = 0; i < alpha.length; i++) {
-      const a = alpha[i];
-      if (a <= 0) continue;
+    const r = Math.min(radius, rMax);
+    for (let i = 0; i < dist.length; i++) {
+      const d = dist[i];
+      if (!(d < r)) continue;
+      // Soft smoothstep falloff in world units relative to current r.
+      const t = 1 - d / r;
+      const a = t * t * (3 - 2 * t);
       const o = i * 4;
       data[o] = cr;
       data[o + 1] = cg;
@@ -1772,12 +1799,36 @@ export function mountEngine({ model, host }) {
     ctx.putImageData(img, 0, 0);
     return {
       image: canvas,
-      // [left, bottom, right, top] in world/common units
-      bounds: [minX, minY, maxX, maxY],
-      seedCount: positions.length,
-      radius,
-      textureSize: [w, h],
+      bounds,
+      seedCount,
+      textureSize,
+      radius: r,
+      bakeRMax: rMax,
     };
+  }
+
+  /** Bake at r_max on seed/r_max change; remap only when current r changes. */
+  function ensureRadiusGradient(pts, seeds, radius, rMax) {
+    if (!seeds.length || !(radius > 0) || !(rMax > 0)) {
+      hoodRadiusBake = null;
+      hoodRadiusGradient = null;
+      return;
+    }
+    const bakeKey = `${rMax.toFixed(5)}:${hashSeedIndices(seeds)}:${seeds.length}`;
+    if (!hoodRadiusBake || hoodRadiusBake.key !== bakeKey) {
+      const baked = bakeRadiusDistanceField(pts, seeds, rMax);
+      hoodRadiusBake = baked ? { ...baked, key: bakeKey } : null;
+    }
+    if (!hoodRadiusBake) {
+      hoodRadiusGradient = null;
+      return;
+    }
+    const r = Math.min(radius, rMax);
+    const viewKey = `${bakeKey}:${r.toFixed(5)}`;
+    if (!hoodRadiusGradient || hoodRadiusGradient.key !== viewKey) {
+      const remapped = remapRadiusGradientFromDist(hoodRadiusBake, r);
+      hoodRadiusGradient = remapped ? { ...remapped, key: viewKey } : null;
+    }
   }
 
   function prepareFocusGeom() {
@@ -1787,12 +1838,14 @@ export function mountEngine({ model, host }) {
     hoodEdges = [];
     const focus = cellLayerFocus();
     if (!focus) {
+      hoodRadiusBake = null;
       hoodRadiusGradient = null;
       return;
     }
     const seeds = seedIndicesFor(focus);
     if (!seeds.length) {
       pointRoleMode = true;
+      hoodRadiusBake = null;
       hoodRadiusGradient = null;
       return;
     }
@@ -1800,6 +1853,7 @@ export function mountEngine({ model, host }) {
     for (const i of seeds) pointRoles[i] = SEED_ROLE;
     const hood = neighborhoodFor(focus);
     if (!hood || hood.neighborhood === "off") {
+      hoodRadiusBake = null;
       hoodRadiusGradient = null;
       return;
     }
@@ -1819,16 +1873,14 @@ export function mountEngine({ model, host }) {
       for (const i of result.neighbors) {
         if (pointRoles[i] !== SEED_ROLE) pointRoles[i] = NEIGH_ROLE;
       }
-      if (hood.neighborhood === "radius" && r > 0) {
-        const key = `${r.toFixed(5)}:${hashSeedIndices(seeds)}:${seeds.length}`;
-        if (!hoodRadiusGradient || hoodRadiusGradient.key !== key) {
-          const baked = bakeRadiusGradientField(pts, seeds, r);
-          hoodRadiusGradient = baked ? { ...baked, key } : null;
-        }
+      if (hood.neighborhood === "radius" && r > 0 && rMax > 0) {
+        ensureRadiusGradient(pts, seeds, r, rMax);
       } else {
+        hoodRadiusBake = null;
         hoodRadiusGradient = null;
       }
     } else {
+      hoodRadiusBake = null;
       hoodRadiusGradient = null;
     }
   }
@@ -2442,6 +2494,8 @@ export function mountEngine({ model, host }) {
         gradientSeedCount: gradient ? gradient.seedCount : 0,
         gradientTextureSize: gradient ? gradient.textureSize : null,
         gradientBounds: gradient ? gradient.bounds : null,
+        /** r_max used for the distance-field bake (remap uses current radius). */
+        gradientBakeRadius: gradient ? gradient.bakeRMax : null,
         radius,
         k: Number(hood?.neighborhood_k) || 0,
       };

@@ -26,6 +26,8 @@ export type EngineHandle = {
     gradientSeedCount: number;
     gradientTextureSize: [number, number] | null;
     gradientBounds: [number, number, number, number] | null;
+    /** r_max used for the distance-field bake; remap uses current radius. */
+    gradientBakeRadius: number | null;
     radius: number;
     k: number;
   };
