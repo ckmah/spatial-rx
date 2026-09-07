@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium",
-    "test:e2e:mac": "PLAYWRIGHT_CHANNEL=chrome playwright test"
+    "test:e2e:mac": "PLAYWRIGHT_CHANNEL=chrome playwright test",
+    "test:e2e:update": "playwright test --update-snapshots"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
