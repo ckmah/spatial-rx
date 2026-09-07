@@ -26,6 +26,8 @@ import {
   SplineIcon,
   SquareIcon,
   XIcon,
+  CopyIcon,
+  ClipboardPasteIcon,
 } from "lucide-react";
 
 import {
@@ -1433,6 +1435,59 @@ export function ControlPanel({
                       </FieldDescription>
                     </>
                   ) : null}
+                  <Field className="gap-1.5">
+                    <FieldLabel className="text-[0.6875rem] font-medium text-muted-foreground">
+                      Label
+                    </FieldLabel>
+                    <Input
+                      aria-label="Landmark label"
+                      value={selectedLm?.label as string || ""}
+                      className="h-6 text-xs"
+                      autoFocus
+                      onChange={(e) => {
+                        const v = (e.target as HTMLInputElement).value || "";
+                        lm.setLandmarkLabel(v);
+                      }}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const v = (e.target as HTMLInputElement).value || "";
+                          lm.setLandmarkLabel(v);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                        }
+                      }}
+                    />
+                  </Field>
+                  <Field className="gap-1.5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="landmarks-trail-hit"
+                      aria-label="Copy landmark"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        lm.copyLandmark(lm.selected_index);
+                      }}
+                    >
+                      <CopyIcon className="size-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="landmarks-trail-hit ml-1"
+                      aria-label="Paste landmark"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        lm.pasteLandmark();
+                      }}
+                    >
+                      <ClipboardPasteIcon className="size-3.5" />
+                    </Button>
+                  </Field>
                 </FieldGroup>
               </AccordionContent>
             </AccordionItem>

@@ -264,6 +264,8 @@ class LandmarksWidget(AnyWidget):
 
     selections = traitlets.List(traitlets.Dict(), default_value=[]).tag(sync=True)
     landmarks = traitlets.List(traitlets.Dict(), default_value=[]).tag(sync=True)
+    # Client clipboard for landmark copy/paste (JS chrome); None when empty.
+    copied_landmark = traitlets.Dict(allow_none=True, default_value=None).tag(sync=True)
     selected_kind = traitlets.Unicode("").tag(sync=True)
     selected_index = traitlets.Int(-1).tag(sync=True)
 

@@ -246,3 +246,44 @@ export function setStrokeWidth(model, value) {
   model.set("stroke_width", Math.min(12, Math.max(1, v)));
   model.save_changes();
 }
+
+export function copyLandmark(model, index, landmarks) {
+  const lm = landmarks[index];
+  if (!lm) return;
+  model.set("copied_landmark", { ...lm });
+  model.save_changes();
+}
+
+export function pasteLandmark(model, index, landmarks) {
+  const copied = model.get("copied_landmark");
+  if (!copied) return;
+  const nextId = nextNumberedId("landmark", [...landmarks, copied]);
+  const nextIdx = landmarks.length;
+  model.set(
+    "landmarks",
+    [...landmarks, { ...copied, id: nextId }]
+  );
+  model.set("selected_kind", "landmark");
+  model.set("selected_index", nextIdx);
+  model.save_changes();
+}
+
+function nextNumberedId(prefix, items) {
+  const used = new Set(items.map((x) => String(x.id)));
+  for (let i = 1; ; i++) {
+    const id = `${prefix} ${i}`;
+    if (!used.has(id)) return id;
+  }
+}
+
+export function setLandmarkLabel(model, index, label, landmarks) {
+  const nextLabel = String(label || "").trim();
+  if (!nextLabel) return;
+  model.set(
+    "landmarks",
+    landmarks.map((lm, i) =>
+      i === index ? { ...lm, label: nextLabel } : lm
+    ),
+  );
+  model.save_changes();
+}

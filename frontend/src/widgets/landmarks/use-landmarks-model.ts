@@ -11,11 +11,13 @@ import type {
 } from "./helpers";
 import {
   applyActiveCategory,
+  copyLandmark as copyLandmarkTrait,
   deleteLandmark as deleteLandmarkTrait,
   deleteSelection as deleteSelectionTrait,
   neighborhoodFor,
   patchLandmark as patchLandmarkTrait,
   patchNeighborhood as patchNeighborhoodTrait,
+  pasteLandmark as pasteLandmarkTrait,
   renameLandmark as renameLandmarkTrait,
   renameSelection as renameSelectionTrait,
   setActiveGenes as setActiveGenesTrait,
@@ -28,6 +30,7 @@ import {
   setStrokeWidth as setStrokeWidthTrait,
   setSelected,
   toggleLandmarkHidden as toggleLandmarkHiddenTrait,
+  setLandmarkLabel as setLandmarkLabelTrait,
 } from "./state";
 
 export type LandmarksState = {
@@ -107,6 +110,9 @@ export type LandmarksModel = LandmarksState & {
   setPointOpacity(value: number): void;
   setLandmarkOpacity(value: number): void;
   setStrokeWidth(value: number): void;
+  copyLandmark(index: number): void;
+  pasteLandmark(): void;
+  setLandmarkLabel(label: string): void;
   activeNeighborhood(): ReturnType<typeof neighborhoodFor>;
   selectedLandmark(): LandmarkItem | null;
 };
@@ -195,6 +201,23 @@ export function useLandmarksModel(model: AnyModel): LandmarksModel {
     },
     setStrokeWidth(value) {
       setStrokeWidthTrait(model, value);
+    },
+    copyLandmark(index) {
+      const landmarks = state.landmarks || [];
+      copyLandmarkTrait(model, index, landmarks);
+    },
+    pasteLandmark() {
+      const landmarks = state.landmarks || [];
+      pasteLandmarkTrait(model, state.selected_index, landmarks);
+    },
+    setLandmarkLabel(label) {
+      if (state.selected_kind !== "landmark" || state.selected_index < 0) return;
+      setLandmarkLabelTrait(
+        model,
+        state.selected_index,
+        label,
+        state.landmarks,
+      );
     },
     activeNeighborhood() {
       return neighborhoodFor(

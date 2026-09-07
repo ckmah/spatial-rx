@@ -21,5 +21,8 @@ export {
   setPointOpacity,
   setLandmarkOpacity,
   setStrokeWidth,
+  copyLandmark,
+  pasteLandmark,
+  setLandmarkLabel,
   withHood,
 } from "../../../../spatial_rx/static/landmarks_state.js";
