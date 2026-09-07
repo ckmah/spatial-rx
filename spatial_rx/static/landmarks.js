@@ -8,6 +8,7 @@ import {
   PathLayer,
   PolygonLayer,
   BitmapLayer,
+  TextLayer,
 } from "@deck.gl/layers";
 import { PathStyleExtension } from "@deck.gl/extensions";
 import { ZoomWidget, ResetViewWidget } from "@deck.gl/widgets";
@@ -28,6 +29,7 @@ const DECK_MODULES = {
   PathLayer,
   PolygonLayer,
   BitmapLayer,
+  TextLayer,
   PathStyleExtension,
   ZoomWidget,
   ResetViewWidget,
@@ -915,7 +917,7 @@ export function mountEngine({ model, host }) {
       if (polygon.length < 3) return;
       const selected = kind === "selection" && i === selectedIdx;
       const hex = SEL_COLORS[i % SEL_COLORS.length];
-      // Tint all selections; outline stroke only on the active selection.
+      // Tint selected points; active selection gets a stronger point stroke (no outline geometry).
       const fill = hexToRgbaBytes(hex, selected ? 0.22 : 0.1);
       const line = hexToRgbaBytes(hex, selected ? 1 : 0);
       const radius = selected ? size * 1.15 : size;
@@ -959,57 +961,56 @@ export function mountEngine({ model, host }) {
           getLineWidth: [kind, selectedIdx, model.get("selections")],
         },
       }),
-      ...buildSelectionOutlineLayers(),
     ];
   }
 
-  /** Dashed geometric outlines for committed selections (draft uses buildDraftLayers). */
-  function buildSelectionOutlineLayers() {
-    if (!deckModules) return [];
-    const { PathLayer, PathStyleExtension } = deckModules;
-    const kind = model.get("selected_kind");
-    const selectedIdx = model.get("selected_index");
-    const paths = [];
-    (model.get("selections") || []).forEach((sel, i) => {
-      const polygon = selectionPolygonData(sel);
-      if (polygon.length < 3) return;
-      const selected = kind === "selection" && i === selectedIdx;
-      const hex = SEL_COLORS[i % SEL_COLORS.length];
-      const outline = asClosedPath(polygon.map((pt) => ({ x: pt[0], y: pt[1] })));
-      paths.push({
-        path: outline,
-        color: hexToRgbaBytes(hex, selected ? 1 : 0.55),
-        width: selected ? 2 : 1.25,
-      });
-    });
-    if (!paths.length) return [];
-    return [
-      new PathLayer({
-        id: "selection-outlines",
-        data: paths,
-        getPath: (d) => d.path,
-        getColor: (d) => d.color,
-        getWidth: (d) => d.width,
-        widthUnits: "pixels",
-        jointRounded: true,
-        capRounded: true,
-        pickable: false,
-        parameters: OVERLAY_GL,
-        getDashArray: SELECTION_DASH,
-        dashJustified: true,
-        extensions: [new PathStyleExtension({ dash: true, highPrecisionDash: true })],
-        updateTriggers: {
-          getColor: [kind, selectedIdx, model.get("selections")],
-          getWidth: [kind, selectedIdx, model.get("selections")],
-          getPath: [model.get("selections")],
-        },
-      }),
-    ];
+  /**
+   * Selection outlines are ephemeral: dashed geometry is draft-only
+   * (buildDraftLayers). After commit, keep tinted selected points — no
+   * persisted lasso/polygon outline on the canvas.
+   */
+
+  function landmarkLabelAnchor(lm, pathPts) {
+    const name = String(lm.label || lm.id || "").trim();
+    if (!name) return null;
+    if (lm.type === "point") {
+      const v = (lm.vertices || [])[0];
+      if (!v) return null;
+      return {
+        text: name,
+        position: [v[0], v[1], 0],
+        angle: 0,
+        pixelOffset: [10, -10],
+        textAnchor: "start",
+        alignmentBaseline: "bottom",
+      };
+    }
+    const pts = pathPts && pathPts.length ? pathPts : landmarkPathData(lm);
+    if (!pts.length) return null;
+    // Place near mid-geometry; angle follows local tangent for line-like types.
+    const mid = Math.floor(pts.length / 2);
+    const p = pts[mid];
+    let angle = 0;
+    if (["line", "spline", "gradient"].includes(lm.type) && pts.length >= 2) {
+      const a = pts[Math.max(0, mid - 1)];
+      const b = pts[Math.min(pts.length - 1, mid + 1)];
+      angle = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+      // Keep text upright-ish (avoid reading upside-down).
+      if (angle > 90 || angle < -90) angle += 180;
+    }
+    return {
+      text: name,
+      position: [p.x, p.y, 0],
+      angle,
+      pixelOffset: lm.type === "shape" ? [0, -8] : [0, -10],
+      textAnchor: "middle",
+      alignmentBaseline: "bottom",
+    };
   }
 
   function buildLandmarkLayers() {
     if (!deckModules) return [];
-    const { PathLayer, PolygonLayer, ScatterplotLayer } = deckModules;
+    const { PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } = deckModules;
     const kind = model.get("selected_kind");
     const selectedIdx = model.get("selected_index");
     const stroke = model.get("stroke_width") || 2;
@@ -1018,6 +1019,7 @@ export function mountEngine({ model, host }) {
     const paths = [];
     const markers = [];
     const arrows = [];
+    const labels = [];
     const arrowWorld = pixelsToWorld(14);
     (model.get("landmarks") || []).forEach((lm, i) => {
       if (lm.hidden) return;
@@ -1038,6 +1040,16 @@ export function mountEngine({ model, host }) {
           radius: selected ? 7 : 6,
           ...pick,
         });
+        const anchor = landmarkLabelAnchor(lm);
+        if (anchor) {
+          labels.push({
+            ...anchor,
+            color: hexToRgbaBytes(hex, 1),
+            // Soft same-color halo for contrast on variable tissue backgrounds.
+            background: hexToRgbaBytes(hex, 0.22),
+            ...pick,
+          });
+        }
         return;
       }
       const pathPts = landmarkPathData(lm);
@@ -1059,6 +1071,15 @@ export function mountEngine({ model, host }) {
             ...pick,
           });
         });
+        const anchor = landmarkLabelAnchor(lm, pathPts);
+        if (anchor) {
+          labels.push({
+            ...anchor,
+            color: hexToRgbaBytes(hex, 1),
+            background: hexToRgbaBytes(hex, 0.22),
+            ...pick,
+          });
+        }
         return;
       }
       const buffer = bufferPolygonData(lm);
@@ -1093,6 +1114,15 @@ export function mountEngine({ model, host }) {
             ...pick,
           });
         });
+        const anchor = landmarkLabelAnchor(lm, pathPts);
+        if (anchor) {
+          labels.push({
+            ...anchor,
+            color: hexToRgbaBytes(hex, 1),
+            background: hexToRgbaBytes(hex, 0.22),
+            ...pick,
+          });
+        }
       }
     });
     const layers = [];
@@ -1147,6 +1177,43 @@ export function mountEngine({ model, host }) {
           pickable: true,
           radiusMinPixels: 2,
           parameters: OVERLAY_GL,
+        })
+      );
+    }
+    if (labels.length) {
+      layers.push(
+        new TextLayer({
+          id: "landmark-labels",
+          data: labels,
+          getText: (d) => d.text,
+          getPosition: (d) => d.position,
+          getColor: (d) => d.color,
+          getAngle: (d) => d.angle || 0,
+          getPixelOffset: (d) => d.pixelOffset || [0, 0],
+          getTextAnchor: (d) => d.textAnchor || "middle",
+          getAlignmentBaseline: (d) => d.alignmentBaseline || "center",
+          getSize: 12,
+          sizeUnits: "pixels",
+          fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+          fontWeight: 600,
+          billboard: true,
+          background: true,
+          backgroundPadding: [6, 3],
+          backgroundBorderRadius: 6,
+          getBackgroundColor: (d) => d.background,
+          // Soft same-color halo (background) + thin SDF outline for edge contrast.
+          outlineWidth: 2,
+          outlineColor: [0, 0, 0, 120],
+          fontSettings: { sdf: true, radius: 12, cutoff: 0.25 },
+          pickable: false,
+          parameters: OVERLAY_GL,
+          updateTriggers: {
+            getText: [model.get("landmarks")],
+            getColor: [model.get("landmarks"), kind, selectedIdx],
+            getBackgroundColor: [model.get("landmarks")],
+            getPosition: [model.get("landmarks")],
+            getAngle: [model.get("landmarks")],
+          },
         })
       );
     }

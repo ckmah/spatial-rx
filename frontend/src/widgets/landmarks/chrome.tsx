@@ -1244,14 +1244,13 @@ export function ControlPanel({
   const kMax = Math.max(1, neighbor_k_max || 64);
   const radiusValue = Math.min(Number(hood?.neighborhood_radius || 0), rMax);
 
+  // Pointer pins only (molecule / type). Landmark selection is not a "pin".
   const pinLabel =
-    lm.selected_kind === "landmark" && lm.selected_index >= 0
-      ? (lm.landmarks[lm.selected_index]?.id ?? `landmark ${lm.selected_index}`)
-      : lm.selected_kind === "molecule" && lm.selected_index >= 0
-        ? `molecule ${lm.selected_index}`
-        : lm.selected_kind === "type" && lm.selected_index >= 0
-          ? `type ${lm.selected_index}`
-          : null;
+    lm.selected_kind === "molecule" && lm.selected_index >= 0
+      ? `molecule ${lm.selected_index}`
+      : lm.selected_kind === "type" && lm.selected_index >= 0
+        ? `type ${lm.selected_index}`
+        : null;
 
   const accordion = (
         <Accordion
@@ -1321,14 +1320,6 @@ export function ControlPanel({
                   <div className="landmarks-stat-chip col-span-2" data-testid="inspect-pin">
                     <dt>Pinned</dt>
                     <dd className="truncate">molecule {lm.selected_index}</dd>
-                  </div>
-                ) : null}
-                {lm.selected_kind === "landmark" && lm.selected_index >= 0 ? (
-                  <div className="landmarks-stat-chip col-span-2" data-testid="inspect-pin">
-                    <dt>Pinned</dt>
-                    <dd className="truncate">
-                      {lm.landmarks[lm.selected_index]?.id ?? `landmark ${lm.selected_index}`}
-                    </dd>
                   </div>
                 ) : null}
                 <div className="landmarks-stat-chip">
@@ -1526,31 +1517,6 @@ export function ControlPanel({
                       </FieldDescription>
                     </>
                   ) : null}
-                  <Field className="gap-1.5">
-                    <FieldLabel className="text-[0.6875rem] font-medium text-muted-foreground">
-                      Label
-                    </FieldLabel>
-                    <Input
-                      aria-label="Landmark label"
-                      value={selectedLm?.label as string || ""}
-                      className="h-6 text-xs"
-                      autoFocus
-                      onChange={(e) => {
-                        const v = (e.target as HTMLInputElement).value || "";
-                        lm.setLandmarkLabel(v);
-                      }}
-                      onKeyDown={(e) => {
-                        e.stopPropagation();
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          const v = (e.target as HTMLInputElement).value || "";
-                          lm.setLandmarkLabel(v);
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                        }
-                      }}
-                    />
-                  </Field>
                   <Field className="gap-1.5">
                     <Button
                       type="button"

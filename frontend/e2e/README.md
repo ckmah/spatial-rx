@@ -1,7 +1,8 @@
 # Landmarks UI e2e (Playwright)
 
 Headless coverage for LandmarksWidget chrome regressions (zoom, authoring, shift+wheel
-neighborhood, selection outline) plus **visual snapshots** via `toHaveScreenshot`.
+neighborhood, ephemeral selection) plus **visual snapshots** via `toHaveScreenshot`.
+Short per-test **videos** are recorded (`video: "on"`) for demos and CI review.
 
 ## Decision: how screenshots are reviewed
 
@@ -10,8 +11,14 @@ neighborhood, selection outline) plus **visual snapshots** via `toHaveScreenshot
 GitHub **Files changed** tab (added/changed `*.png`). That is the main loop — no random
 image hosts, and no need to open artifacts just to review UI.
 
-**Secondary:** CI uploads the Playwright HTML report and `test-results/` (failure
-screenshots / diffs) as Actions artifacts for debugging flaky runs.
+**Committed `*-snapshots/*.png` in PR Files changed are the primary visual review surface.**
+
+**CI artifacts** (Actions → run → Artifacts) are for debugging / demos, **not** where
+committed snapshot PNGs live:
+
+- `playwright-report` — HTML report
+- `playwright-test-results` — failure screenshots, diffs, traces, and per-test videos
+- `playwright-videos` — `*.webm` / `*.mp4` harvested from `test-results/` (same videos)
 
 Canonical platform: **Linux Chromium** (GitHub Actions `ubuntu-latest`). Those PNGs are
 committed and compared in CI. macOS Chrome (`test:e2e:mac`) runs functional asserts and
@@ -65,10 +72,10 @@ Asserts against `window.__landmarksEngine` / `__landmarksModel` hooks exposed by
 | `authoring-point-mode` | Point mode selected |
 | `after-place-point` | After placing a landmark |
 | `selection-neighborhood` | Selection + neighborhood active |
-| `landmark-selected` | Landmark selection (no selection outline) |
-| `selection-selected` | Active selection outline |
-| `selection-mode-geometry` | Selection tool + geometry ModeToggle |
-| `pointer-pin` | Pointer mode with inspect pin |
+| `landmark-selected` | Landmark selection (names on-canvas; no Inspect pin) |
+| `selection-selected` | Active selection point highlight (no persisted outline) |
+| `selection-mode-geometry` | Selection tool (no geometry ModeToggle) |
+| `pointer-pin` | Pointer mode with molecule inspect pin |
 
 Paths: `frontend/e2e/landmarks-ui.spec.ts-snapshots/<name>-chromium.png`
 
@@ -80,14 +87,30 @@ Workflow: `.github/workflows/frontend-e2e.yml` (`Frontend e2e`)
 - Runs `npm run test:e2e` (never `--update-snapshots` on PRs)
 - Always uploads artifacts (retention 14 days):
   - `playwright-report` — HTML report
-  - `playwright-test-results` — failure screenshots / traces
+  - `playwright-test-results` — failure screenshots / traces / videos
+  - `playwright-videos` — recorded `*.webm` / `*.mp4`
 - `workflow_dispatch` + `update_snapshots=true` regenerates PNGs and uploads
   `playwright-snapshots` for you to commit
+
+## Videos
+
+Playwright records a short video for every test (`use.video: "on"` in
+`playwright.config.ts`). Locally they land under `frontend/test-results/**/video.webm`.
+
+### Download / play from GitHub Actions
+
+1. Open the **Frontend e2e** workflow run
+2. Scroll to **Artifacts**
+3. Download `playwright-videos` (or `playwright-test-results`, which also contains videos)
+4. Unzip and open `*.webm` in a browser / VLC / QuickTime
+
+The HTML report (`playwright-report`) links to videos for each test when present.
 
 ## Reviewing a PR
 
 1. Open the PR → **Files changed**
-2. Filter or scroll to `*-snapshots/*.png`
+2. Filter or scroll to `*-snapshots/*.png` — **this is the primary visual review**
 3. GitHub shows before/after image diffs for chrome changes
-4. If CI failed on screenshots, download `playwright-test-results` / `playwright-report`
-   from the failed Actions run for pixel diffs and traces
+4. If CI failed on screenshots, or you want motion context, download
+   `playwright-test-results` / `playwright-videos` / `playwright-report` from the
+   Actions run (artifacts ≠ committed snapshot PNGs)

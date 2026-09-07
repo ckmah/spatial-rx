@@ -309,7 +309,7 @@ test.describe("LandmarksWidget UI regressions", () => {
     await shot(page, "neighborhood-knn-edges", widget);
   });
 
-  test("selection outline only on active selection", async ({ page }) => {
+  test("selection points highlight without persisted outline", async ({ page }) => {
     const widget = page.locator(".landmarks").first();
     await setModel(page, { selected_kind: "landmark", selected_index: 0 });
     await page.waitForTimeout(150);
@@ -322,6 +322,8 @@ test.describe("LandmarksWidget UI regressions", () => {
       expect(row.lineWidth).toBe(0);
       expect(row.lineAlpha).toBe(0);
     }
+    // Landmark names render on-canvas; Inspect must not show a "Pinned" chip for landmarks.
+    await expect(page.getByTestId("inspect-pin")).toHaveCount(0);
     await shot(page, "landmark-selected", widget);
 
     await setModel(page, { selected_kind: "selection", selected_index: 0 });
@@ -331,6 +333,8 @@ test.describe("LandmarksWidget UI regressions", () => {
     );
     const active = overlay.find((r: any) => r.index === 0);
     expect(active?.selected).toBe(true);
+    expect(active?.pointCount).toBeGreaterThan(0);
+    // Active selection strengthens point stroke; outline geometry is draft-only / ephemeral.
     expect(active?.lineWidth).toBeGreaterThan(0);
     expect(active?.lineAlpha).toBeGreaterThan(0);
     await shot(page, "selection-selected", widget);
@@ -371,12 +375,16 @@ test.describe("LandmarksWidget UI regressions", () => {
     await setModel(page, { selected_kind: "", selected_index: -1 });
     await page.waitForTimeout(150);
 
-    // Pin fixture landmark via model, then assert InspectPanel + Esc clear.
-    // (Canvas projection varies with fit; Layers/model pin is the Inspect contract.)
+    // Landmark selection is not shown as an Inspect "Pinned" chip.
     await setModel(page, { selected_kind: "landmark", selected_index: 0 });
     await page.waitForTimeout(200);
+    await expect(page.getByTestId("inspect-pin")).toHaveCount(0);
+
+    // Molecule pin is the Inspect contract (model set — canvas projection varies with fit).
+    await setModel(page, { selected_kind: "molecule", selected_index: 0 });
+    await page.waitForTimeout(200);
     let pin = await page.evaluate(() => (window as any).__landmarksEngine.getInspectPin());
-    expect(pin).toEqual({ kind: "landmark", index: 0 });
+    expect(pin).toEqual({ kind: "molecule", index: 0 });
     await expect(page.getByTestId("inspect-pin")).toBeVisible();
     await shot(page, "pointer-pin", widget);
 
@@ -386,7 +394,6 @@ test.describe("LandmarksWidget UI regressions", () => {
     await page.waitForTimeout(250);
     pin = await page.evaluate(() => (window as any).__landmarksEngine.getInspectPin());
     // Either pinned something new or cleared on miss — both valid pointer behaviors.
-    // Prefer that a center click hits a molecule in the fixture cloud.
     if (pin) {
       expect(["landmark", "molecule", "type"]).toContain(pin.kind);
     }
@@ -400,7 +407,7 @@ test.describe("LandmarksWidget UI regressions", () => {
     expect(await getModel(page, "selected_kind")).toBe("");
 
     // Miss click clears without toast (re-pin then miss).
-    await setModel(page, { selected_kind: "landmark", selected_index: 0 });
+    await setModel(page, { selected_kind: "molecule", selected_index: 0 });
     await page.waitForTimeout(100);
     await page.mouse.click(box.x + 12, box.y + 12);
     await page.waitForTimeout(100);

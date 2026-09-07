@@ -64,6 +64,17 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+      - name: Upload Playwright videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-videos
+          path: |
+            frontend/test-results/**/*.webm
+            frontend/test-results/**/*.mp4
+          retention-days: 14
+          if-no-files-found: ignore
+
       - name: Upload updated snapshots
         if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.update_snapshots == true }}
         uses: actions/upload-artifact@v4
