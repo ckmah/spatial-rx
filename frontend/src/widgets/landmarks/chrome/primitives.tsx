@@ -71,7 +71,7 @@ export function ColorSwatch({
   fillOpacity = 0.25,
   className,
 }: {
-  color: string;
+  color?: string;
   variant?: SwatchVariant;
   fillOpacity?: number;
   className?: string;
@@ -82,12 +82,17 @@ export function ColorSwatch({
       <span
         className={cn(
           "landmarks-layer-swatch landmarks-layer-swatch--landmark inline-block shrink-0 rounded-full",
+          !color && "border-border",
           className,
         )}
-        style={{
-          borderColor: color,
-          backgroundColor: `color-mix(in srgb, ${color} ${pct}%, transparent)`,
-        }}
+        style={
+          color
+            ? {
+                borderColor: color,
+                backgroundColor: `color-mix(in srgb, ${color} ${pct}%, transparent)`,
+              }
+            : undefined
+        }
         aria-hidden
       />
     );
@@ -97,9 +102,10 @@ export function ColorSwatch({
       <span
         className={cn(
           "landmarks-layer-swatch landmarks-layer-swatch--selection inline-block shrink-0 rounded-full",
+          !color && "border-border",
           className,
         )}
-        style={{ borderColor: color }}
+        style={color ? { borderColor: color } : undefined}
         aria-hidden
       />
     );
@@ -108,9 +114,10 @@ export function ColorSwatch({
     <span
       className={cn(
         "landmarks-layer-swatch inline-block shrink-0 rounded-full ring-1 ring-border",
+        !color && "bg-muted-foreground/40",
         className,
       )}
-      style={{ backgroundColor: color }}
+      style={color ? { backgroundColor: color } : undefined}
       aria-hidden
     />
   );
@@ -261,14 +268,12 @@ export function LayerRow({
         }
       }}
     >
-      {color ? (
-        <ColorSwatch
-          color={color}
-          variant={swatchVariant}
-          fillOpacity={swatchFillOpacity}
-          className="landmarks-layer-swatch"
-        />
-      ) : null}
+      <ColorSwatch
+        color={color}
+        variant={swatchVariant}
+        fillOpacity={swatchFillOpacity}
+        className="landmarks-layer-swatch"
+      />
       <div className="landmarks-layer-label">
         {editing && onRename ? (
           <Input
