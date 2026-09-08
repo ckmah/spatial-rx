@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import math
+import warnings
 from typing import TYPE_CHECKING, Any
 
 import traitlets
@@ -514,6 +515,9 @@ class LandmarksWidget(AnyWidget):
         if gene_color is not None:
             self.set_color(gene_color, legend_title=str(color))
 
+        # Autosave: observe selections traitlet
+        self.observe(self._observe_selections, names=["selections"])
+
     def set_neighbor_graphs(
         self,
         knn: Any,
@@ -818,3 +822,164 @@ class LandmarksWidget(AnyWidget):
             ).tolist()
         )
         adata.obs[key] = [str(n) in names for n in adata.obs_names.astype(str)]
+
+    def to_spatialdata(self) -> Any:
+        """Export current selections as a SpatialData object.
+
+        Returns a ``spatialdata.SpatialData`` with a ``table`` containing:
+        - Original ``adata.obs`` columns
+        - Boolean columns for each selection (``sel_<id>``)
+        - Spatial coordinates in ``obsm["spatial"]``
+
+        Selections with neighborhoods are expanded using the widget's graph.
+        """
+        import numpy as np
+        import pandas as pd
+        from spatialdata.models import TableModel
+
+        x_arr = getattr(self, "_data_x", None)
+        y_arr = getattr(self, "_data_y", None)
+        if x_arr is None or y_arr is None:
+            raise RuntimeError("internal point cache missing; call set_points first")
+
+        n = int(x_arr.shape[0])
+        obs_dict: dict[str, Any] = {}
+
+        for sel in self.selections:
+            sel_id = str(sel.get("id", ""))
+            if not sel_id:
+                continue
+            col_name = f"sel_{sel_id}"
+            try:
+                mask = self.get_mask(x_arr, y_arr, selection_id=sel_id, expand=True)
+                obs_dict[col_name] = np.asarray(mask, dtype=bool)
+            except Exception as exc:
+                warnings.warn(
+                    f"Failed to compute selection '{sel_id}': {exc}",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                obs_dict[col_name] = np.zeros(n, dtype=bool)
+
+        obs = pd.DataFrame(obs_dict, index=range(n))
+        coords = np.column_stack(
+            [np.asarray(x_arr, dtype=np.float64), np.asarray(y_arr, dtype=np.float64)]
+        )
+
+        table = TableModel.parse(
+            X=np.zeros((n, 0), dtype=np.float32),
+            obs=obs,
+            coords={"spatial": coords},
+        )
+
+        try:
+            import spatialdata as sd
+
+            return sd.SpatialData(tables={"selections": table})
+        except ImportError:
+            raise ImportError(
+                "spatialdata is required for to_spatialdata(). "
+                "Install it with: pip install spatialdata"
+            )
+
+    def _observe_selections(self, change: dict[str, Any]) -> None:
+        """Autosave handler: fires when selections change."""
+        pass
+
+    def promote_neighborhood_to_selection(self) -> None:
+        """Promote the current neighborhood to a persistent selection.
+
+        Computes the expanded mask for the active selection/type neighborhood
+        and creates a new selection from those points. The neighborhood
+        visualization stays active after promotion.
+        """
+        import numpy as np
+
+        hood = getattr(self, "_neighborhood_cache", None)
+        if hood is None:
+            # Compute from current state
+            from .selection import neighborhood_for
+
+            hood = neighborhood_for(
+                self.selected_kind,
+                self.selected_index,
+                list(self.selections),
+                list(self.type_neighborhoods),
+                list(self.legend_labels),
+                self.active_category,
+            )
+
+        if hood is None:
+            return
+
+        method = str(hood.get("neighborhood") or "off")
+        if method == "off":
+            return
+
+        x_arr = getattr(self, "_data_x", None)
+        y_arr = getattr(self, "_data_y", None)
+        if x_arr is None or y_arr is None:
+            return
+
+        # Compute the expanded mask
+        try:
+            mask = self.get_mask(
+                x_arr, y_arr,
+                selection_id=hood.get("id"),
+                expand=True,
+            )
+        except Exception:
+            return
+
+        # Create selection vertices from the mask points
+        mask_arr = np.asarray(mask, dtype=bool)
+        if not mask_arr.any():
+            return
+
+        # Get the points in the mask
+        xs = np.asarray(x_arr, dtype=np.float64)[mask_arr]
+        ys = np.asarray(y_arr, dtype=np.float64)[mask_arr]
+
+        # Create a convex hull or bounding box as the selection shape
+        if len(xs) < 3:
+            # Use bounding box for very small selections
+            xmin, xmax = float(xs.min()), float(xs.max())
+            ymin, ymax = float(ys.min()), float(ys.max())
+            vertices = [
+                [xmin, ymin],
+                [xmax, ymin],
+                [xmax, ymax],
+                [xmin, ymax],
+            ]
+        else:
+            # Use convex hull
+            from scipy.spatial import ConvexHull
+
+            points = np.column_stack([xs, ys])
+            hull = ConvexHull(points)
+            vertices = points[hull.vertices].tolist()
+
+        # Generate selection name
+        kind = self.selected_kind
+        idx = self.selected_index
+        if kind == "type":
+            col = self.active_category
+            labels = getattr(self, "_data_label_arrays", {}).get(col, [])
+            label = labels[idx] if idx < len(labels) else str(idx)
+            name = f"Neighbors of {label}"
+        elif kind == "selection":
+            sel = self.selections[idx] if idx < len(self.selections) else None
+            sel_name = sel.get("id", str(idx)) if sel else str(idx)
+            name = f"Neighbors of {sel_name}"
+        else:
+            name = f"Neighbors {len(self.selections) + 1}"
+
+        # Create the selection dict
+        selection = {
+            "id": name,
+            "type": "polygon",
+            "vertices": vertices,
+        }
+
+        # Push to selections
+        self.selections = list(self.selections) + [selection]

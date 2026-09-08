@@ -115,6 +115,7 @@ export type LandmarksModel = LandmarksState & {
   copyLandmark(index: number): void;
   pasteLandmark(): void;
   setLandmarkLabel(label: string): void;
+  promoteNeighborhoodToSelection(): void;
   activeNeighborhood(): ReturnType<typeof neighborhoodFor>;
   selectedLandmark(): LandmarkItem | null;
 };
@@ -223,6 +224,14 @@ export function useLandmarksModel(model: AnyModel): LandmarksModel {
         label,
         state.landmarks,
       );
+    },
+    promoteNeighborhoodToSelection() {
+      // Call Python method via widget model
+      const fn = (model as unknown as { promote_neighborhood_to_selection?: () => void })
+        .promote_neighborhood_to_selection;
+      if (fn) {
+        fn.call(model as unknown as { promote_neighborhood_to_selection: () => void });
+      }
     },
     activeNeighborhood() {
       return neighborhoodFor(

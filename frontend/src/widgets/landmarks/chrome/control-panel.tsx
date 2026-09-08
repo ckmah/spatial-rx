@@ -25,10 +25,10 @@ import {
   TENSION_TYPES,
   formatParam,
   maxBufferWidth,
-  spatialDiag,
 } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
 import { SliderRow, SoftToggleGroup, ColorSwatch } from "./primitives";
+import { InspectPanel } from "./inspect-panel";
 import {
   PANEL_INSET,
   SECTION_TRIGGER,
@@ -52,11 +52,6 @@ export function ControlPanel({
     x_bounds,
     y_bounds,
   } = lm;
-
-  const diag = spatialDiag(lm.x_bounds, lm.y_bounds);
-  const radiusMax = Math.max(diag * 0.05, lm.point_size * 5, 1e-6);
-  const radius = Math.min(Math.max(lm.point_size, 0), radiusMax);
-  const extent = `${formatParam(diag, "0")} across`;
 
   const selectedLm = lm.selectedLandmark();
   const usesTension = !!selectedLm && TENSION_TYPES.includes(selectedLm.type);
@@ -82,106 +77,13 @@ export function ControlPanel({
         ? { type: "single" as const, value: forceSection, collapsible: true }
         : {
             type: "multiple" as const,
-            defaultValue: ["style", "neighbors", "landmark"],
+            defaultValue: ["inspect", "neighbors", "landmark"],
           })}
     >
-      <AccordionItem value="style" className="border-b">
-        <AccordionTrigger className={SECTION_TRIGGER}>Style</AccordionTrigger>
+      <AccordionItem value="inspect" className="border-b">
+        <AccordionTrigger className={SECTION_TRIGGER}>Inspect</AccordionTrigger>
         <AccordionContent className="px-0 pb-2">
-          <FieldGroup className="gap-2.5">
-            <SliderRow label="Point radius" valueLabel={formatParam(lm.point_size, "0")}>
-              <Slider
-                min={0}
-                max={radiusMax}
-                step={radiusMax / 200}
-                value={[radius]}
-                onValueChange={(v) => lm.setPointSize(v[0] ?? 0)}
-              />
-            </SliderRow>
-            <SliderRow
-              label="Point opacity"
-              valueLabel={lm.point_opacity.toFixed(2)}
-            >
-              <Slider
-                min={0.05}
-                max={1}
-                step={0.01}
-                value={[lm.point_opacity]}
-                onValueChange={(v) => lm.setPointOpacity(v[0] ?? 0.8)}
-              />
-            </SliderRow>
-            <SliderRow
-              label="Landmark opacity"
-              valueLabel={lm.landmark_opacity.toFixed(2)}
-            >
-              <Slider
-                min={0.05}
-                max={1}
-                step={0.01}
-                value={[lm.landmark_opacity]}
-                onValueChange={(v) => lm.setLandmarkOpacity(v[0] ?? 0.28)}
-              />
-            </SliderRow>
-            <SliderRow label="Stroke" valueLabel={`${lm.stroke_width} px`}>
-              <Slider
-                min={1}
-                max={8}
-                step={1}
-                value={[lm.stroke_width]}
-                onValueChange={(v) => lm.setStrokeWidth(v[0] ?? 2)}
-              />
-            </SliderRow>
-          </FieldGroup>
-        </AccordionContent>
-      </AccordionItem>
-
-      <AccordionItem value="stats" className="border-b">
-        <AccordionTrigger className={SECTION_TRIGGER}>Stats</AccordionTrigger>
-        <AccordionContent className="px-0 pb-2">
-          <dl className="landmarks-stat-grid" data-testid="inspect-stats">
-            {lm.selected_kind === "molecule" && lm.selected_index >= 0 ? (
-              <div className="landmarks-stat-chip col-span-2" data-testid="inspect-pin">
-                <dt>Pinned</dt>
-                <dd className="truncate">molecule {lm.selected_index}</dd>
-              </div>
-            ) : null}
-            <div className="landmarks-stat-chip">
-              <dt>Points</dt>
-              <dd>{lm.n_points}</dd>
-            </div>
-            <div className="landmarks-stat-chip">
-              <dt>Categories</dt>
-              <dd>{lm.category_columns.length}</dd>
-            </div>
-            <div className="landmarks-stat-chip">
-              <dt>Genes</dt>
-              <dd>{lm.gene_columns.length}</dd>
-            </div>
-            <div className="landmarks-stat-chip">
-              <dt>Selections</dt>
-              <dd>{lm.selections.length}</dd>
-            </div>
-            <div className="landmarks-stat-chip">
-              <dt>Landmarks</dt>
-              <dd>{lm.landmarks.length}</dd>
-            </div>
-            <div className="landmarks-stat-chip">
-              <dt>Color</dt>
-              <dd className="truncate">{lm.color_by}</dd>
-            </div>
-            <div className="landmarks-stat-chip">
-              <dt>k max</dt>
-              <dd>{lm.neighbor_k_max}</dd>
-            </div>
-            <div className="landmarks-stat-chip">
-              <dt>r max</dt>
-              <dd>{formatParam(lm.neighbor_radius_max, "0")}</dd>
-            </div>
-            <div className="landmarks-stat-chip col-span-2">
-              <dt>Extent</dt>
-              <dd className="truncate">{extent}</dd>
-            </div>
-          </dl>
+          <InspectPanel lm={lm} />
         </AccordionContent>
       </AccordionItem>
 
@@ -272,6 +174,17 @@ export function ControlPanel({
                   Sliders subset precomputed graphs. Shift+wheel sizes the
                   neighborhood.
                 </FieldDescription>
+                {hood.neighborhood && hood.neighborhood !== "off" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => lm.promoteNeighborhoodToSelection()}
+                  >
+                    Make Selection
+                  </Button>
+                ) : null}
               </>
             ) : (
               <FieldDescription className="text-[0.6875rem]">
