@@ -115,6 +115,12 @@ export declare function toggleLandmarkHidden(
   landmarks: LandmarkItem[],
 ): void;
 
+export declare function toggleSelectionHidden(
+  model: AnyModel,
+  index: number,
+  selections: SelectionItem[],
+): void;
+
 export declare function setPointSize(model: AnyModel, value: number): void;
 export declare function setPointOpacity(model: AnyModel, value: number): void;
 export declare function setLandmarkOpacity(model: AnyModel, value: number): void;

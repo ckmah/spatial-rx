@@ -175,6 +175,16 @@ export function deleteSelection(
   model.save_changes();
 }
 
+export function toggleSelectionHidden(model, index, selections) {
+  model.set(
+    "selections",
+    selections.map((sel, i) =>
+      i === index ? { ...sel, hidden: !sel.hidden } : sel,
+    ),
+  );
+  model.save_changes();
+}
+
 export function deleteLandmark(
   model,
   index,

@@ -17,6 +17,7 @@ export {
   setMode,
   setSelected,
   toggleLandmarkHidden,
+  toggleSelectionHidden,
   setPointSize,
   setPointOpacity,
   setLandmarkOpacity,

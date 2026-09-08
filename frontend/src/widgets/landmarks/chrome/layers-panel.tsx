@@ -74,14 +74,16 @@ export function LayersPanel({
                   color={SELECTION_COLORS[i % SELECTION_COLORS.length]}
                   swatchVariant="selection"
                   label={sel.id}
+                  hidden={!!sel.hidden}
                   onSelect={() => lm.select("selection", i)}
                   onRename={(next) => lm.renameSelection(i, next)}
+                  onToggleHidden={() => lm.toggleSelectionHidden(i)}
                   onDelete={() => lm.deleteSelection(i)}
                 />
               ))}
             </ItemGroup>
           ) : (
-            <FieldDescription>No selections yet.</FieldDescription>
+            <FieldDescription>Draw a region to start selecting cells</FieldDescription>
           )}
         </AccordionContent>
       </AccordionItem>

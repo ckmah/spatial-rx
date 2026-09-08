@@ -30,6 +30,7 @@ import {
   setStrokeWidth as setStrokeWidthTrait,
   setSelected,
   toggleLandmarkHidden as toggleLandmarkHiddenTrait,
+  toggleSelectionHidden as toggleSelectionHiddenTrait,
   setLandmarkLabel as setLandmarkLabelTrait,
 } from "./state";
 
@@ -106,6 +107,7 @@ export type LandmarksModel = LandmarksState & {
   renameSelection(index: number, name: string): void;
   renameLandmark(index: number, name: string): void;
   toggleLandmarkHidden(index: number): void;
+  toggleSelectionHidden(index: number): void;
   setPointSize(value: number): void;
   setPointOpacity(value: number): void;
   setLandmarkOpacity(value: number): void;
@@ -189,6 +191,9 @@ export function useLandmarksModel(model: AnyModel): LandmarksModel {
     },
     toggleLandmarkHidden(index) {
       toggleLandmarkHiddenTrait(model, index, state.landmarks);
+    },
+    toggleSelectionHidden(index) {
+      toggleSelectionHiddenTrait(model, index, state.selections);
     },
     setPointSize(value) {
       setPointSizeTrait(model, value);

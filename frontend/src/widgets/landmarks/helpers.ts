@@ -74,6 +74,7 @@ export type LandmarkItem = {
 export type SelectionItem = {
   id: string;
   type: string;
+  hidden?: boolean;
   neighborhood?: string;
   neighborhood_radius?: number;
   neighborhood_k?: number;
