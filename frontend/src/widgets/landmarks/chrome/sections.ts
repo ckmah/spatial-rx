@@ -3,8 +3,7 @@ export type PanelSectionId =
   | "categories"
   | "genes"
   | "landmarks"
-  | "style"
-  | "stats"
+  | "inspect"
   | "neighbors"
   | "landmark";
 
@@ -20,8 +19,7 @@ export const SECTION_META: Record<PanelSectionId, { label: string }> = {
   categories: { label: "Categories" },
   genes: { label: "Genes" },
   landmarks: { label: "Landmarks" },
-  style: { label: "Style" },
-  stats: { label: "Stats" },
+  inspect: { label: "Inspect" },
   neighbors: { label: "Neighbors" },
   landmark: { label: "Landmark" },
 };

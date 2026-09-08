@@ -32,7 +32,7 @@ export function MobileSectionChrome({
     const ids: PanelSectionId[] = ["selections"];
     if (categoryCount) ids.push("categories");
     if (geneCount) ids.push("genes");
-    ids.push("landmarks", "style", "stats", "neighbors");
+    ids.push("landmarks", "inspect", "neighbors");
     if (usesTension || usesBuffer) ids.push("landmark");
     return ids;
   }, [categoryCount, geneCount, usesTension, usesBuffer]);

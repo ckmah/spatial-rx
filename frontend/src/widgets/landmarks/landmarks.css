@@ -748,6 +748,12 @@
   color: var(--foreground);
 }
 
+.landmarks-inspect-chart {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+
 /* Chrome regions */
 
 .landmarks__chrome-tools {
