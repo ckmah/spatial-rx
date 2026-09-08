@@ -116,7 +116,8 @@ write_body_attach() {
       echo "_No snapshot PNGs found under \`frontend/e2e/**/*-snapshots/\`._"
       echo
     else
-      echo "### Snapshots"
+      echo "<details>"
+      echo "<summary><strong>Snapshots</strong> (${#SNAPSHOTS[@]})</summary>"
       echo
       for png in "${SNAPSHOTS[@]}"; do
         cap="$(caption_for_png "${png}")"
@@ -126,14 +127,15 @@ write_body_attach() {
         echo
         ATTACH_ARGS+=(--attach "${png}#${cap}")
       done
+      echo "</details>"
+      echo
     fi
     if [[ ${#VIDEOS[@]} -eq 0 ]]; then
-      echo "### Videos"
-      echo
       echo "_No videos found under \`frontend/test-results/**/*.{webm,mp4}\`._"
       echo
     else
-      echo "### Videos"
+      echo "<details>"
+      echo "<summary><strong>Videos</strong> (${#VIDEOS[@]})</summary>"
       echo
       echo "> Videos may need download / open-in-browser if GitHub does not inline the player."
       echo
@@ -145,6 +147,8 @@ write_body_attach() {
         echo
         ATTACH_ARGS+=(--attach "${vid}")
       done
+      echo "</details>"
+      echo
     fi
   } > "${BODY_FILE}"
 }
@@ -167,7 +171,8 @@ write_body_raw() {
       echo "_No snapshot PNGs found under \`frontend/e2e/**/*-snapshots/\`._"
       echo
     else
-      echo "### Snapshots"
+      echo "<details>"
+      echo "<summary><strong>Snapshots</strong> (${#SNAPSHOTS[@]})</summary>"
       echo
       for png in "${SNAPSHOTS[@]}"; do
         cap="$(caption_for_png "${png}")"
@@ -178,8 +183,11 @@ write_body_raw() {
         echo "![${cap}](${url})"
         echo
       done
+      echo "</details>"
+      echo
     fi
-    echo "### Videos"
+    echo "<details>"
+    echo "<summary><strong>Videos</strong> (${#VIDEOS[@]})</summary>"
     echo
     if [[ ${#VIDEOS[@]} -gt 0 ]]; then
       echo "Recorded **${#VIDEOS[@]}** video(s) this run. Download artifact **\`playwright-videos\`**"
@@ -195,11 +203,12 @@ write_body_raw() {
       for vid in "${VIDEOS[@]}"; do
         echo "- $(caption_for_video "${vid}") (\`$(basename "${vid}")\`)"
       done
-      echo
     else
       echo "_No videos found under \`frontend/test-results/**/*.{webm,mp4}\`._"
-      echo
     fi
+    echo
+    echo "</details>"
+    echo
   } > "${BODY_FILE}"
 }
 

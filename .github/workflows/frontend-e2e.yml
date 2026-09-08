@@ -1,6 +1,10 @@
 name: Frontend e2e
 on:
   pull_request:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-e2e.yml'
+      - '.github/scripts/post-playwright-visuals.sh'
   push:
     branches: [main]
   workflow_dispatch:
