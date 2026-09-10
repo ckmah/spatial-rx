@@ -11,11 +11,16 @@ colors:
   landmark-cyan: "#00e5ff"
   landmark-magenta: "#ff2d95"
   landmark-lime: "#b8ff00"
-  selection-slate: "#94a3b8"
+  selection-slate: "#a3a3a3"
   neighborhood-teal: "#b3f2e8"
   gene-magenta: "#ff0099"
   gene-lime: "#b8ff00"
   gene-azure: "#00b7ff"
+  sequential-low: "#f3e6d4"
+  sequential-high: "#ff0099"
+  categorical-1: "#e69f00"
+  categorical-2: "#56b4e9"
+  categorical-3: "#009e73"
   primary: "#171717"
   primary-foreground: "#ffffff"
   background: "#ffffff"
@@ -108,7 +113,7 @@ components:
 
 **Creative North Star: Soft Float + Glass**
 
-spatial-rx widgets keep the plot as the specimen and float shadcn chrome above it. Surfaces are Framer-style achromatic neutrals (no blue tint). Docks, sheets, and toolbars share one translucent glass float material (`landmarks-float` + `--lm-float-*` tokens) so the tissue stays visible underneath. A centered icon pill carries draw modes, zoom, and fullscreen. Chrome stays compact in notebook cells; below 640px docks collapse to a labeled section bar with popup sheets.
+spatial-rx widgets keep the plot as the specimen and float shadcn chrome above it. Surfaces are Framer-style achromatic neutrals (no blue tint). Docks, sheets, and toolbars share one translucent glass float material (`landmarks-float` + `--lm-float-*` tokens) so the tissue stays visible underneath. A centered icon pill carries draw modes, zoom, and fullscreen. Chrome stays compact in notebook cells; below 640px the layers and info panels stack in one top-left dock (no side rail).
 
 **Key Characteristics:**
 
@@ -116,8 +121,8 @@ spatial-rx widgets keep the plot as the specimen and float shadcn chrome above i
 - Shared glass float (`landmarks-float`, `--panel` / `--toolbar` shape roles) with backdrop blur
 - Centered tool pill: modes + zoom + fullscreen; icon hits, soft muted trays, inverted active glyphs
 - Merged right **Controls** dock (Style, Stats, Neighbors, Landmark)
-- Narrow ≤640px: text section bar + one popup sheet at a time
-- Saturated color reserved for canvas data (landmarks, genes, selections)
+- Narrow ≤640px: one top-left stack (Layers + Info); no side rail or right dock; minimap hidden
+- Saturated color reserved for canvas data (landmarks, genes, categories)
 
 ## Colors
 
@@ -130,7 +135,10 @@ Restrained achromatic chrome. Data owns saturation on the canvas.
 
 ### Canvas (`--lm-*`)
 
-Landmark cyan/magenta/lime, selection slate, neighborhood teal wash, gene triad — unchanged semantics on the plot layer.
+Landmark cyan/magenta/lime (and amber/violet/mint) for annotations only.
+Categorical points use an Okabe–Ito–based set that avoids that neon triad.
+Genes keep the additive magenta/lime/azure blend. Continuous defaults to
+warm cream → gene magenta. Selections stay Framer-neutral greys.
 
 ### Named Rules
 
@@ -155,11 +163,13 @@ Landmark cyan/magenta/lime, selection slate, neighborhood teal wash, gene triad 
 
 ## Layout
 
-- Shell height default 700px (400–1400); plot fills figure under floating chrome
+- Shell height default 550px (400–1400); plot fills figure under floating chrome
 - Shared chrome scale on `.landmarks`: `--lm-space-*` (4px base), `--lm-chrome-inset`, `--lm-chrome-gap`, `--lm-chrome-band` (3.25rem), `--lm-dock-width` (14rem / 15rem fullscreen)
 - Tool pill (`landmarks__chrome-tools`): reserved top band, centered — docks start below band + gap
-- Wide: left Layers + right Controls (`landmarks__chrome-dock--*`); max-height accounts for band
-- Narrow (`landmarks--narrow`, width < 640px): text section bar bottom-left; tapping a label opens one float sheet
+- Wide: left Layers (Categories, Genes, Selections, Landmarks) + right Controls (`landmarks__chrome-dock--*`); max-height accounts for band
+- Narrow (`landmarks--narrow`, width < 640px): Info then Layers in one top-left stack; no side rail, right dock, or minimap
+- Wide left dock: Layers fills remaining height and scrolls inside the card (multi-open accordion; no nested list max-heights)
+- Narrow stack: Info capped (~45%), Layers flex-fills and scrolls
 - Zoom lives in the top tool pill (in / out / reset), not a separate bottom cluster
 - Slider rows: single line — left label + capsule track; fill encodes value; numeral overlays the left of the capsule; thumb nearly invisible until hover/focus
 
@@ -198,9 +208,9 @@ Icon-only select + landmark mode groups, zoom (in / out / reset), and fullscreen
 
 `+` when closed, `−` when open (crossfade). No chevron rotation.
 
-### Section bar (narrow)
+### Narrow stack
 
-Text labels for each panel section in a float pill; active section opens a glass sheet above the bar. Labels, not icons — Operate scanability on a crowded cell.
+Below 640px, Info (capped) then Layers (flex-fill + scroll) share one top-left dock.
 
 ### Shared float surface
 
@@ -214,7 +224,7 @@ Tokens on `.landmarks`: `--lm-float-radius`, `--lm-float-border`, `--lm-float-bg
 - **Do** keep docks ~14rem; scroll inside panels.
 - **Do** use the shared glass float tokens for every floating chrome surface.
 - **Do** prefer shadcn primitives with Soft Float surface classes.
-- **Do** collapse chrome to a labeled section bar under 640px.
+- **Do** stack Layers + Info in one top-left dock under 640px (no side rail).
 
 ### Don't:
 

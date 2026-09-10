@@ -12,21 +12,15 @@ def test_constructor_defaults():
     color = np.array(["a", "b", "a", "c"])
     w = LandmarksWidget(adata_xy(x, y, color=color), color="label")
     assert w.mode == "pointer"
-    assert w.height == 700
-    assert w.n_points == 4
+    assert len(w._data_x) == 4
     assert len(w.point_palette) == 3
     assert w.points_data
     assert int(w._knn_index.indptr[-1]) == 0
     assert int(w._radius_index.indptr[-1]) == 0
     assert w.x_bounds[0] < 0.0 and w.x_bounds[1] > 3.0
-    assert w.point_opacity == 0.8
-    assert w.landmark_opacity == 0.28
-    assert w.stroke_width == 2
-    assert w.default_buffer_side == "both"
-    assert w.default_buffer_width > 0
+    assert w.default_buffer_width == 0.0
     diag = float(np.hypot(3.0, 1.0))
     assert w.point_size == pytest.approx(0.01 * diag)
-    assert w.default_buffer_width == pytest.approx(0.05 * diag)
 
 
 def test_marker_radius_from_knn():
@@ -47,10 +41,7 @@ def test_marker_radius_from_knn():
     )
     w = LandmarksWidget(adata_xy(x, y, knn=knn))
     assert w.point_size == pytest.approx(0.4)
-    assert w.n_points == 4
-    assert "spline" in w.modes and "shape" in w.modes
-    assert "lasso" in w.modes
-    assert "polygon" in w.modes
+    assert len(w._data_x) == 4
     w.selections = [
         {
             "id": "selection 1",

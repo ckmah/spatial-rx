@@ -5,19 +5,22 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-_DEFAULT_PALETTE = [
-    "#00e5ff",
-    "#ff2d95",
-    "#b8ff00",
-    "#ffb000",
-    "#7c4dff",
-    "#00ffa3",
-    "#38bdf8",
-    "#f472b6",
-    "#a3e635",
-    "#fb923c",
+# Default categorical when AnnData has no ``{col}_colors``. Okabe–Ito–based
+# (colorblind-safer); deliberately avoids the landmark neon triad / gene triad.
+DEFAULT_CATEGORICAL_PALETTE = [
+    "#e69f00",
+    "#56b4e9",
+    "#009e73",
+    "#cc79a7",
+    "#0072b2",
+    "#d55e00",
+    "#f0e442",
+    "#882255",
+    "#44aa99",
+    "#332288",
 ]
 
+_DEFAULT_PALETTE = DEFAULT_CATEGORICAL_PALETTE
 _MAX_LEVELS = 64
 
 

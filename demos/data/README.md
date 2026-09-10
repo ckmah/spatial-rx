@@ -1,8 +1,8 @@
 # Demo data (TIFF + CSV)
 
 Local TIFF/CSV slices remain under this directory. The landmarks and gut-study
-notebooks load **seqFISH** via `squidpy.datasets.seqfish()` (Lohoff et al. mouse
-gastrulation) and do not read these files.
+notebooks load the **ileum** panel (`ileum/cells.csv` + `ileum/expr.csv`) into
+AnnData; they do not use seqFISH.
 
 ## Layout
 

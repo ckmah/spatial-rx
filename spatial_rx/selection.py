@@ -71,22 +71,39 @@ def selection_mask(
     x_scale: str = "linear",
     y_scale: str = "linear",
 ) -> Any:
-    """Boolean mask for points inside ``selection_id`` (all-True for ``\"all\"``/None)."""
+    """Boolean mask for points inside ``selection_id`` (all-True for ``\"all\"``/None).
+
+    When a selection carries ``point_indices``, those indices define membership
+    exactly (used by neighborhood→selection promote). Otherwise falls back to
+    polygon / rectangle / ellipse point-in-path.
+    """
     import numpy as np
     from matplotlib.path import Path as MplPath
 
     x_arr = np.asarray(x_arr, dtype=float)
     y_arr = np.asarray(y_arr, dtype=float)
+    n = int(len(x_arr))
     if selection_id is None or selection_id == "all":
-        return np.ones(len(x_arr), dtype=bool)
+        return np.ones(n, dtype=bool)
 
     sel = selection_by_id(selections, selection_id)
     if sel is None:
-        return np.zeros(len(x_arr), dtype=bool)
+        return np.zeros(n, dtype=bool)
+    if sel.get("hidden"):
+        return np.zeros(n, dtype=bool)
+
+    raw_idx = sel.get("point_indices")
+    if raw_idx is not None:
+        out = np.zeros(n, dtype=bool)
+        idx = np.asarray(raw_idx, dtype=np.int64).ravel()
+        if idx.size:
+            idx = idx[(idx >= 0) & (idx < n)]
+            out[idx] = True
+        return out
 
     verts = selection_display_vertices(sel)
     if len(verts) < 3:
-        return np.zeros(len(x_arr), dtype=bool)
+        return np.zeros(n, dtype=bool)
 
     x_d = np.log10(x_arr) if x_scale == "log" else x_arr
     y_d = np.log10(y_arr) if y_scale == "log" else y_arr
@@ -163,3 +180,56 @@ def neighborhood_params(item: dict | None) -> tuple[str, float, int]:
     radius = float(item.get("neighborhood_radius") or 0.0)
     k = int(item.get("neighborhood_k") or 12)
     return method, radius, k
+
+
+def next_numbered_id(prefix: str, items: list[dict]) -> str:
+    used = {str(item.get("id")) for item in items}
+    i = 1
+    while f"{prefix} {i}" in used:
+        i += 1
+    return f"{prefix} {i}"
+
+
+def mask_hull_vertices(
+    x_arr: Any,
+    y_arr: Any,
+    mask: Any,
+    *,
+    pad: float = 1e-3,
+) -> list[list[float]]:
+    """Closed polygon ring covering points where ``mask`` is true (convex hull)."""
+    import numpy as np
+    from scipy.spatial import ConvexHull
+
+    x = np.asarray(x_arr, dtype=float).ravel()
+    y = np.asarray(y_arr, dtype=float).ravel()
+    m = np.asarray(mask, dtype=bool).ravel()
+    if m.shape[0] != x.shape[0]:
+        raise ValueError("mask length != coordinates")
+    xs = x[m]
+    ys = y[m]
+    if xs.size == 0:
+        raise ValueError("neighborhood is empty")
+    if xs.size == 1:
+        p = float(pad)
+        cx, cy = float(xs[0]), float(ys[0])
+        return [
+            [cx - p, cy - p],
+            [cx + p, cy - p],
+            [cx + p, cy + p],
+            [cx - p, cy + p],
+        ]
+    pts = np.column_stack([xs, ys])
+    if xs.size == 2 or np.linalg.matrix_rank(pts - pts.mean(axis=0)) < 2:
+        p = float(pad)
+        xmin, xmax = float(xs.min()) - p, float(xs.max()) + p
+        ymin, ymax = float(ys.min()) - p, float(ys.max()) + p
+        return [
+            [xmin, ymin],
+            [xmax, ymin],
+            [xmax, ymax],
+            [xmin, ymax],
+        ]
+    hull = ConvexHull(pts)
+    ring = pts[hull.vertices]
+    return [[float(a), float(b)] for a, b in ring]

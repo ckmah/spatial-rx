@@ -11,31 +11,26 @@ import type {
 } from "./helpers";
 import {
   applyActiveCategory,
-  copyLandmark as copyLandmarkTrait,
   deleteLandmark as deleteLandmarkTrait,
   deleteSelection as deleteSelectionTrait,
+  duplicateLandmark as duplicateLandmarkTrait,
   neighborhoodFor,
   patchLandmark as patchLandmarkTrait,
   patchNeighborhood as patchNeighborhoodTrait,
-  pasteLandmark as pasteLandmarkTrait,
   renameLandmark as renameLandmarkTrait,
   renameSelection as renameSelectionTrait,
+  promoteNeighborhoodToSelection as promoteNeighborhoodToSelectionTrait,
   setActiveGenes as setActiveGenesTrait,
   setGeneLog1p as setGeneLog1pTrait,
   setGeneScaleMode as setGeneScaleModeTrait,
   setMode as setModeTrait,
-  setPointSize as setPointSizeTrait,
-  setPointOpacity as setPointOpacityTrait,
-  setLandmarkOpacity as setLandmarkOpacityTrait,
-  setStrokeWidth as setStrokeWidthTrait,
   setSelected,
   toggleLandmarkHidden as toggleLandmarkHiddenTrait,
-  setLandmarkLabel as setLandmarkLabelTrait,
+  toggleSelectionHidden as toggleSelectionHiddenTrait,
 } from "./state";
 
 export type LandmarksState = {
   mode: string;
-  modes: string[];
   selections: SelectionItem[];
   landmarks: LandmarkItem[];
   selected_kind: string;
@@ -46,25 +41,23 @@ export type LandmarksState = {
   active_genes: string[];
   gene_scale_mode: GeneScaleMode;
   gene_log1p: boolean;
+  gene_expression_logged: boolean;
   color_by: string;
-  continuous_palette: string[];
   legend_labels: string[];
   type_neighborhoods: TypeNeighborhood[];
-  default_tension: number;
   neighbor_radius_max: number;
   neighbor_k_max: number;
   x_bounds: number[];
   y_bounds: number[];
-  n_points: number;
+  points_data: string;
+  category_codes: string;
+  gene_values: string;
   point_size: number;
-  point_opacity: number;
-  landmark_opacity: number;
-  stroke_width: number;
+  default_buffer_width: number;
 };
 
 const MODEL_KEYS: (keyof LandmarksState)[] = [
   "mode",
-  "modes",
   "selections",
   "landmarks",
   "selected_kind",
@@ -75,20 +68,19 @@ const MODEL_KEYS: (keyof LandmarksState)[] = [
   "active_genes",
   "gene_scale_mode",
   "gene_log1p",
+  "gene_expression_logged",
   "color_by",
-  "continuous_palette",
   "legend_labels",
   "type_neighborhoods",
-  "default_tension",
   "neighbor_radius_max",
   "neighbor_k_max",
   "x_bounds",
   "y_bounds",
-  "n_points",
+  "points_data",
+  "category_codes",
+  "gene_values",
   "point_size",
-  "point_opacity",
-  "landmark_opacity",
-  "stroke_width",
+  "default_buffer_width",
 ];
 
 export type LandmarksModel = LandmarksState & {
@@ -103,16 +95,12 @@ export type LandmarksModel = LandmarksState & {
   patchLandmark(patch: Record<string, unknown>): void;
   deleteSelection(index: number): void;
   deleteLandmark(index: number): void;
+  duplicateLandmark(index: number): void;
   renameSelection(index: number, name: string): void;
   renameLandmark(index: number, name: string): void;
   toggleLandmarkHidden(index: number): void;
-  setPointSize(value: number): void;
-  setPointOpacity(value: number): void;
-  setLandmarkOpacity(value: number): void;
-  setStrokeWidth(value: number): void;
-  copyLandmark(index: number): void;
-  pasteLandmark(): void;
-  setLandmarkLabel(label: string): void;
+  toggleSelectionHidden(index: number): void;
+  promoteNeighborhoodToSelection(): void;
   activeNeighborhood(): ReturnType<typeof neighborhoodFor>;
   selectedLandmark(): LandmarkItem | null;
 };
@@ -181,6 +169,9 @@ export function useLandmarksModel(model: AnyModel): LandmarksModel {
         state.selected_index,
       );
     },
+    duplicateLandmark(index) {
+      duplicateLandmarkTrait(model, index, state.landmarks);
+    },
     renameSelection(index, name) {
       renameSelectionTrait(model, index, name, state.selections);
     },
@@ -190,34 +181,11 @@ export function useLandmarksModel(model: AnyModel): LandmarksModel {
     toggleLandmarkHidden(index) {
       toggleLandmarkHiddenTrait(model, index, state.landmarks);
     },
-    setPointSize(value) {
-      setPointSizeTrait(model, value);
+    toggleSelectionHidden(index) {
+      toggleSelectionHiddenTrait(model, index, state.selections);
     },
-    setPointOpacity(value) {
-      setPointOpacityTrait(model, value);
-    },
-    setLandmarkOpacity(value) {
-      setLandmarkOpacityTrait(model, value);
-    },
-    setStrokeWidth(value) {
-      setStrokeWidthTrait(model, value);
-    },
-    copyLandmark(index) {
-      const landmarks = state.landmarks || [];
-      copyLandmarkTrait(model, index, landmarks);
-    },
-    pasteLandmark() {
-      const landmarks = state.landmarks || [];
-      pasteLandmarkTrait(model, state.selected_index, landmarks);
-    },
-    setLandmarkLabel(label) {
-      if (state.selected_kind !== "landmark" || state.selected_index < 0) return;
-      setLandmarkLabelTrait(
-        model,
-        state.selected_index,
-        label,
-        state.landmarks,
-      );
+    promoteNeighborhoodToSelection() {
+      promoteNeighborhoodToSelectionTrait(model);
     },
     activeNeighborhood() {
       return neighborhoodFor(

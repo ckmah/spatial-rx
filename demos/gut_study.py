@@ -12,6 +12,7 @@
 #     "anndata",
 #     "squidpy",
 #     "spatial-rx[demo]",
+#     "wigglystuff>=0.5.32",
 # ]
 #
 # [tool.uv.sources]
@@ -27,13 +28,16 @@ app = marimo.App(width="medium")
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # seqFISH landmarks
+    # Gut landmarks (SPF ileum)
 
-    Lohoff et al. mouse gastrulation seqFISH via `squidpy.datasets.seqfish()`.
+    Xu et al. SPF ileum slice from `demos/data/ileum` (cells + 14-gene panel).
     Spatial neighbors are computed **before** the widget (k-max and radius-max
     graphs). Sliders subset those graphs. Draw landmarks, then measure along a
     path, distance from a structure, or composition inside a shape. Results
     write back to `adata.obs` keyed by `obs_names`.
+
+    The measure helpers below are documented inline with
+    [`wigglystuff.ApiDoc`](https://koaning.github.io/wigglystuff/reference/api-doc/).
     """)
     return
 
@@ -41,29 +45,35 @@ def _(mo):
 @app.cell
 def _():
     import altair as alt
+    import anndata as ad
     import marimo as mo
     import matplotlib
     import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
     import squidpy as sq
+    from wigglystuff import ApiDoc
     from spatial_rx import (
         GalleryWidget,
         LandmarksWidget,
         along_positions,
         composition,
         distances,
+        landmarks_to_geodataframe,
         write_obs,
     )
 
     alt.data_transformers.disable_max_rows()
     return (
+        ApiDoc,
         GalleryWidget,
         LandmarksWidget,
+        ad,
         along_positions,
         alt,
         composition,
         distances,
+        landmarks_to_geodataframe,
         matplotlib,
         mo,
         np,
@@ -82,11 +92,20 @@ def _(matplotlib, mo):
 
 
 @app.cell
-def _(np, pd, plt, sq):
+def _(ad, mo, np, pd, plt, sq):
     import matplotlib.colors as mcolors
 
-    CLUSTER = "celltype_mapped_refined"
-    adata = sq.datasets.seqfish()
+    CLUSTER = "cell_type"
+    _cells = pd.read_csv(mo.notebook_dir() / "data" / "ileum" / "cells.csv")
+    _expr = pd.read_csv(mo.notebook_dir() / "data" / "ileum" / "expr.csv")
+    _obs = _cells.drop(columns=["x", "y"]).copy()
+    _obs.index = [f"c{i}" for i in range(len(_obs))]
+    adata = ad.AnnData(
+        X=_expr.to_numpy(dtype=np.float32),
+        obs=_obs,
+        var=pd.DataFrame(index=_expr.columns.astype(str)),
+    )
+    adata.obsm["spatial"] = _cells[["x", "y"]].to_numpy(dtype=float)
     adata.obs[CLUSTER] = pd.Categorical(adata.obs[CLUSTER].astype(str))
     _cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     _cats = list(adata.obs[CLUSTER].cat.categories)
@@ -102,7 +121,7 @@ def _(np, pd, plt, sq):
     sq.gr.spatial_neighbors(
         adata, coord_type="generic", radius=radius, key_added="spatial_radius"
     )
-    gene_panel = [str(g) for g in adata.var_names[:12]]
+    gene_panel = [str(g) for g in adata.var_names]
     return CLUSTER, adata, gene_panel
 
 
@@ -110,30 +129,30 @@ def _(np, pd, plt, sq):
 def _():
     RECIPE_SPECS = [
         {
-            "id": "Mesoderm axis",
+            "id": "Crypt–villus axis",
             "kind": "crypt_villus",
-            "draw": "Spline along a mesoderm domain",
+            "draw": "Spline along the crypt–villus axis",
             "measure": "Gradient (along)",
-            "description": "Project cells onto a spline for a 0-1 spatial axis (zonation / pseudospace).",
+            "description": "Project cells onto a spline for a 0-1 spatial axis (mucosal pseudospace / zonation).",
         },
         {
-            "id": "Tissue compartment",
+            "id": "GALT compartment",
             "kind": "galt",
-            "draw": "Closed shape around a domain",
+            "draw": "Closed shape around a lymphoid domain",
             "measure": "Composition",
             "description": "Cell-type composition inside an arbitrary polygon — the widget differentiator vs neighborhood enrichment.",
         },
         {
-            "id": "Distance from structure",
+            "id": "Distance from mucosa",
             "kind": "mucosal_belt",
-            "draw": "Line or spline along a boundary",
+            "draw": "Line or spline along the mucosal boundary",
             "measure": "Gradient (perpendicular)",
             "description": "Distance-from-landmark as a continuous covariate for scanpy plotting.",
         },
         {
             "id": "Gene along a path",
             "kind": "gene_along",
-            "draw": "Spline through tissue",
+            "draw": "Spline through ileum tissue",
             "measure": "Gene (along)",
             "description": "Mean expression along the same 0-1 arc coordinate.",
         },
@@ -170,7 +189,7 @@ def _(mo):
     return get_lm_pick, get_measure_pick, set_lm_pick, set_measure_pick
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(RECIPE_SPECS, recipe_gallery_ui):
     _idx = int(recipe_gallery_ui.value.get("selected_index", 0) or 0)
     if _idx < 0 or _idx >= len(RECIPE_SPECS):
@@ -179,7 +198,7 @@ def _(RECIPE_SPECS, recipe_gallery_ui):
     return (use_case,)
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(RECIPE_SCENES, use_case):
     recipe_scene = RECIPE_SCENES[use_case]
     return (recipe_scene,)
@@ -306,7 +325,7 @@ def _(alt, np, pd):
     def sequential_range(theme="dark"):
         if theme == "dark":
             return ("#6b7280", "#f87171")
-        return ("#e5e7eb", "#b91c1c")
+        return ("#f3e6d4", "#ff0099")
 
     def kde_row_heatmap(df, value_col, row_order, title, xlabel, x_min=0.0, x_max=None, n_bins=128, theme="dark"):
         from scipy.stats import gaussian_kde
@@ -457,6 +476,19 @@ def _(alt, np, pd):
     return altair_theme, kde_gene_heatmap, kde_row_heatmap
 
 
+@app.cell(hide_code=True)
+def _(ApiDoc, along_positions, composition, distances, mo, write_obs):
+    measure_apidocs = mo.accordion(
+        {
+            "distances": mo.ui.anywidget(ApiDoc(distances, width=640)),
+            "composition": mo.ui.anywidget(ApiDoc(composition, width=640)),
+            "along_positions": mo.ui.anywidget(ApiDoc(along_positions, width=640)),
+            "write_obs": mo.ui.anywidget(ApiDoc(write_obs, width=640)),
+        }
+    )
+    return (measure_apidocs,)
+
+
 @app.cell
 def _(
     CLUSTER,
@@ -470,6 +502,7 @@ def _(
     kde_gene_heatmap,
     kde_row_heatmap,
     landmark_pick,
+    landmarks_to_geodataframe,
     landmarks_ui,
     mo,
     plot_type,
@@ -482,12 +515,13 @@ def _(
     landmarks_ui.assign_obs_mask(adata, "in_sel", selection_id=_sid)
     _lid = landmark_pick.value
     _lms = [lm for lm in landmarks_ui.landmarks if str(lm.get("id")) == _lid]
+    _gdf = landmarks_to_geodataframe(_lms)
     _groups = list(adata.obs[CLUSTER].astype(str).unique())
 
-    if not _lms:
+    if len(_gdf) == 0:
         chart = mo.md("_Add a landmark on the map to unlock measurements._")
     elif plot_type.value == "Distance":
-        _d = distances(adata, _lms, obs_key=CLUSTER, obs_names=_names)
+        _d = distances(adata, _gdf, obs_key=CLUSTER, obs_names=_names)
         if _d.empty:
             chart = mo.md("_No distance rows for this landmark / selection._")
         else:
@@ -508,7 +542,7 @@ def _(
                 theme,
             )
     elif plot_type.value == "Gradient (perpendicular)":
-        _d = distances(adata, _lms, obs_key=CLUSTER, obs_names=_names)
+        _d = distances(adata, _gdf, obs_key=CLUSTER, obs_names=_names)
         if _d.empty:
             chart = mo.md("_No distance rows for this landmark / selection._")
         else:
@@ -525,7 +559,7 @@ def _(
                 theme=theme,
             ) or mo.md("_No cells in distance bins._")
     elif plot_type.value == "Composition":
-        _c = composition(adata, _lms, obs_key=CLUSTER, obs_names=_names)
+        _c = composition(adata, _gdf, obs_key=CLUSTER, obs_names=_names)
         if _c.empty:
             chart = mo.md("_Need a **shape** landmark that covers cells._")
         else:
@@ -542,7 +576,7 @@ def _(
                 theme,
             )
     elif plot_type.value == "Gene (along)":
-        _p = along_positions(adata, _lms, obs_key=CLUSTER, obs_names=_names)
+        _p = along_positions(adata, _gdf, obs_key=CLUSTER, obs_names=_names)
         if _p.empty:
             chart = mo.md("_Need a **line** or **spline** near cells for Gene (along)._")
         else:
@@ -559,7 +593,7 @@ def _(
                 theme=theme,
             ) or mo.md("_No expression along this path._")
     elif plot_type.value == "Gene (perpendicular)":
-        _d = distances(adata, _lms, obs_key=CLUSTER, obs_names=_names)
+        _d = distances(adata, _gdf, obs_key=CLUSTER, obs_names=_names)
         if _d.empty:
             chart = mo.md("_No distance rows for this landmark / selection._")
         else:
@@ -577,7 +611,7 @@ def _(
                 theme=theme,
             ) or mo.md("_No expression vs distance._")
     else:
-        _p = along_positions(adata, _lms, obs_key=CLUSTER, obs_names=_names)
+        _p = along_positions(adata, _gdf, obs_key=CLUSTER, obs_names=_names)
         if _p.empty:
             chart = mo.md("_Need a **line** or **spline** landmark for Gradient (along)._")
         else:
@@ -613,7 +647,7 @@ def _(GalleryWidget, RECIPE_SPECS, mo):
 
 
 @app.cell(hide_code=True)
-def _(chart, measure_controls, mo, recipe_gallery_ui):
+def _(chart, measure_apidocs, measure_controls, mo, recipe_gallery_ui):
     mo.vstack(
         [
             mo.vstack(
@@ -625,6 +659,17 @@ def _(chart, measure_controls, mo, recipe_gallery_ui):
                 gap=0.35,
             ),
             mo.vstack([measure_controls, chart], gap=0.5),
+            mo.vstack(
+                [
+                    mo.md("### Measure API"),
+                    mo.md(
+                        "Signature and return columns via "
+                        "[`wigglystuff.ApiDoc`](https://koaning.github.io/wigglystuff/reference/api-doc/)."
+                    ),
+                    measure_apidocs,
+                ],
+                gap=0.35,
+            ),
         ]
     )
     return

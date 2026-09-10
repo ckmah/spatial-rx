@@ -13,6 +13,11 @@ export function withHood(item) {
   return { ...DEFAULT_HOOD, ...item };
 }
 
+/** Replace landmarks on the model. */
+export function setLandmarks(model, landmarks) {
+  model.set("landmarks", landmarks);
+}
+
 export function applyActiveCategory(model, col) {
   model.set("active_category", col.name);
   model.set("active_genes", []);
@@ -64,6 +69,11 @@ export function setGeneScaleMode(model, mode) {
 }
 
 export function setGeneLog1p(model, enabled) {
+  if (model.get("gene_expression_logged")) {
+    model.set("gene_log1p", false);
+    model.save_changes();
+    return;
+  }
   model.set("gene_log1p", !!enabled);
   model.save_changes();
 }
@@ -132,10 +142,7 @@ export function patchNeighborhood(
 }
 
 export function patchLandmark(model, index, patch, landmarks) {
-  model.set(
-    "landmarks",
-    landmarks.map((lm, i) => (i === index ? { ...lm, ...patch } : lm)),
-  );
+  setLandmarks(model, landmarks.map((lm, i) => (i === index ? { ...lm, ...patch } : lm)));
   model.save_changes();
 }
 
@@ -183,9 +190,53 @@ export function deleteLandmark(
   selectedIndex,
 ) {
   const next = nextSelectedIndex("landmark", selectedKind, selectedIndex, index);
-  model.set("landmarks", removeAt(landmarks, index));
+  setLandmarks(model, removeAt(landmarks, index));
   model.set("selected_kind", next.kind);
   model.set("selected_index", next.index);
+  model.save_changes();
+}
+
+function cloneJson(value) {
+  try {
+    return structuredClone(value);
+  } catch {
+    return JSON.parse(JSON.stringify(value));
+  }
+}
+
+function nextLandmarkDuplicateId(landmarks) {
+  const used = new Set((landmarks || []).map((x) => String(x.id)));
+  for (let i = 1; ; i++) {
+    const id = `landmark ${i}`;
+    if (!used.has(id)) return id;
+  }
+}
+
+/** Clone a landmark with a new id and a slight world-space offset. */
+export function duplicateLandmark(model, index, landmarks) {
+  const src = landmarks[index];
+  if (!src) return;
+  const item = cloneJson(src);
+  item.id = nextLandmarkDuplicateId(landmarks);
+  const [xMin, xMax] = model.get("x_bounds") || [0, 1];
+  const [yMin, yMax] = model.get("y_bounds") || [0, 1];
+  const span = Math.max(
+    Math.abs(xMax - xMin),
+    Math.abs(yMax - yMin),
+    1,
+  );
+  const dx = 0.02 * span;
+  const dy = 0.02 * span;
+  if (Array.isArray(item.vertices)) {
+    item.vertices = item.vertices.map((v) => {
+      if (!Array.isArray(v) || v.length < 2) return v;
+      return [Number(v[0]) + dx, Number(v[1]) + dy, ...v.slice(2)];
+    });
+  }
+  const next = [...landmarks, item];
+  setLandmarks(model, next);
+  model.set("selected_kind", "landmark");
+  model.set("selected_index", next.length - 1);
   model.save_changes();
 }
 
@@ -202,16 +253,16 @@ export function renameSelection(model, index, name, selections) {
 export function renameLandmark(model, index, name, landmarks) {
   const next = String(name || "").trim();
   if (!next) return;
-  model.set(
-    "landmarks",
+  setLandmarks(
+    model,
     landmarks.map((lm, i) => (i === index ? { ...lm, id: next } : lm)),
   );
   model.save_changes();
 }
 
 export function toggleLandmarkHidden(model, index, landmarks) {
-  model.set(
-    "landmarks",
+  setLandmarks(
+    model,
     landmarks.map((lm, i) =>
       i === index ? { ...lm, hidden: !lm.hidden } : lm,
     ),
@@ -219,71 +270,19 @@ export function toggleLandmarkHidden(model, index, landmarks) {
   model.save_changes();
 }
 
-export function setPointSize(model, value) {
-  const v = Number(value);
-  if (!Number.isFinite(v) || v < 0) return;
-  model.set("point_size", v);
-  model.save_changes();
-}
-
-export function setPointOpacity(model, value) {
-  const v = Number(value);
-  if (!Number.isFinite(v)) return;
-  model.set("point_opacity", Math.min(1, Math.max(0.05, v)));
-  model.save_changes();
-}
-
-export function setLandmarkOpacity(model, value) {
-  const v = Number(value);
-  if (!Number.isFinite(v)) return;
-  model.set("landmark_opacity", Math.min(1, Math.max(0.05, v)));
-  model.save_changes();
-}
-
-export function setStrokeWidth(model, value) {
-  const v = Math.round(Number(value));
-  if (!Number.isFinite(v)) return;
-  model.set("stroke_width", Math.min(12, Math.max(1, v)));
-  model.save_changes();
-}
-
-export function copyLandmark(model, index, landmarks) {
-  const lm = landmarks[index];
-  if (!lm) return;
-  model.set("copied_landmark", { ...lm });
-  model.save_changes();
-}
-
-export function pasteLandmark(model, index, landmarks) {
-  const copied = model.get("copied_landmark");
-  if (!copied) return;
-  const nextId = nextNumberedId("landmark", [...landmarks, copied]);
-  const nextIdx = landmarks.length;
+export function toggleSelectionHidden(model, index, selections) {
   model.set(
-    "landmarks",
-    [...landmarks, { ...copied, id: nextId }]
-  );
-  model.set("selected_kind", "landmark");
-  model.set("selected_index", nextIdx);
-  model.save_changes();
-}
-
-function nextNumberedId(prefix, items) {
-  const used = new Set(items.map((x) => String(x.id)));
-  for (let i = 1; ; i++) {
-    const id = `${prefix} ${i}`;
-    if (!used.has(id)) return id;
-  }
-}
-
-export function setLandmarkLabel(model, index, label, landmarks) {
-  const nextLabel = String(label || "").trim();
-  if (!nextLabel) return;
-  model.set(
-    "landmarks",
-    landmarks.map((lm, i) =>
-      i === index ? { ...lm, label: nextLabel } : lm
+    "selections",
+    selections.map((sel, i) =>
+      i === index ? { ...sel, hidden: !sel.hidden } : sel,
     ),
   );
+  model.save_changes();
+}
+
+/** Ask Python to freeze the active neighborhood into a selection. */
+export function promoteNeighborhoodToSelection(model) {
+  const tick = Number(model.get("promote_tick") || 0) + 1;
+  model.set("promote_tick", tick);
   model.save_changes();
 }

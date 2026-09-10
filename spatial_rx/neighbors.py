@@ -51,7 +51,8 @@ def _as_csr(mat: Any):
         mat = csr_matrix(mat)
     else:
         mat = mat.tocsr()
-    mat = mat.astype(np.float32, copy=False)
+    # Do not mutate caller-owned graphs: copy before setdiag cleanup.
+    mat = mat.astype(np.float32, copy=False).copy()
     mat.setdiag(0)
     mat.eliminate_zeros()
     return mat

@@ -1,16 +1,19 @@
 import { useId, useMemo } from "react";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
   Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
+  ComboboxClear,
   ComboboxContent,
   ComboboxEmpty,
-  ComboboxInput,
   ComboboxItem,
   ComboboxList,
-  ComboboxTrigger,
   ComboboxValue,
+  useComboboxAnchor,
 } from "@/components/ui/combobox";
+import { cn } from "@/lib/utils";
 
 import { GENE_COLORS, MAX_ACTIVE_GENES, blendHex, formatLegendValue } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
@@ -159,7 +162,13 @@ function GenesLegend({ lm }: { lm: LandmarksModel }) {
 }
 
 function GenesScaleToggles({ lm }: { lm: LandmarksModel }) {
-  const { active_genes, color_by, gene_scale_mode, gene_log1p } = lm;
+  const {
+    active_genes,
+    color_by,
+    gene_scale_mode,
+    gene_log1p,
+    gene_expression_logged,
+  } = lm;
   if (color_by !== "continuous" || !(active_genes?.length || 0)) return null;
 
   return (
@@ -189,7 +198,10 @@ function GenesScaleToggles({ lm }: { lm: LandmarksModel }) {
         <Switch
           size="sm"
           checked={!!gene_log1p}
-          onCheckedChange={(on) => lm.setGeneLog1p(on)}
+          disabled={!!gene_expression_logged}
+          onCheckedChange={(on) => {
+            if (!gene_expression_logged) lm.setGeneLog1p(on);
+          }}
         />
       </label>
     </div>
@@ -202,6 +214,7 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
   const selected = active_genes || [];
   const atMax = selected.length >= MAX_ACTIVE_GENES;
   const [wrapRef, portalEl] = useWidgetPortalContainer();
+  const anchor = useComboboxAnchor();
 
   return (
     <div ref={wrapRef} className="flex flex-col gap-1.5">
@@ -211,54 +224,35 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
         value={selected}
         onValueChange={(next) => {
           const arr = Array.isArray(next) ? next.map(String) : [];
-          lm.setActiveGenes(arr);
+          lm.setActiveGenes(arr.slice(0, MAX_ACTIVE_GENES));
         }}
       >
-        <ComboboxTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-full justify-between bg-muted/45 px-2 font-normal text-xs hover:bg-muted/70"
-            >
-              <ComboboxValue>
-                {(value: string[] | null) => {
-                  const vals = Array.isArray(value) ? value : [];
-                  if (!vals.length) {
-                    return (
-                      <span className="text-muted-foreground">Select genes</span>
-                    );
-                  }
-                  return (
-                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-                      {vals.map((name, i) => (
-                        <span
-                          key={name}
-                          className="inline-flex max-w-full items-center gap-1 truncate"
-                        >
-                          <ColorSwatch
-                            color={GENE_COLORS[i % GENE_COLORS.length]}
-                          />
-                          {name}
-                        </span>
-                      ))}
-                    </span>
-                  );
-                }}
-              </ComboboxValue>
-            </Button>
-          }
-        />
-        <ComboboxContent
-          container={portalEl}
-          className="w-(--anchor-width) text-xs"
-        >
-          <ComboboxInput
-            showTrigger={false}
-            showClear
-            placeholder="Search"
-            className="w-auto bg-transparent text-xs shadow-none ring-0"
-          />
+        <div className="relative">
+          <ComboboxChips
+            ref={anchor}
+            className={cn(
+              "min-h-8 rounded-[var(--radius)] bg-card/60 px-2 py-1 text-xs shadow-none",
+              selected.length > 0 && "pr-8",
+            )}
+          >
+            <ComboboxValue>
+              {selected.map((name, i) => (
+                <ComboboxChip key={name} className="gap-1 text-[0.7rem]">
+                  <ColorSwatch color={GENE_COLORS[i % GENE_COLORS.length]} />
+                  {name}
+                </ComboboxChip>
+              ))}
+            </ComboboxValue>
+            <ComboboxChipsInput
+              placeholder={selected.length ? "" : "Select genes"}
+              className="min-w-16 text-xs"
+            />
+          </ComboboxChips>
+          {selected.length > 0 ? (
+            <ComboboxClear className="absolute top-1 right-1" />
+          ) : null}
+        </div>
+        <ComboboxContent container={portalEl} anchor={anchor} className="text-xs">
           <ComboboxEmpty className="text-xs">No genes found.</ComboboxEmpty>
           <ComboboxList>
             {(item) => {

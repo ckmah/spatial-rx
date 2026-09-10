@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 function isDarkTheme(node: HTMLElement | null): boolean {
   let el: HTMLElement | null = node;
@@ -49,22 +49,29 @@ function isDarkTheme(node: HTMLElement | null): boolean {
 export function useNotebookTheme(el: HTMLElement | null) {
   const [dark, setDark] = useState(() => isDarkTheme(el));
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!el) return;
     const sync = () => setDark(isDarkTheme(el));
     sync();
 
     const observer = new MutationObserver(sync);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class", "data-theme", "data-mode"],
-    });
-    if (document.body) {
-      observer.observe(document.body, {
+    const observed = new Set<Node>();
+    const watch = (node: Node | null | undefined) => {
+      if (!node || observed.has(node)) return;
+      observed.add(node);
+      observer.observe(node, {
         attributes: true,
-        attributeFilter: ["class", "data-theme", "data-mode"],
+        attributeFilter: ["class", "data-theme", "data-mode", "style"],
       });
+    };
+
+    let node: HTMLElement | null = el;
+    while (node) {
+      watch(node);
+      node = node.parentElement;
     }
+    watch(document.documentElement);
+    watch(document.body);
 
     const media = window.matchMedia?.("(prefers-color-scheme: dark)");
     media?.addEventListener("change", sync);

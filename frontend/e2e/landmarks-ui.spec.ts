@@ -334,9 +334,9 @@ test.describe("LandmarksWidget UI regressions", () => {
     const active = overlay.find((r: any) => r.index === 0);
     expect(active?.selected).toBe(true);
     expect(active?.pointCount).toBeGreaterThan(0);
-    // Active selection strengthens point stroke; outline geometry is draft-only / ephemeral.
-    expect(active?.lineWidth).toBeGreaterThan(0);
-    expect(active?.lineAlpha).toBeGreaterThan(0);
+    // Emphasis is size + dimming on the points layer — no stroke overlay.
+    expect(active?.lineWidth).toBe(0);
+    expect(active?.lineAlpha).toBe(0);
     await shot(page, "selection-selected", widget);
   });
 
@@ -412,5 +412,121 @@ test.describe("LandmarksWidget UI regressions", () => {
     await page.mouse.click(box.x + 12, box.y + 12);
     await page.waitForTimeout(100);
     expect(await getModel(page, "selected_kind")).toBe("");
+  });
+
+  test("landmark chrome has no copy/paste or SpatialData LED", async ({ page }) => {
+    const widget = page.locator(".landmarks").first();
+    await setModel(page, {
+      landmarks: [
+        {
+          id: "lm-spline",
+          type: "spline",
+          vertices: [
+            [2500, 800],
+            [2700, 1000],
+            [2900, 800],
+          ],
+          tension: 0.2,
+        },
+      ],
+      selected_kind: "landmark",
+      selected_index: 0,
+    });
+    await page.waitForTimeout(200);
+
+    await expect(page.getByRole("button", { name: "Copy landmark" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Paste landmark" })).toHaveCount(0);
+    await expect(page.getByTestId("save-landmarks")).toHaveCount(0);
+    await expect(page.getByTestId("spatialdata-led")).toHaveCount(0);
+    await shot(page, "landmark-chrome-no-save", widget);
+  });
+
+  test("info panel shows category donut by default", async ({ page }) => {
+    await page.waitForTimeout(200);
+    const panel = page.getByTestId("info-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText("Info")).toBeVisible();
+  });
+
+  test("context toolbar docks at bottom center for selected landmark", async ({ page }) => {
+    await setModel(page, {
+      landmarks: [
+        {
+          id: "lm-line",
+          type: "line",
+          vertices: [
+            [2500, 800],
+            [2800, 1000],
+          ],
+          buffer_width: 40,
+          buffer_side: "both",
+          line_style: "solid",
+          color: "#00e5ff",
+        },
+      ],
+      selected_kind: "landmark",
+      selected_index: 0,
+    });
+    await page.waitForTimeout(300);
+
+    const bar = page.getByTestId("context-selection-toolbar");
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveAttribute("data-placement", "dock");
+
+    const widget = page.locator(".landmarks").first();
+    const widgetBox = await widget.boundingBox();
+    const box = await bar.boundingBox();
+    expect(box).toBeTruthy();
+    expect(widgetBox).toBeTruthy();
+    // Near bottom of widget (not floating on geometry / under topbar).
+    expect(box!.y + box!.height).toBeGreaterThan(widgetBox!.y + widgetBox!.height * 0.6);
+
+    await page.getByTestId("context-line-style").click();
+    await page.waitForTimeout(100);
+    const landmarks = (await getModel(page, "landmarks")) as any[];
+    expect(landmarks[0].line_style).toBe("dashed");
+
+    await page.getByTestId("context-buffer-left").click();
+    await page.waitForTimeout(100);
+    const after = (await getModel(page, "landmarks")) as any[];
+    expect(after[0].buffer_side).toBe("left");
+  });
+
+  test("context toolbar promote from selection neighborhood", async ({ page }) => {
+    await setModel(page, {
+      selected_kind: "selection",
+      selected_index: 0,
+      selections: [
+        {
+          id: "lasso-1",
+          type: "polygon",
+          vertices: [
+            [2800, 600],
+            [3100, 600],
+            [3100, 900],
+            [2800, 900],
+          ],
+          neighborhood: "knn",
+          neighborhood_k: 4,
+        },
+      ],
+    });
+    await page.waitForTimeout(200);
+
+    const bar = page.getByTestId("context-selection-toolbar");
+    await expect(bar).toBeVisible();
+    await expect(page.getByTestId("context-hood-knn-mode")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const before = ((await getModel(page, "selections")) as any[]).length;
+    await page.getByTestId("promote-neighborhood").click();
+    await page.waitForTimeout(200);
+    // In harness there is no Python promote observer; tick still bumps.
+    expect(await getModel(page, "promote_tick")).toBeGreaterThan(0);
+    // Keep UI path covered even if selection count unchanged without Python.
+    expect(((await getModel(page, "selections")) as any[]).length).toBeGreaterThanOrEqual(
+      before,
+    );
   });
 });

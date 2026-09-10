@@ -7,9 +7,12 @@ typed fields.
 Point scatter, landmarks, selections, and drafts use deck.gl orthographic
 layers via `LandmarksWidget(adata, color=..., genes=...)`. AnnData is the
 analysis object: coordinates in `obsm["spatial"]`, labels in `obs`,
-expression in `X`. Chrome follows the notebook cell width. Marker radius is derived from
-median nearest-neighbor distance; opacity and default buffer are fixed
-or computed from spatial extent.
+expression in `X`. The widget holds a **reference** to the caller’s AnnData
+(and neighbor graphs); it does not `obs.copy()` or densify full `X` at
+construct. Gene names sync as a catalog; expression values encode lazily for
+`active_genes` only (≤ a few channels). Chrome follows the notebook cell width.
+Marker radius is derived from median nearest-neighbor distance; opacity and
+default buffer are fixed or computed from spatial extent.
 
 k-NN and radius neighbor graphs are computed **before** the widget with
 `squidpy.gr.spatial_neighbors` (two `key_added` values) as k_max / r_max
@@ -66,10 +69,20 @@ rather than copied from an existing widget.
 _Avoid_: template, boilerplate generator
 
 **Landmark**:
-A user-placed geometric annotation on tissue coordinates.
+A user-placed geometric annotation on tissue coordinates (point, line, spline,
+or shape). Landmarks are the durable annotation object: notebooks convert them
+to/from a GeoDataFrame (and may place that into SpatialData). See
+`docs/landmarks-spatialdata-contract.md`.
+_Avoid_: treating landmarks like ephemeral canvas-only decorations; widget-owned
+SpatialData attach/auto-save
 
 **Selection**:
-A region of tissue coordinates chosen for downstream analysis.
+A region of tissue coordinates chosen for downstream analysis (lasso, polygon,
+rectangle, ellipse). Selections stay on the widget as synced geometry; persist
+hits via `get_obs_names` / `assign_obs_mask` as `obs_names`, not positional
+indices. Selections are intentionally different from Categories / Genes /
+Landmarks layer chrome and are not written to SpatialData in M1.
+_Avoid_: layer-parity UX with landmarks; SpatialData export of selections
 
 **Gallery item**:
 One card in a gallery widget: a required title with optional description and

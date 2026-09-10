@@ -1,22 +1,69 @@
-"""Landmark measurements on AnnData (tidy DataFrames + obs write-back)."""
+"""Landmark measurements on AnnData (tidy DataFrames + obs write-back).
+
+Measure helpers take a landmarks `geopandas.GeoDataFrame` (build with
+`spatial_rx.landmarks_to_geodataframe` from widget landmark dicts).
+
+Required columns
+----------------
+geometry
+    Active geometry used for distance / containment / projection:
+    Point, LineString (line or densified spline), or Polygon (shape).
+id
+    Stable landmark id (string).
+type
+    One of `point`, `line`, `spline`, `shape`.
+
+Optional columns
+----------------
+buffer_width
+    Buffer half-width in tissue units (default 0). When > 0 on a line/spline,
+    `distances` / `along_positions` / `composition` restrict to that band.
+buffer_side
+    `both` (default), `left`, or `right` for single-sided buffers.
+
+Other export columns (`vertices`, `tension`, `radius`) are ignored by measure;
+they matter for widget round-trip only. See
+`docs/landmarks-spatialdata-contract.md`.
+"""
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Iterator, Sequence
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
+from anndata import AnnData
+from geopandas import GeoDataFrame
 
 
 def write_obs(
-    adata: Any,
+    adata: AnnData,
     df: pd.DataFrame,
     column: str,
     value_col: str,
     *,
     obs_name_col: str = "obs_name",
 ) -> None:
-    """Write a per-cell measurement into ``adata.obs``, aligned by ``obs_name``."""
+    """Write a per-cell measurement column into `adata.obs`.
+
+    Aligns rows of `df` to cells by `obs_name` (matching `adata.obs_names`),
+    then assigns `df[value_col]` into `adata.obs[column]`. Missing cells stay
+    NaN. No-op when `df` is empty or lacks the name column.
+
+    Parameters
+    ----------
+    adata :
+        Target AnnData (mutated in place).
+    df :
+        Tidy measurement frame, typically from `distances` or `along_positions`.
+    column :
+        New or existing `obs` column to write.
+    value_col :
+        Column in `df` holding the numeric values (e.g. "distance", "s").
+    obs_name_col :
+        Column in `df` with cell ids (default "obs_name").
+    """
     if df is None or df.empty or obs_name_col not in df.columns:
         return
     names = df[obs_name_col].astype(str).to_numpy()
@@ -27,6 +74,12 @@ def write_obs(
 
 
 def cardinal_sample(vertices, tension=0.0, n_per_seg=20, closed=False):
+    """Densify cardinal-spline control points into a polyline.
+
+    Shared by GeoDataFrame export. `tension` is in [0, 1] (widget default 0).
+    Open curves with two points return those points unchanged; closed curves
+    need at least three distinct vertices.
+    """
     pts = [(float(x), float(y)) for x, y in vertices]
     if closed:
         if len(pts) >= 2 and pts[0] == pts[-1]:
@@ -82,50 +135,45 @@ def cardinal_sample(vertices, tension=0.0, n_per_seg=20, closed=False):
     return out
 
 
-def landmark_geoms(landmarks):
-    from shapely.geometry import LineString, Point, Polygon
-
-    geoms = {}
-    for lm in landmarks:
-        if lm.get("hidden"):
+def _landmark_rows(
+    landmarks: GeoDataFrame,
+) -> Iterator[tuple[str, str, object, float, str]]:
+    """Yield (id, type, geometry, buffer_width, buffer_side) from a GeoDataFrame."""
+    if landmarks is None or len(landmarks) == 0:
+        return
+    cols = getattr(landmarks, "columns", [])
+    for _, row in landmarks.iterrows():
+        geom = row.geometry
+        if geom is None or getattr(geom, "is_empty", False):
             continue
-        kind = lm.get("type", "point")
+        kind = str(row.get("type") or "point")
         if kind == "gradient":
             kind = "spline"
-        verts = lm.get("vertices") or []
-        data_pts = [(float(v[0]), float(v[1])) for v in verts]
-        lid = str(lm.get("id"))
-        if kind == "point" and data_pts:
-            geoms[lid] = ("point", Point(data_pts[0]))
-        elif kind == "line" and len(data_pts) >= 2:
-            geoms[lid] = ("line", LineString(data_pts))
-        elif kind == "spline":
-            sampled = cardinal_sample(data_pts, float(lm.get("tension") or 0.0))
-            if len(sampled) >= 2:
-                geoms[lid] = ("spline", LineString(sampled))
-        elif kind == "shape":
-            sampled = cardinal_sample(
-                data_pts, float(lm.get("tension") or 0.0), closed=True
-            )
-            if len(sampled) >= 3:
-                ring = list(sampled)
-                if ring[0] != ring[-1]:
-                    ring.append(ring[0])
-                geoms[lid] = ("shape", Polygon(ring))
-    return geoms
+        width = 0.0
+        if "buffer_width" in cols and row.get("buffer_width") is not None:
+            width = float(row["buffer_width"])
+        side = "both"
+        if "buffer_side" in cols and row.get("buffer_side") is not None:
+            side = str(row["buffer_side"])
+        yield str(row.get("id") or ""), kind, geom, width, side
 
 
-def buffer_polygon(lm, ltype, geom):
-    """Band around a line/spline from landmark buffer_width / buffer_side."""
+def buffer_polygon(geom, ltype, *, buffer_width: float = 0.0, buffer_side: str = "both"):
+    """Polygon band around a line/spline from buffer_width / buffer_side.
+
+    Returns None when the landmark is not a line/spline, width is <= 0, or
+    geometry is not a LineString. buffer_side is "both" (default), "left", or
+    "right" (right reverses the line for single-sided buffer).
+    """
     from shapely.geometry import LineString
 
     if ltype not in ("line", "spline") or geom.geom_type != "LineString":
         return None
-    width = float(lm.get("buffer_width") or 0)
+    width = float(buffer_width or 0)
     if width <= 0:
         return None
     line = geom
-    side = lm.get("buffer_side") or "both"
+    side = buffer_side or "both"
     if side == "right":
         line = LineString(list(line.coords)[::-1])
         return line.buffer(width, single_sided=True)
@@ -134,7 +182,7 @@ def buffer_polygon(lm, ltype, geom):
     return line.buffer(width)
 
 
-def _xy_groups(adata, obs_key: str, spatial_key: str):
+def _xy_groups(adata: AnnData, obs_key: str, spatial_key: str):
     xy = np.asarray(adata.obsm[spatial_key], dtype=float)
     names = np.asarray(adata.obs_names.astype(str))
     groups = np.asarray(adata.obs[obs_key]).astype(str)
@@ -151,27 +199,48 @@ def _subset_indices(names: np.ndarray, obs_names: Sequence[str] | None) -> np.nd
 
 
 def distances(
-    adata: Any,
-    landmarks: Sequence[dict],
+    adata: AnnData,
+    landmarks: GeoDataFrame,
     *,
     obs_key: str,
     spatial_key: str = "spatial",
     obs_names: Sequence[str] | None = None,
 ) -> pd.DataFrame:
-    """Distance to landmark centerline; if buffer > 0, only cells inside the band."""
-    import geopandas as gpd
+    """Per-cell distance to landmark geometry in tissue coordinates.
 
+    Distance is Euclidean to each row's `geometry` (point, line, densified
+    spline, or shape polygon). When a line/spline has `buffer_width` > 0, only
+    cells inside that band are returned. Pair with `write_obs` to store a
+    column such as `dist_<landmark_id>`.
+
+    Parameters
+    ----------
+    adata :
+        AnnData with `obsm[spatial_key]` xy and `obs[obs_key]` labels.
+    landmarks :
+        Landmarks GeoDataFrame. Required: `geometry`, `id`, `type`. Optional:
+        `buffer_width`, `buffer_side` (see module docstring).
+    obs_key :
+        `obs` column copied into the returned `group` field.
+    spatial_key :
+        `obsm` key for coordinates (default "spatial").
+    obs_names :
+        Optional cell subset (e.g. `widget.get_obs_names(...)`). None uses all
+        cells.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per included cell: `obs_name`, `point_index`, `landmark_id`,
+        `landmark_type`, `group`, `distance`.
+    """
     x, y, names, groups = _xy_groups(adata, obs_key, spatial_key)
     indices = _subset_indices(names, obs_names)
     points = gpd.GeoSeries(gpd.points_from_xy(x, y))
     rows = []
-    for lm in landmarks:
-        geoms = landmark_geoms([lm])
-        if not geoms:
-            continue
-        lid, (ltype, geom) = next(iter(geoms.items()))
+    for lid, ltype, geom, width, side in _landmark_rows(landmarks):
         dist = points.distance(geom).to_numpy()
-        poly = buffer_polygon(lm, ltype, geom)
+        poly = buffer_polygon(geom, ltype, buffer_width=width, buffer_side=side)
         if poly is not None:
             inside = points.intersects(poly).to_numpy()
         else:
@@ -193,31 +262,52 @@ def distances(
 
 
 def composition(
-    adata: Any,
-    landmarks: Sequence[dict],
+    adata: AnnData,
+    landmarks: GeoDataFrame,
     *,
     obs_key: str,
     spatial_key: str = "spatial",
     obs_names: Sequence[str] | None = None,
 ) -> pd.DataFrame:
-    """Composition inside a shape, or inside a line/spline buffer band."""
-    import geopandas as gpd
+    """Cell-type composition inside a shape or line/spline buffer.
 
+    For `shape` landmarks, counts cells whose coordinates fall in the polygon
+    `geometry`. For line/spline landmarks, requires `buffer_width` > 0 and
+    counts cells inside that band. Returns tidy counts and proportions per
+    `obs_key` group.
+
+    Parameters
+    ----------
+    adata :
+        AnnData with `obsm[spatial_key]` and `obs[obs_key]`.
+    landmarks :
+        Landmarks GeoDataFrame. Required: `geometry`, `id`, `type`. Optional:
+        `buffer_width`, `buffer_side`. Typically one closed `shape` (or a
+        buffered line/spline).
+    obs_key :
+        Categorical `obs` column whose levels become `group`.
+    spatial_key :
+        `obsm` key for coordinates (default "spatial").
+    obs_names :
+        Optional cell subset. None uses all cells.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns: `landmark_id`, `group`, `count`, `proportion`, `n_total`.
+        Empty when no landmark covers any selected cells.
+    """
     x, y, names, groups = _xy_groups(adata, obs_key, spatial_key)
     indices = _subset_indices(names, obs_names)
     points = gpd.GeoSeries(gpd.points_from_xy(x, y))
     cand = np.zeros(len(x), dtype=bool)
     cand[indices] = True
     rows = []
-    for lm in landmarks:
-        geoms = landmark_geoms([lm])
-        if not geoms:
-            continue
-        lid, (ltype, geom) = next(iter(geoms.items()))
+    for lid, ltype, geom, width, side in _landmark_rows(landmarks):
         if ltype == "shape":
             region = geom
         else:
-            region = buffer_polygon(lm, ltype, geom)
+            region = buffer_polygon(geom, ltype, buffer_width=width, buffer_side=side)
             if region is None:
                 continue
         mask = cand & points.intersects(region).to_numpy()
@@ -240,17 +330,46 @@ def composition(
 
 
 def along_positions(
-    adata: Any,
-    landmarks: Sequence[dict],
+    adata: AnnData,
+    landmarks: GeoDataFrame,
     *,
     obs_key: str,
     spatial_key: str = "spatial",
     obs_names: Sequence[str] | None = None,
     radius: float | None = None,
 ) -> pd.DataFrame:
-    """Project cells onto line/spline; membership uses buffer when set."""
-    import geopandas as gpd
+    """Project cells onto a line/spline as a normalized arc coordinate `s`.
 
+    Each included cell gets `s` in [0, 1] along the landmark (start → end),
+    plus perpendicular `distance`. Membership: if `buffer_width` > 0, cells
+    inside the buffer band; otherwise cells within `radius` of the centerline
+    (default ~5% of the larger spatial span). Pair with `write_obs` to store
+    `s` on `adata.obs`.
+
+    Parameters
+    ----------
+    adata :
+        AnnData with `obsm[spatial_key]` and `obs[obs_key]`.
+    landmarks :
+        Landmarks GeoDataFrame with line or spline `geometry` (points/shapes
+        are skipped). Required: `geometry`, `id`, `type`. Optional:
+        `buffer_width`, `buffer_side`.
+    obs_key :
+        `obs` column copied into `group`.
+    spatial_key :
+        `obsm` key for coordinates (default "spatial").
+    obs_names :
+        Optional cell subset. None uses all cells.
+    radius :
+        Fallback inclusion radius when the landmark has no buffer. None
+        derives a span-based default.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns: `obs_name`, `point_index`, `landmark_id`, `landmark_type`,
+        `group`, `s`, `distance`.
+    """
     x, y, names, groups = _xy_groups(adata, obs_key, spatial_key)
     indices = _subset_indices(names, obs_names)
     points = gpd.GeoSeries(gpd.points_from_xy(x, y))
@@ -260,15 +379,11 @@ def along_positions(
         else 0.05 * max(float(np.ptp(x) or 1.0), float(np.ptp(y) or 1.0))
     )
     rows = []
-    for lm in landmarks:
-        geoms = landmark_geoms([lm])
-        if not geoms:
-            continue
-        lid, (ltype, geom) = next(iter(geoms.items()))
+    for lid, ltype, geom, width, side in _landmark_rows(landmarks):
         if ltype not in ("line", "spline") or geom.geom_type != "LineString":
             continue
         dist = points.distance(geom).to_numpy()
-        poly = buffer_polygon(lm, ltype, geom)
+        poly = buffer_polygon(geom, ltype, buffer_width=width, buffer_side=side)
         if poly is not None:
             inside = points.intersects(poly).to_numpy()
         else:

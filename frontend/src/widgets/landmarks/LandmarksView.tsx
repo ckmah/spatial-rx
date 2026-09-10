@@ -4,21 +4,32 @@ import { useNotebookTheme } from "@/hooks/use-notebook-theme";
 import { cn } from "@/lib/utils";
 
 import {
-  ControlPanel,
   LayersPanel,
-  MobileSectionChrome,
+  InfoPanel,
+  MinimapPanel,
+  SelectionToolbar,
   Topbar,
-  type PanelSectionId,
+  LandmarkCanvasMenu,
 } from "./chrome";
 import { mountEngine, type EngineHandle } from "./engine";
-import type { AnyModel } from "./helpers";
+import {
+  GEOMETRY_MODE_IDS,
+  INTERACTION_MODE_IDS,
+  LANDMARK_MODE_IDS,
+  type AnyModel,
+} from "./helpers";
 import { useLandmarksModel } from "./use-landmarks-model";
 import { useWidgetFullscreen } from "./use-widget-fullscreen";
 
-const SHELL_HEIGHT = 700;
+const SHELL_HEIGHT = 550;
 const MIN_HEIGHT = 400;
 const MAX_HEIGHT = 1400;
 const NARROW_BREAKPOINT = 640;
+const ALL_MODES = [
+  ...INTERACTION_MODE_IDS,
+  ...GEOMETRY_MODE_IDS,
+  ...LANDMARK_MODE_IDS,
+];
 
 export function LandmarksView({
   model,
@@ -27,7 +38,7 @@ export function LandmarksView({
 }: {
   hostEl: HTMLElement;
   model: AnyModel;
-  /** Dev harness can pass a taller initial shell height; notebooks keep 700px default. */
+  /** Dev harness can pass a taller initial shell height; notebooks keep 550px default. */
   defaultHeight?: number;
 }) {
   const dark = useNotebookTheme(hostEl.parentElement);
@@ -35,9 +46,9 @@ export function LandmarksView({
   const plotHostRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EngineHandle | null>(null);
+  const [engine, setEngine] = useState<EngineHandle | null>(null);
   const [shellHeight, setShellHeight] = useState(defaultHeight);
   const [narrow, setNarrow] = useState(false);
-  const [openSection, setOpenSection] = useState<PanelSectionId | null>(null);
   const savedHeightRef = useRef<number | null>(null);
   const wasFullscreenRef = useRef(false);
 
@@ -52,6 +63,18 @@ export function LandmarksView({
 
   useEffect(() => {
     const el = rootRef.current;
+    if (!el) return;
+    const onToggle = () => {
+      void toggle();
+    };
+    el.addEventListener("landmarks-toggle-fullscreen", onToggle);
+    return () => {
+      el.removeEventListener("landmarks-toggle-fullscreen", onToggle);
+    };
+  }, [toggle]);
+
+  useEffect(() => {
+    const el = rootRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width ?? el.clientWidth;
@@ -61,10 +84,6 @@ export function LandmarksView({
     setNarrow(el.clientWidth < NARROW_BREAKPOINT);
     return () => ro.disconnect();
   }, []);
-
-  useEffect(() => {
-    if (!narrow) setOpenSection(null);
-  }, [narrow]);
 
   useEffect(() => {
     if (isFullscreen && !wasFullscreenRef.current) {
@@ -90,9 +109,11 @@ export function LandmarksView({
     if (!host) return;
     const engine = mountEngine({ model, host });
     engineRef.current = engine;
+    setEngine(engine);
     return () => {
       engine.destroy();
       engineRef.current = null;
+      setEngine(null);
     };
     // Remount when Vite HMR replaces mountEngine (landmarks.js changes).
   }, [model, mountEngine]);
@@ -167,7 +188,7 @@ export function LandmarksView({
           onWheel={(e) => e.stopPropagation()}
         >
           <Topbar
-            modes={lm.modes}
+            modes={ALL_MODES}
             mode={lm.mode}
             onMode={(mode) => lm.setMode(mode)}
             fullscreen={isFullscreen}
@@ -180,12 +201,17 @@ export function LandmarksView({
           />
         </div>
 
+        <SelectionToolbar lm={lm} />
+
         {narrow ? (
-          <MobileSectionChrome
-            lm={lm}
-            open={openSection}
-            onOpenChange={setOpenSection}
-          />
+          <div
+            className="landmarks__chrome-dock landmarks__chrome-dock--left landmarks__chrome-dock--narrow-stack"
+            onMouseDown={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+          >
+            <InfoPanel lm={lm} engine={engine} />
+            <LayersPanel lm={lm} />
+          </div>
         ) : (
           <>
             <div
@@ -200,10 +226,18 @@ export function LandmarksView({
               onMouseDown={(e) => e.stopPropagation()}
               onWheel={(e) => e.stopPropagation()}
             >
-              <ControlPanel lm={lm} />
+              <InfoPanel lm={lm} engine={engine} />
+            </div>
+            <div
+              className="landmarks__chrome-minimap"
+              onMouseDown={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
+            >
+              <MinimapPanel lm={lm} engine={engine} dark={dark} />
             </div>
           </>
         )}
+        <LandmarkCanvasMenu lm={lm} engine={engine} />
       </div>
     </div>
   );

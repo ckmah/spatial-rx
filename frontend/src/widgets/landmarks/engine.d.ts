@@ -1,5 +1,5 @@
 export type EngineHandle = {
-  zoomBy(delta: number): void;
+  zoomBy(delta: number, opts?: { animate?: boolean; duration?: number }): void;
   resetZoom(): void;
   resize(): void;
   getViewState(): {
@@ -9,6 +9,13 @@ export type EngineHandle = {
     maxZoom?: number;
     [key: string]: unknown;
   } | null;
+  setViewState(
+    partial: Record<string, unknown>,
+    opts?: { animate?: boolean; duration?: number },
+  ): void;
+  subscribeViewState(fn: (viewState: Record<string, unknown>) => void): () => void;
+  getViewportWorldBounds(): [number, number, number, number] | null;
+  panTo(x: number, y: number, opts?: { animate?: boolean; duration?: number }): void;
   getSelectionOverlay(): Array<{
     index: number;
     selected: boolean;
@@ -32,6 +39,15 @@ export type EngineHandle = {
     k: number;
   };
   getHover(): { kind: string; index: number } | null;
+  subscribeHover(fn: (hover: { kind: string; index: number } | null) => void): () => void;
+  subscribeLandmarkMenu(
+    fn: (evt: {
+      kind: "landmark";
+      index: number;
+      clientX: number;
+      clientY: number;
+    }) => void,
+  ): () => void;
   getInspectPin(): { kind: string; index: number } | null;
   destroy(): void;
 };

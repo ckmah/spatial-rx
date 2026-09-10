@@ -95,6 +95,12 @@ export declare function deleteLandmark(
   selectedIndex: number,
 ): void;
 
+export declare function duplicateLandmark(
+  model: AnyModel,
+  index: number,
+  landmarks: LandmarkItem[],
+): void;
+
 export declare function renameSelection(
   model: AnyModel,
   index: number,
@@ -115,26 +121,10 @@ export declare function toggleLandmarkHidden(
   landmarks: LandmarkItem[],
 ): void;
 
-export declare function setPointSize(model: AnyModel, value: number): void;
-export declare function setPointOpacity(model: AnyModel, value: number): void;
-export declare function setLandmarkOpacity(model: AnyModel, value: number): void;
-export declare function setStrokeWidth(model: AnyModel, value: number): void;
-
-export declare function copyLandmark(
+export declare function toggleSelectionHidden(
   model: AnyModel,
   index: number,
-  landmarks: LandmarkItem[],
+  selections: SelectionItem[],
 ): void;
 
-export declare function pasteLandmark(
-  model: AnyModel,
-  index: number,
-  landmarks: LandmarkItem[],
-): void;
-
-export declare function setLandmarkLabel(
-  model: AnyModel,
-  index: number,
-  label: string,
-  landmarks: LandmarkItem[],
-): void;
+export declare function promoteNeighborhoodToSelection(model: AnyModel): void;

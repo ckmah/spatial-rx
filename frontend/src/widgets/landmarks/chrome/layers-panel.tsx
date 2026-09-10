@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import {
   Accordion,
   AccordionContent,
@@ -24,19 +25,15 @@ import { GenesCombobox } from "./genes-legend";
 import {
   PANEL_INSET,
   SECTION_TRIGGER,
+  SECTION_CONTENT,
   FLOAT_PANEL,
-  type PanelSectionId,
 } from "./sections";
 import { ChevronRightIcon } from "lucide-react";
 
 export function LayersPanel({
   lm,
-  forceSection,
-  embedded = false,
 }: {
   lm: LandmarksModel;
-  forceSection?: PanelSectionId;
-  embedded?: boolean;
 }) {
   const {
     selections,
@@ -48,49 +45,28 @@ export function LayersPanel({
     gene_columns,
     active_genes,
     color_by,
-    landmark_opacity,
   } = lm;
   const genesActive = color_by === "continuous" && (active_genes?.length || 0) > 0;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [menuContainer, setMenuContainer] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setMenuContainer(
+      (rootRef.current?.closest(
+        ".spatial-rx-widget, .landmarks",
+      ) as HTMLElement | null) ?? null,
+    );
+  }, []);
 
   const accordion = (
     <Accordion
-      className={cn(forceSection && "landmarks-section-solo")}
-      {...(forceSection
-        ? { type: "single" as const, value: forceSection, collapsible: true }
-        : {
-            type: "multiple" as const,
-            defaultValue: ["selections", "categories", "genes", "landmarks"],
-          })}
+      type="multiple"
+      defaultValue={["categories", "genes", "selections", "landmarks"]}
     >
-      <AccordionItem value="selections" className="border-b">
-        <AccordionTrigger className={SECTION_TRIGGER}>Selections</AccordionTrigger>
-        <AccordionContent className="px-0 pb-2">
-          {selections.length ? (
-            <ItemGroup className="max-h-40 gap-0.5 overflow-y-auto">
-              {selections.map((sel, i) => (
-                <LayerRow
-                  key={`${sel.id}-${i}`}
-                  active={selected_kind === "selection" && selected_index === i}
-                  color={SELECTION_COLORS[i % SELECTION_COLORS.length]}
-                  swatchVariant="selection"
-                  label={sel.id}
-                  onSelect={() => lm.select("selection", i)}
-                  onRename={(next) => lm.renameSelection(i, next)}
-                  onDelete={() => lm.deleteSelection(i)}
-                />
-              ))}
-            </ItemGroup>
-          ) : (
-            <FieldDescription>No selections yet.</FieldDescription>
-          )}
-        </AccordionContent>
-      </AccordionItem>
-
       {category_columns.length ? (
         <AccordionItem value="categories" className="border-b">
           <AccordionTrigger className={SECTION_TRIGGER}>Categories</AccordionTrigger>
-          <AccordionContent className="px-0 pb-2">
-            <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
+          <AccordionContent className={SECTION_CONTENT}>
+            <div className="flex flex-col gap-0.5">
               {category_columns.map((col) => {
                 const isShown = !genesActive && col.name === active_category;
                 return (
@@ -144,29 +120,65 @@ export function LayersPanel({
         </AccordionItem>
       ) : null}
 
-      {gene_columns.length ? (
-        <AccordionItem value="genes" className="border-b">
-          <AccordionTrigger className={SECTION_TRIGGER}>Genes</AccordionTrigger>
-          <AccordionContent className="px-0 pb-2">
+      <AccordionItem value="genes" className="border-b">
+        <AccordionTrigger className={SECTION_TRIGGER}>Genes</AccordionTrigger>
+        <AccordionContent className={SECTION_CONTENT}>
+          {gene_columns.length ? (
             <GenesCombobox lm={lm} />
-          </AccordionContent>
-        </AccordionItem>
-      ) : null}
+          ) : (
+            <FieldDescription>
+              No genes loaded. Pass genes=… to LandmarksWidget (default: all
+              var names) or call set_expression.
+            </FieldDescription>
+          )}
+        </AccordionContent>
+      </AccordionItem>
+
+      <AccordionItem value="selections" className="border-b">
+        <AccordionTrigger className={SECTION_TRIGGER}>Selections</AccordionTrigger>
+        <AccordionContent className={SECTION_CONTENT}>
+          {selections.length ? (
+            <ItemGroup className="gap-0.5">
+              {selections.map((sel, i) => (
+                <LayerRow
+                  key={`${sel.id}-${i}`}
+                  active={selected_kind === "selection" && selected_index === i}
+                  color={SELECTION_COLORS[i % SELECTION_COLORS.length]}
+                  swatchVariant="selection"
+                  label={sel.id}
+                  hidden={!!sel.hidden}
+                  menuContainer={menuContainer}
+                  onSelect={() => lm.select("selection", i)}
+                  onRename={(next) => lm.renameSelection(i, next)}
+                  onToggleHidden={() => lm.toggleSelectionHidden(i)}
+                  onDelete={() => lm.deleteSelection(i)}
+                />
+              ))}
+            </ItemGroup>
+          ) : (
+            <FieldDescription>No selections yet.</FieldDescription>
+          )}
+        </AccordionContent>
+      </AccordionItem>
 
       <AccordionItem value="landmarks" className="border-b-0">
         <AccordionTrigger className={SECTION_TRIGGER}>Landmarks</AccordionTrigger>
-        <AccordionContent className="px-0 pb-2">
+        <AccordionContent className={SECTION_CONTENT}>
           {landmarks.length ? (
-            <ItemGroup className="max-h-40 gap-0.5 overflow-y-auto">
+            <ItemGroup className="gap-0.5">
               {landmarks.map((lmItem, i) => (
                 <LayerRow
                   key={`${lmItem.id}-${i}`}
                   active={selected_kind === "landmark" && selected_index === i}
-                  color={LANDMARK_COLORS[i % LANDMARK_COLORS.length]}
+                  color={
+                    (typeof lmItem.color === "string" && lmItem.color) ||
+                    LANDMARK_COLORS[i % LANDMARK_COLORS.length]
+                  }
                   swatchVariant="landmark"
-                  swatchFillOpacity={landmark_opacity}
+                  swatchFillOpacity={0.28}
                   label={lmItem.id}
                   hidden={!!lmItem.hidden}
+                  menuContainer={menuContainer}
                   onSelect={() => lm.select("landmark", i)}
                   onRename={(next) => lm.renameLandmark(i, next)}
                   onToggleHidden={() => lm.toggleLandmarkHidden(i)}
@@ -182,19 +194,18 @@ export function LayersPanel({
     </Accordion>
   );
 
-  if (embedded) {
-    return (
-      <div className={cn("min-h-0 overflow-y-auto py-0", PANEL_INSET)}>
-        {accordion}
-      </div>
-    );
-  }
-
   return (
-    <Card className={FLOAT_PANEL}>
-      <CardContent className={cn("min-h-0 overflow-y-auto py-0", PANEL_INSET)}>
-        {accordion}
-      </CardContent>
-    </Card>
+    <div ref={rootRef} className="landmarks__layers-panel">
+      <Card className={FLOAT_PANEL}>
+        <CardContent
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            PANEL_INSET,
+          )}
+        >
+          {accordion}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -63,15 +63,7 @@ export function useWidgetFullscreen(
     return () => document.removeEventListener("fullscreenchange", syncFromDom);
   }, [syncFromDom]);
 
-  useEffect(() => {
-    if (mode !== "overlay") return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") finishExit();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mode, finishExit]);
-
+  // Exit fullscreen with F (toolbar / shortcut) — not Escape, which cancels drafts.
   const isActive = useCallback(() => {
     const node = rootRef.current;
     if (modeRef.current !== "off") return true;

@@ -18,7 +18,6 @@ from tests.helpers import adata_xy, graph  # noqa: E402
 
 FIXTURE_KEYS = [
     "mode",
-    "modes",
     "selections",
     "landmarks",
     "selected_kind",
@@ -29,21 +28,17 @@ FIXTURE_KEYS = [
     "active_genes",
     "gene_scale_mode",
     "gene_log1p",
+    "gene_expression_logged",
     "color_by",
-    "continuous_palette",
     "legend_labels",
     "legend_title",
     "type_neighborhoods",
-    "default_tension",
+    "default_buffer_width",
     "neighbor_radius_max",
     "neighbor_k_max",
     "x_bounds",
     "y_bounds",
-    "n_points",
     "point_size",
-    "point_opacity",
-    "landmark_opacity",
-    "stroke_width",
     "points_data",
     "point_palette",
     "category_codes",
@@ -54,10 +49,8 @@ FIXTURE_KEYS = [
     "radius_indptr",
     "radius_indices",
     "radius_distances",
-    "axes_pixel_bounds",
     "color_vmin",
     "color_vmax",
-    "plot_background",
 ]
 
 

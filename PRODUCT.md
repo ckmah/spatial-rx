@@ -37,7 +37,7 @@ Notebook-native toolkit: best-in-class marimo/Jupyter widgets for spatial omics,
 
 **Shipped widgets**
 
-- `LandmarksWidget` — draw selections and landmarks on tissue coordinates (lasso, rectangle, ellipse; point, line, spline, shape); gene/color controls; persist hits via `get_obs_names`.
+- `LandmarksWidget` — draw selections and landmarks on tissue coordinates (lasso, rectangle, ellipse; point, line, spline, shape); gene/color controls; selection hits via `get_obs_names` / `assign_obs_mask`; landmarks are durable SpatialData annotations per `docs/landmarks-spatialdata-contract.md` (M1).
 - `GalleryWidget` — selectable image cards for recipes or use cases; synced selection via `selected_index`.
 
 **Technical constraints**

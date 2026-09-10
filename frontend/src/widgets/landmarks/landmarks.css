@@ -10,10 +10,14 @@
   color-scheme: inherit;
   position: relative;
   box-sizing: border-box;
+  /* Browser surfaces — themed from Soft Float neutrals, not UA defaults */
+  caret-color: var(--foreground);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 45%, transparent)
+    transparent;
 
-  --lm-bg: #ffffff;
+  --lm-bg: var(--background);
   --lm-border: #e2e8f0;
-  --lm-grid: #94a3b8;
   --lm-text: #1e293b;
   --lm-text-muted: #64748b;
   --lm-tooltip-bg: #0f172a;
@@ -31,22 +35,56 @@
   --lm-chrome-inset: var(--lm-space-3);
   --lm-chrome-gap: var(--lm-space-2);
   --lm-chrome-band: 3.25rem;
+  /* Matches `.landmarks__resize` (bottom 8px + 16px hit area). */
+  --lm-resize-band: calc(8px + 16px);
   --lm-dock-width: 14rem;
 
   /* Shared Soft Float surface — panels + toolbars */
-  --lm-float-radius: calc(var(--radius) + 2px);
+  --lm-float-radius: calc(var(--radius) + 0.25rem);
   --lm-float-border: color-mix(in oklab, var(--border) 85%, transparent);
   --lm-float-bg: color-mix(in oklab, var(--card) 72%, transparent);
   --lm-float-blur: blur(14px) saturate(1.05);
   --lm-float-shadow: 0 10px 28px color-mix(in srgb, #000 12%, transparent);
 }
 
+.landmarks ::selection {
+  background: color-mix(in oklab, var(--foreground) 18%, transparent);
+  color: var(--foreground);
+}
+
+.landmarks.landmarks--dark ::selection,
+.dark .landmarks ::selection {
+  background: color-mix(in oklab, var(--foreground) 22%, transparent);
+  color: var(--foreground);
+}
+
+.landmarks ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.landmarks ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.landmarks ::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.landmarks ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
 @media (prefers-color-scheme: dark) {
   .landmarks:not(.landmarks--light) {
     color-scheme: dark;
-    --lm-bg: #1e1e1e;
+    --lm-bg: var(--background);
     --lm-border: #3a3a3a;
-    --lm-grid: #64748b;
     --lm-text: #f1f5f9;
     --lm-text-muted: #94a3b8;
     --lm-tooltip-bg: #f8fafc;
@@ -63,9 +101,8 @@
 [data-theme="dark"] .landmarks,
 [data-mode="dark"] .landmarks {
   color-scheme: dark;
-  --lm-bg: #1e1e1e;
+  --lm-bg: var(--background);
   --lm-border: #3a3a3a;
-  --lm-grid: #64748b;
   --lm-text: #f1f5f9;
   --lm-text-muted: #94a3b8;
   --lm-tooltip-bg: #f8fafc;
@@ -81,9 +118,8 @@
 
 .landmarks.landmarks--light {
   color-scheme: light;
-  --lm-bg: #ffffff;
+  --lm-bg: var(--background);
   --lm-border: #e2e8f0;
-  --lm-grid: #94a3b8;
   --lm-text: #1e293b;
   --lm-text-muted: #64748b;
   --lm-tooltip-bg: #0f172a;
@@ -218,61 +254,11 @@
   color: var(--lm-text);
 }
 
-.landmarks__legend-cats {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.landmarks__legend-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  margin: 0;
-  padding: 1px 2px;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.landmarks__legend-swatch {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  border: 1px solid color-mix(in srgb, var(--lm-halo) 35%, transparent);
-}
-
-.landmarks__legend-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--lm-text);
-}
-
 .landmarks__legend-continuous {
   display: flex;
   align-items: stretch;
   gap: 6px;
   min-height: 72px;
-}
-
-.landmarks__legend-genes {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.landmarks__legend-gene {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
 }
 
 .landmarks__legend-bar {
@@ -395,6 +381,17 @@
   opacity: 0.75;
 }
 
+.landmarks__resize:focus-visible {
+  outline: none;
+}
+
+.landmarks__resize:focus-visible::after {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--lm-bg) 80%, transparent),
+    0 0 0 3px color-mix(in oklab, var(--ring) 45%, transparent),
+    0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
 /* Stock deck.gl widgets stay mounted for behavior but must not show chrome. */
 .landmarks__plot-host .deck-widget-zoom,
 .landmarks__plot-host .deck-widget-reset-view {
@@ -412,28 +409,13 @@
   box-shadow: var(--lm-float-shadow);
 }
 
-/* Shape roles share the same float material; pill vs card is radius only. */
+/* Shape roles share the same float material; toolbars slightly rounder than panels. */
 .landmarks-float--toolbar {
-  border-radius: 9999px;
+  border-radius: calc(var(--lm-float-radius) + 0.15rem);
 }
 
 .landmarks-float--panel {
   border-radius: var(--lm-float-radius);
-}
-
-/* Back-compat aliases during migration */
-.landmarks-float-panel,
-.landmarks-float-toolbar {
-  border-radius: var(--lm-float-radius);
-  border: 1px solid var(--lm-float-border);
-  background: var(--lm-float-bg);
-  backdrop-filter: var(--lm-float-blur);
-  -webkit-backdrop-filter: var(--lm-float-blur);
-  box-shadow: var(--lm-float-shadow);
-}
-
-.landmarks-float-toolbar {
-  border-radius: 9999px;
 }
 
 .landmarks-mode-toggle [data-slot="toggle-group-item"] {
@@ -444,8 +426,7 @@
  * Layer list geometry — shared by rows + category headers.
  * Trail is a fixed right rail; rows fill remaining width of the panel.
  */
-.landmarks-float--panel,
-.landmarks-float-panel {
+.landmarks-float--panel {
   --lm-layer-row-h: 1.875rem;
   --lm-layer-row-gap: 0.375rem;
   --lm-layer-row-px: 0.375rem;
@@ -580,13 +561,11 @@
 }
 
 /* Accordion +/- sits in the same end column as delete / category eye */
-.landmarks-float--panel [data-slot="accordion-trigger"],
-.landmarks-float-panel [data-slot="accordion-trigger"] {
+.landmarks-float--panel [data-slot="accordion-trigger"] {
   gap: 0.5rem;
 }
 
-.landmarks-float--panel [data-slot="accordion-trigger"] > span:last-child,
-.landmarks-float-panel [data-slot="accordion-trigger"] > span:last-child {
+.landmarks-float--panel [data-slot="accordion-trigger"] > span:last-child {
   position: relative;
   flex: 0 0 var(--lm-trail) !important;
   width: var(--lm-trail) !important;
@@ -596,8 +575,7 @@
   margin-left: auto;
 }
 
-.landmarks-float--panel [data-slot="accordion-trigger"] > span:last-child > svg,
-.landmarks-float-panel [data-slot="accordion-trigger"] > span:last-child > svg {
+.landmarks-float--panel [data-slot="accordion-trigger"] > span:last-child > svg {
   inset: auto !important;
   top: 50% !important;
   right: 0 !important;
@@ -610,7 +588,7 @@
 .landmarks-section-trigger {
   font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
   color: var(--muted-foreground);
 }
 
@@ -618,134 +596,104 @@
   color: var(--foreground);
 }
 
-.landmarks-slider-row {
-  display: flex;
-  align-items: center;
-  gap: var(--lm-space-3);
-  min-width: 0;
-}
-
-.landmarks-slider-label {
-  flex: 0 0 6.75rem;
-  width: 6.75rem;
-  margin: 0;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  line-height: 1.2;
-  color: var(--muted-foreground);
-}
-
-.landmarks-slider-capsule {
-  position: relative;
-  flex: 1 1 auto;
-  min-width: 0;
+.landmarks-section-trigger[data-state="open"] svg {
+  color: var(--foreground);
 }
 
 .landmarks-slider-control {
+  position: relative;
   min-width: 0;
+  box-sizing: border-box;
+  height: 1.75rem;
+  padding: 3px;
+  border-radius: var(--radius);
+  /* Outer capsule — equal gutter around the inner track/fill. */
+  background: color-mix(in oklab, var(--lm-float-bg) 88%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--lm-float-border) 90%, transparent);
+  backdrop-filter: var(--lm-float-blur);
+  -webkit-backdrop-filter: var(--lm-float-blur);
 }
 
-.landmarks-slider-value {
-  position: absolute;
-  top: 50%;
-  left: 0.55rem;
-  right: auto;
-  z-index: 2;
-  transform: translateY(-50%);
-  pointer-events: none;
-  font-size: 0.625rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-  color: var(--foreground);
-  text-shadow: 0 0 6px color-mix(in oklab, var(--background) 70%, transparent);
-  white-space: nowrap;
+.landmarks--dark .landmarks-slider-control {
+  background: color-mix(in oklab, var(--card) 55%, transparent);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
 }
 
-/* Capsule value slider — fill reads the amount */
+.landmarks--light .landmarks-slider-control {
+  background: color-mix(in oklab, var(--card) 70%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent);
+}
+
+/* Capsule value slider — inner track fills the control; range flush to track. */
 .landmarks-slider-control [data-slot="slider"] {
   width: 100%;
+  height: 100% !important;
 }
 
 .landmarks-slider-control [data-slot="slider-track"] {
-  height: 1.625rem;
-  overflow: hidden;
-  border-radius: 0.5rem;
-  background: color-mix(in oklab, var(--muted) 88%, var(--foreground));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 70%, transparent);
+  height: 100%;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .landmarks-slider-control [data-slot="slider-range"] {
-  border-radius: 0.5rem;
-  background: color-mix(in oklab, var(--foreground) 22%, var(--muted));
-}
-
-.landmarks--dark .landmarks-slider-control [data-slot="slider-track"] {
-  background: color-mix(in oklab, var(--accent) 70%, #000);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%);
+  border-radius: calc(var(--radius) - 2px);
+  background: color-mix(in oklab, var(--card) 82%, var(--foreground));
+  box-shadow: none;
 }
 
 .landmarks--dark .landmarks-slider-control [data-slot="slider-range"] {
-  background: color-mix(in oklab, var(--foreground) 28%, var(--accent));
-}
-
-.landmarks--light .landmarks-slider-control [data-slot="slider-track"] {
-  background: color-mix(in oklab, var(--muted) 92%, var(--foreground));
+  background: color-mix(in oklab, var(--foreground) 22%, var(--card));
 }
 
 .landmarks--light .landmarks-slider-control [data-slot="slider-range"] {
-  background: color-mix(in oklab, var(--foreground) 14%, var(--muted));
+  background: color-mix(in oklab, var(--popover) 88%, var(--foreground));
 }
 
 .landmarks-slider-control [data-slot="slider-thumb"] {
-  width: 0.25rem;
-  height: 1rem;
-  border: 0;
-  border-radius: 9999px;
-  background: var(--foreground);
-  box-shadow: none;
-  opacity: 0.15;
-  transition: opacity 0.12s ease-out;
+  /* Quiet until hover/focus — fill encodes value; thumb is a grab affordance. */
+  opacity: 0.28;
+  background: color-mix(in oklab, var(--foreground) 55%, var(--muted-foreground));
+  /* Compose onto Radix centering — never replace -50% or tracking breaks. */
+  transform: var(--radix-slider-thumb-transform, translateX(-50%)) translateX(-2px);
+  transition: opacity 140ms ease, background-color 140ms ease;
+}
+
+.landmarks--dark .landmarks-slider-control [data-slot="slider-thumb"] {
+  background: color-mix(in oklab, var(--foreground) 70%, var(--muted-foreground));
 }
 
 .landmarks-slider-control [data-slot="slider"]:hover [data-slot="slider-thumb"],
-.landmarks-slider-control [data-slot="slider"]:focus-within [data-slot="slider-thumb"] {
-  opacity: 0.95;
+.landmarks-slider-control [data-slot="slider"]:focus-within [data-slot="slider-thumb"],
+.landmarks-slider-control [data-slot="slider-thumb"]:active {
+  background: var(--foreground);
+  opacity: 1;
+}
+
+/* Value overlays the left of the fill (DESIGN SliderRow). */
+.landmarks-slider-value {
+  position: absolute;
+  left: 0.55rem;
+  top: 50%;
+  z-index: 1;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--foreground);
+  text-shadow:
+    0 0 6px color-mix(in oklab, var(--card) 80%, transparent),
+    0 1px 0 color-mix(in oklab, var(--card) 55%, transparent);
 }
 
 .landmarks-slider-control [data-slot="slider-thumb"]:focus-visible {
-  opacity: 1;
-  outline: none;
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 45%, transparent);
-}
-
-.landmarks-stat-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--lm-space-1) var(--lm-space-2);
-}
-
-.landmarks-stat-chip {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--lm-space-1);
-  padding: 0.3rem 0.45rem;
-  border-radius: 0.375rem;
-  background: color-mix(in oklab, var(--muted) 70%, transparent);
-  font-size: 0.6875rem;
-  line-height: 1.2;
-}
-
-.landmarks-stat-chip dt {
-  color: var(--muted-foreground);
-}
-
-.landmarks-stat-chip dd {
-  margin: 0;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--foreground);
 }
 
 /* Chrome regions */
@@ -759,6 +707,23 @@
   pointer-events: none;
 }
 
+/* Sticky bottom-center context toolbar (mirrors top tools).
+   Sit above the window-size handle so the two never overlap. */
+.landmarks__chrome-context {
+  position: absolute;
+  bottom: calc(var(--lm-resize-band) + var(--lm-chrome-gap));
+  left: 50%;
+  z-index: 22;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.landmarks--fs .landmarks__chrome-context,
+.landmarks:fullscreen .landmarks__chrome-context,
+.landmarks--overlay-fs .landmarks__chrome-context {
+  bottom: var(--lm-chrome-inset);
+}
+
 .landmarks__chrome-dock {
   position: absolute;
   top: calc(var(--lm-chrome-band) + var(--lm-chrome-gap));
@@ -769,6 +734,9 @@
     100% - var(--lm-chrome-band) - (2 * var(--lm-chrome-gap)) - var(--lm-chrome-inset)
   );
   flex-direction: column;
+  gap: var(--lm-chrome-gap);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .landmarks__chrome-dock--left {
@@ -779,135 +747,76 @@
   right: var(--lm-chrome-inset);
 }
 
-.landmarks__chrome-sections {
-  position: absolute;
-  left: var(--lm-chrome-inset);
-  bottom: var(--lm-chrome-inset);
-  z-index: 20;
-  display: none;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--lm-chrome-gap);
-  pointer-events: none;
-  width: calc(100% - (2 * var(--lm-chrome-inset)));
-  max-height: calc(
-    100% - var(--lm-chrome-band) - (2 * var(--lm-chrome-gap)) - var(--lm-chrome-inset)
-  );
-}
-
-.landmarks__chrome-sheet {
-  pointer-events: auto;
+/* Layers fills remaining dock height and scrolls inside the card. */
+.landmarks__chrome-dock .landmarks__layers-panel {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  max-height: calc(100% - 3.25rem - var(--lm-chrome-gap));
   overflow: hidden;
-  gap: 0;
-  padding: 0;
 }
 
-.landmarks__chrome-sheet-head {
+.landmarks__chrome-dock .landmarks__layers-panel > [data-slot="card"] {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  flex-shrink: 0;
-  padding: 0.45rem 0.5rem 0.2rem 0.75rem;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.landmarks__chrome-sheet-body {
+.landmarks__chrome-dock--right > [data-testid="info-panel"] {
+  display: flex;
   min-height: 0;
   flex: 1 1 auto;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.landmarks__chrome-section-bar {
-  pointer-events: auto;
-  position: relative;
-  display: block;
-  max-width: 100%;
-  overflow: hidden;
-  padding-block: 0.3rem;
-}
-
-.landmarks__chrome-section-bar::before,
-.landmarks__chrome-section-bar::after {
-  content: "";
+/* Bottom-right overview; equal inset on bottom + right. Hidden on narrow. */
+.landmarks__chrome-minimap {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  z-index: 1;
-  width: 2rem;
+  right: var(--lm-chrome-inset);
+  bottom: var(--lm-chrome-inset);
+  z-index: 16;
+  width: min(11.5rem, 30vw);
   pointer-events: none;
-  opacity: 0;
-  transition: opacity 160ms ease;
 }
 
-.landmarks__chrome-section-bar::before {
-  left: 0;
-  background: linear-gradient(
-    to right,
-    color-mix(in oklab, var(--card) 92%, transparent) 0%,
-    color-mix(in oklab, var(--card) 55%, transparent) 45%,
-    transparent 100%
-  );
+.landmarks__chrome-minimap > * {
+  pointer-events: auto;
+  width: 100%;
 }
 
-.landmarks__chrome-section-bar::after {
-  right: 0;
-  background: linear-gradient(
-    to left,
-    color-mix(in oklab, var(--card) 92%, transparent) 0%,
-    color-mix(in oklab, var(--card) 55%, transparent) 45%,
-    transparent 100%
-  );
-}
-
-.landmarks__chrome-section-bar--fade-start::before,
-.landmarks__chrome-section-bar--fade-end::after {
-  opacity: 1;
-}
-
-.landmarks__chrome-section-scroll {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 0.125rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  padding-inline: 0.4rem;
-}
-
-.landmarks__chrome-section-scroll::-webkit-scrollbar {
+.landmarks--narrow .landmarks__chrome-minimap {
   display: none;
 }
 
-.landmarks-section-solo [data-slot="accordion-trigger"] {
-  display: none;
-}
-
-.landmarks-section-solo [data-slot="accordion-item"]:not([data-state="open"]) {
-  display: none;
-}
-
-.landmarks-section-solo [data-slot="accordion-item"] {
-  border: none;
-  margin: 0;
-}
-
-.landmarks-section-solo [data-slot="accordion-content"] > div {
-  padding-bottom: 0.5rem;
-}
-
-.landmarks--narrow .landmarks__chrome-sections {
-  display: flex;
-}
-
+/* Narrow: Info on top (natural height, capped); Layers fills and scrolls. */
 .landmarks--narrow .landmarks__chrome-dock {
   display: none;
+}
+
+.landmarks--narrow .landmarks__chrome-dock--narrow-stack {
+  display: flex;
+  overflow: hidden;
+}
+
+.landmarks--narrow .landmarks__chrome-dock--narrow-stack > [data-testid="info-panel"] {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  max-height: 45%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.landmarks--narrow .landmarks__chrome-dock--narrow-stack > [data-testid="info-panel"] [data-slot="card-content"] {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.landmarks--narrow .landmarks__chrome-dock--narrow-stack > .landmarks__layers-panel {
+  flex: 1 1 auto;
 }
 
 .landmarks:fullscreen .landmarks__chrome,
@@ -925,40 +834,37 @@
   );
 }
 
-/* Panel interior rhythm: more space above titles than below */
+/* Panel interior: equal inset; accordion rows share one vertical step. */
 
-.landmarks-float--panel [data-slot="card-header"],
-.landmarks-float-panel [data-slot="card-header"] {
-  padding-top: var(--lm-space-1);
-  padding-bottom: var(--lm-space-2);
+.landmarks-float--panel [data-slot="card-header"].sr-only {
+  /* Keep a11y title out of the padding box. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.landmarks-float--panel [data-slot="accordion-item"],
-.landmarks-float-panel [data-slot="accordion-item"] {
-  margin-top: var(--lm-space-1);
-}
-
-.landmarks-float--panel [data-slot="accordion-item"]:first-child,
-.landmarks-float-panel [data-slot="accordion-item"]:first-child {
+.landmarks-float--panel [data-slot="accordion-item"] {
   margin-top: 0;
 }
 
-/* Soft Float chrome tooltips (shadcn TooltipContent). */
+.landmarks-float--panel [data-slot="accordion-content"] > div {
+  /* AccordionContent wraps children; SECTION_CONTENT owns open-state padding. */
+  padding-top: 0;
+}
+
+/* Opaque chrome tooltips (portaled into widget; no glass). */
 .landmarks-tooltip {
   max-width: 16rem;
-  border: 1px solid var(--lm-float-border, color-mix(in srgb, var(--border) 70%, transparent));
-  background: var(--lm-float-bg, color-mix(in srgb, var(--card) 88%, transparent));
-  color: var(--foreground);
-  box-shadow: var(--lm-float-shadow, 0 8px 24px rgba(0, 0, 0, 0.12));
-  backdrop-filter: blur(var(--lm-float-blur, 12px));
-  -webkit-backdrop-filter: blur(var(--lm-float-blur, 12px));
-  font-size: 0.6875rem;
-  font-weight: 500;
-  line-height: 1.3;
-  padding: 0.35rem 0.55rem;
-  border-radius: 0.5rem;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 .landmarks-tooltip-arrow {
-  background: var(--lm-float-bg, color-mix(in srgb, var(--card) 88%, transparent)) !important;
-  fill: var(--lm-float-bg, color-mix(in srgb, var(--card) 88%, transparent)) !important;
+  background: var(--popover) !important;
+  fill: var(--popover) !important;
 }

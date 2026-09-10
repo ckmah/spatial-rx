@@ -1,3 +1,45 @@
+/** Keyboard shortcuts for the landmarks canvas (see engine handleKeyDown). */
+export const KEYBOARD_SHORTCUTS: { action: string; keys: string }[] = [
+  { action: "Pointer", keys: "V" },
+  { action: "Move", keys: "H" },
+  { action: "Lasso", keys: "L" },
+  { action: "Square", keys: "R" },
+  { action: "Circle", keys: "O" },
+  { action: "Selection polygon", keys: "G" },
+  { action: "Point", keys: "1" },
+  { action: "Line", keys: "2" },
+  { action: "Spline", keys: "3" },
+  { action: "Shape", keys: "4" },
+  { action: "Zoom in", keys: "=" },
+  { action: "Zoom out", keys: "-" },
+  { action: "Reset view", keys: "0" },
+  { action: "Full screen", keys: "F" },
+  { action: "Copy", keys: "⌘/Ctrl+C" },
+  { action: "Cut", keys: "⌘/Ctrl+X" },
+  { action: "Paste", keys: "⌘/Ctrl+V" },
+  {
+    action: "Delete selected landmark or selection",
+    keys: "⌫ / Delete",
+  },
+  { action: "Finish draft", keys: "Enter" },
+  { action: "Cancel draft / deselect", keys: "Esc" },
+];
+
+/** Mode id → tooltip shortcut glyph. */
+export const MODE_SHORTCUTS: Record<string, string> = {
+  pointer: "V",
+  move: "H",
+  lasso: "L",
+  rectangle: "R",
+  ellipse: "O",
+  polygon: "G",
+  point: "1",
+  line: "2",
+  spline: "3",
+  shape: "4",
+};
+
+/** Landmark stroke accents (dedicated; not the categorical point palette). */
 export const LANDMARK_COLORS = [
   "#00e5ff",
   "#ff2d95",
@@ -6,10 +48,13 @@ export const LANDMARK_COLORS = [
   "#7c4dff",
   "#00ffa3",
 ];
-export const SELECTION_COLORS = ["#94a3b8", "#64748b", "#a8a29e", "#78716c"];
+/** Quiet Framer-neutral selection strokes (active selection uses stronger chrome). */
+export const SELECTION_COLORS = ["#a3a3a3", "#8a8a8a", "#737373", "#c4c4c4"];
 /** Additive channels for multi-gene blend (selection order): magenta / lime / azure. */
 export const GENE_COLORS = ["#ff0099", "#b8ff00", "#00b7ff"];
 export const MAX_ACTIVE_GENES = GENE_COLORS.length;
+/** Scatter fallback when no palette is set (landmark cyan — never Tailwind blue). */
+export const FALLBACK_POINT_COLOR = LANDMARK_COLORS[0];
 export type GeneScaleMode = "independent" | "shared";
 export const BUFFERABLE = ["line", "spline", "gradient"];
 export const TENSION_TYPES = ["spline", "shape", "gradient"];
@@ -19,9 +64,9 @@ export const MODE_LABELS: Record<string, string> = {
   move: "Move",
   selection: "Selection",
   lasso: "Lasso",
-  polygon: "Polygon",
-  rectangle: "Rectangle",
-  ellipse: "Ellipse",
+  polygon: "Shape",
+  rectangle: "Square",
+  ellipse: "Circle",
   point: "Point",
   line: "Line",
   spline: "Spline",
@@ -29,26 +74,18 @@ export const MODE_LABELS: Record<string, string> = {
 };
 
 /** Top-level interaction tools (left ToggleGroup). */
-export const INTERACTION_MODE_IDS = ["pointer", "move", "selection"];
-/** Selection geometry engine modes (Selection tool uses default; no Topbar shape picker). */
-export const GEOMETRY_MODE_IDS = ["lasso", "polygon", "rectangle", "ellipse"];
+export const INTERACTION_MODE_IDS = ["pointer", "move"];
+/** Selection geometry modes (lasso dropdown on Topbar). */
+export const GEOMETRY_MODE_IDS = ["lasso", "rectangle", "ellipse", "polygon"];
 export const LANDMARK_MODE_IDS = ["point", "line", "spline", "shape"];
-
-/** @deprecated use INTERACTION_MODE_IDS + GEOMETRY_MODE_IDS */
-export const SELECT_MODE_IDS = ["pointer", "move", "lasso", "polygon", "rectangle", "ellipse"];
 
 export function isGeometryMode(mode: string) {
   return GEOMETRY_MODE_IDS.includes(mode);
 }
 
-export function isLandmarkMode(mode: string) {
-  return LANDMARK_MODE_IDS.includes(mode);
-}
-
-/** Map concrete mode → left-group interaction value (empty when landmark). */
+/** Map concrete mode → left-group interaction value (empty when landmark/geometry). */
 export function interactionFromMode(mode: string) {
   if (mode === "pointer" || mode === "move") return mode;
-  if (isGeometryMode(mode)) return "selection";
   return "";
 }
 
@@ -77,6 +114,11 @@ export type SelectionItem = {
   neighborhood?: string;
   neighborhood_radius?: number;
   neighborhood_k?: number;
+  /** Exact member point indices — preferred membership source. */
+  point_indices?: number[];
+  hidden?: boolean;
+  /** Legacy geometry (read for membership fallback only; new commits omit). */
+  vertices?: number[][];
   [key: string]: unknown;
 };
 
@@ -106,12 +148,6 @@ export function maxBufferWidth(xBounds: number[], yBounds: number[]) {
   return 0.25 * Math.min(Math.abs(xMax - xMin), Math.abs(yMax - yMin));
 }
 
-export function spatialDiag(xBounds: number[], yBounds: number[]) {
-  const [xMin, xMax] = xBounds;
-  const [yMin, yMax] = yBounds;
-  return Math.hypot(Math.abs(xMax - xMin), Math.abs(yMax - yMin));
-}
-
 export function formatParam(value: number, empty = "off") {
   if (!value) return empty;
   return value.toPrecision(3);
@@ -125,23 +161,6 @@ export function formatLegendValue(value: number | undefined | null) {
   if (a >= 100) return value.toFixed(0);
   if (a >= 10) return value.toFixed(1);
   return value.toFixed(2);
-}
-
-export type LandmarkPoint = { x: number; y: number };
-
-export const LABELABLE_TYPES = ["point", "line", "spline", "shape"];
-
-export function copyLandmark(id: string, landmarks: LandmarkItem[]): LandmarkItem | null {
-  const lm = landmarks.find((l) => l.id === id);
-  return lm ? { ...lm } : null;
-}
-
-export function pasteLandmark(
-  lm: LandmarkItem,
-  existingIds: Set<string>,
-): LandmarkItem {
-  const nextId = nextNumberedId("landmark", [...existingIds, lm] as LandmarkItem[]);
-  return { ...lm, id: nextId };
 }
 
 export function blendHex(a: string, b: string) {
@@ -166,12 +185,4 @@ export function parseHexRgb(hex: string): [number, number, number] {
     parseInt(h.slice(2, 4), 16),
     parseInt(h.slice(4, 6), 16),
   ];
-}
-
-function nextNumberedId(prefix: string, items: LandmarkItem[]): string {
-  const used = new Set(items.map((x) => String(x.id)));
-  for (let i = 1; ; i++) {
-    const id = `${prefix} ${i}`;
-    if (!used.has(id)) return id;
-  }
 }
