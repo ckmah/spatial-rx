@@ -70,6 +70,24 @@ export declare function setSelected(
 
 export declare function setMode(model: AnyModel, mode: string): void;
 
+export declare function setRenderMode(model: AnyModel, mode: string): void;
+
+export declare function setRasterBinSize(model: AnyModel, size: number): void;
+
+export declare function setRasterBasis(model: AnyModel, basis: string): void;
+
+export declare function setRasterEmbeddingKey(
+  model: AnyModel,
+  key: string,
+): void;
+
+export declare function setRasterThreshold(
+  model: AnyModel,
+  value: number,
+): void;
+
+export declare function clearRasterQuery(model: AnyModel): void;
+
 export declare function removeAt<T>(items: T[], index: number): T[];
 
 export declare function nextSelectedIndex(

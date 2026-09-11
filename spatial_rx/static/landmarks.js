@@ -83,6 +83,14 @@ const OTHER_SIZE_SCALE = 0.55;
 /** Unselected point alpha multiplier while focused. */
 const OTHER_ALPHA_SCALE = 0.28;
 const BUFFERABLE = ["line", "spline", "gradient"];
+/** Raster similarity sequential (DESIGN.md cream → magenta). */
+const RASTER_SEQ_LOW = "#f3e6d4";
+const RASTER_SEQ_HIGH = "#ff0099";
+const RASTER_DENSITY_ALPHA = 0.85;
+const RASTER_DIM_ALPHA = 0.18;
+const RASTER_QUERY_STROKE = "#111111";
+const RASTER_HOVER_STROKE = "#00e5ff";
+const RASTER_TEXTURE_MAX = 1024;
 
 /** CSS/Penner easeOutQuart for camera transitions. */
 function easeOutQuart(t) {
@@ -312,6 +320,18 @@ export function mountEngine({ model, host }) {
   let geneValues = null;
   let knnGraph = null;
   let radiusGraph = null;
+  let rasterCache = {
+    key: "",
+    rows: null,
+    cols: null,
+    counts: null,
+    features: null,
+    flatToCompact: null,
+  };
+  let rasterScores = null; // Float32Array | null
+  let rasterScoreKey = "";
+  let hoverBinIndex = -1;
+  let rasterImageCache = { key: "", image: null, bounds: null };
 
   function refreshCategoryCodes() {
     const b64 = model.get("category_codes") || "";
@@ -345,6 +365,282 @@ export function mountEngine({ model, host }) {
     return { indptr, indices, distances };
   }
   refreshNeighborGraph();
+
+  function isRasterMode() {
+    return (model.get("render_mode") || "points") === "raster";
+  }
+
+  function rasterSimilarityOn() {
+    return isRasterMode() && !!model.get("raster_similarity_enabled");
+  }
+
+  function refreshRasterArrays() {
+    const rowsB64 = model.get("raster_bin_rows") || "";
+    const colsB64 = model.get("raster_bin_cols") || "";
+    const countsB64 = model.get("raster_bin_counts") || "";
+    const featB64 = model.get("raster_features") || "";
+    const nBins = model.get("raster_n_bins") | 0;
+    const dim = model.get("raster_feature_dim") | 0;
+    const key = [
+      rowsB64.length,
+      colsB64.length,
+      countsB64.length,
+      featB64.length,
+      nBins,
+      dim,
+      model.get("raster_origin_x"),
+      model.get("raster_origin_y"),
+      model.get("raster_bin_size"),
+      model.get("raster_n_cols"),
+      model.get("raster_n_rows"),
+      rowsB64.slice(0, 24),
+      featB64.slice(0, 24),
+    ].join(":");
+    if (key === rasterCache.key) return rasterCache;
+    const rows = rowsB64 ? decodeI32Base64(rowsB64) : new Int32Array(0);
+    const cols = colsB64 ? decodeI32Base64(colsB64) : new Int32Array(0);
+    const counts = countsB64 ? decodeI32Base64(countsB64) : new Int32Array(0);
+    const features = featB64 ? decodeF32Base64(featB64) : new Float32Array(0);
+    const nCols = model.get("raster_n_cols") | 0;
+    const nRows = model.get("raster_n_rows") | 0;
+    const flatToCompact = new Int32Array(Math.max(0, nCols * nRows));
+    flatToCompact.fill(-1);
+    const n = Math.min(nBins, rows.length, cols.length, counts.length);
+    for (let i = 0; i < n; i++) {
+      const flat = (cols[i] | 0) + nCols * (rows[i] | 0);
+      if (flat >= 0 && flat < flatToCompact.length) flatToCompact[flat] = i;
+    }
+    rasterCache = { key, rows, cols, counts, features, flatToCompact, nBins: n, dim };
+    rasterScores = null;
+    rasterScoreKey = "";
+    rasterImageCache = { key: "", image: null, bounds: null };
+    return rasterCache;
+  }
+
+  function lerpHex(a, b, t) {
+    const pa = hexToRgbaBytes(a, 1);
+    const pb = hexToRgbaBytes(b, 1);
+    const u = Math.max(0, Math.min(1, t));
+    return [
+      Math.round(pa[0] + (pb[0] - pa[0]) * u),
+      Math.round(pa[1] + (pb[1] - pa[1]) * u),
+      Math.round(pa[2] + (pb[2] - pa[2]) * u),
+    ];
+  }
+
+  function cosineScoresForQuery(queryIdx) {
+    const cache = refreshRasterArrays();
+    const n = cache.nBins | 0;
+    const dim = cache.dim | 0;
+    const feats = cache.features;
+    if (queryIdx < 0 || queryIdx >= n || !dim || !feats || feats.length < n * dim) {
+      return null;
+    }
+    const key = `${cache.key}:${queryIdx}`;
+    if (rasterScoreKey === key && rasterScores) return rasterScores;
+    const scores = new Float32Array(n);
+    const qOff = queryIdx * dim;
+    for (let i = 0; i < n; i++) {
+      let dot = 0;
+      const off = i * dim;
+      for (let d = 0; d < dim; d++) dot += feats[off + d] * feats[qOff + d];
+      scores[i] = dot;
+    }
+    rasterScores = scores;
+    rasterScoreKey = key;
+    return scores;
+  }
+
+  function activeQueryBin() {
+    const pinned = model.get("raster_query_bin");
+    if (pinned != null && pinned >= 0) return pinned | 0;
+    if (hoverBinIndex >= 0) return hoverBinIndex;
+    return -1;
+  }
+
+  function pickBinAtWorld(x, y) {
+    if (!isRasterMode()) return -1;
+    const cache = refreshRasterArrays();
+    const size = Number(model.get("raster_bin_size")) || 0;
+    const nCols = model.get("raster_n_cols") | 0;
+    const nRows = model.get("raster_n_rows") | 0;
+    if (!(size > 0) || nCols <= 0 || nRows <= 0 || !cache.flatToCompact) return -1;
+    const ox = Number(model.get("raster_origin_x")) || 0;
+    const oy = Number(model.get("raster_origin_y")) || 0;
+    const col = Math.floor((x - ox) / size);
+    const row = Math.floor((y - oy) / size);
+    if (col < 0 || row < 0 || col >= nCols || row >= nRows) return -1;
+    const flat = col + nCols * row;
+    return cache.flatToCompact[flat] ?? -1;
+  }
+
+  function binPolygon(compactIdx) {
+    const cache = refreshRasterArrays();
+    if (compactIdx < 0 || compactIdx >= (cache.nBins | 0)) return null;
+    const size = Number(model.get("raster_bin_size")) || 0;
+    const ox = Number(model.get("raster_origin_x")) || 0;
+    const oy = Number(model.get("raster_origin_y")) || 0;
+    const col = cache.cols[compactIdx] | 0;
+    const row = cache.rows[compactIdx] | 0;
+    const x0 = ox + col * size;
+    const y0 = oy + row * size;
+    const x1 = x0 + size;
+    const y1 = y0 + size;
+    return [
+      [x0, y0],
+      [x1, y0],
+      [x1, y1],
+      [x0, y1],
+      [x0, y0],
+    ];
+  }
+
+  function buildRasterTexture() {
+    const cache = refreshRasterArrays();
+    const nBins = cache.nBins | 0;
+    const nCols = model.get("raster_n_cols") | 0;
+    const nRows = model.get("raster_n_rows") | 0;
+    const size = Number(model.get("raster_bin_size")) || 0;
+    if (!nBins || !nCols || !nRows || !(size > 0)) {
+      return null;
+    }
+    const queryIdx = rasterSimilarityOn() ? activeQueryBin() : -1;
+    const scores =
+      queryIdx >= 0 && (cache.dim | 0) > 0 ? cosineScoresForQuery(queryIdx) : null;
+    const threshold = Number(model.get("raster_threshold")) || 0;
+    const basis = model.get("raster_basis") || "genes";
+    const texKey = [
+      cache.key,
+      queryIdx,
+      scores ? rasterScoreKey : "density",
+      threshold,
+      hoverBinIndex,
+      model.get("raster_query_bin"),
+      basis,
+    ].join("|");
+    if (rasterImageCache.key === texKey && rasterImageCache.image) {
+      return rasterImageCache;
+    }
+
+    let tw = nCols;
+    let th = nRows;
+    const maxDim = RASTER_TEXTURE_MAX;
+    if (tw > maxDim || th > maxDim) {
+      const scale = maxDim / Math.max(tw, th);
+      tw = Math.max(1, Math.round(tw * scale));
+      th = Math.max(1, Math.round(th * scale));
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = tw;
+    canvas.height = th;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const img = ctx.createImageData(tw, th);
+    const data = img.data;
+    // transparent default
+    data.fill(0);
+
+    let maxCount = 1;
+    for (let i = 0; i < nBins; i++) {
+      const c = cache.counts[i] | 0;
+      if (c > maxCount) maxCount = c;
+    }
+
+    const ox = Number(model.get("raster_origin_x")) || 0;
+    const oy = Number(model.get("raster_origin_y")) || 0;
+    const sx = tw / nCols;
+    const sy = th / nRows;
+
+    for (let i = 0; i < nBins; i++) {
+      const col = cache.cols[i] | 0;
+      const row = cache.rows[i] | 0;
+      let t = (cache.counts[i] | 0) / maxCount;
+      let alpha = RASTER_DENSITY_ALPHA;
+      if (scores) {
+        const s = scores[i];
+        t = Math.max(0, Math.min(1, s));
+        if (t < threshold) alpha = RASTER_DIM_ALPHA;
+      }
+      const [r, g, b] = lerpHex(RASTER_SEQ_LOW, RASTER_SEQ_HIGH, t);
+      // Canvas y=0 is top; map world max row → top like neighborhood bake.
+      const px0 = Math.floor(col * sx);
+      const px1 = Math.max(px0 + 1, Math.floor((col + 1) * sx));
+      const py0 = Math.floor((nRows - 1 - row) * sy);
+      const py1 = Math.max(py0 + 1, Math.floor((nRows - row) * sy));
+      const a = Math.round(alpha * 255);
+      for (let y = py0; y < py1; y++) {
+        for (let x = px0; x < px1; x++) {
+          if (x < 0 || y < 0 || x >= tw || y >= th) continue;
+          const o = (y * tw + x) * 4;
+          data[o] = r;
+          data[o + 1] = g;
+          data[o + 2] = b;
+          data[o + 3] = a;
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const bounds = [
+      ox,
+      oy + nRows * size,
+      ox + nCols * size,
+      oy,
+    ];
+    rasterImageCache = { key: texKey, image: canvas, bounds };
+    return rasterImageCache;
+  }
+
+  function buildRasterLayers() {
+    if (!deckModules || !isRasterMode()) return [];
+    if ((model.get("raster_status") || "") === "computing") return [];
+    const baked = buildRasterTexture();
+    if (!baked?.image) return [];
+    const { BitmapLayer, PathLayer } = deckModules;
+    const layers = [
+      new BitmapLayer({
+        id: "raster-bins",
+        image: baked.image,
+        bounds: baked.bounds,
+        pickable: false,
+        textureParameters: {
+          minFilter: "nearest",
+          magFilter: "nearest",
+        },
+        parameters: OVERLAY_GL,
+        updateTriggers: {
+          image: baked.key,
+        },
+      }),
+    ];
+    const pinned = model.get("raster_query_bin");
+    const outlineIdx =
+      pinned != null && pinned >= 0
+        ? pinned | 0
+        : hoverBinIndex >= 0
+          ? hoverBinIndex
+          : -1;
+    const poly = outlineIdx >= 0 ? binPolygon(outlineIdx) : null;
+    if (poly) {
+      const stroke =
+        pinned != null && pinned >= 0 ? RASTER_QUERY_STROKE : RASTER_HOVER_STROKE;
+      layers.push(
+        new PathLayer({
+          id: "raster-query-outline",
+          data: [{ path: poly }],
+          getPath: (d) => d.path,
+          getColor: hexToRgbaBytes(stroke, 0.95),
+          getWidth: 2.5,
+          widthUnits: "pixels",
+          pickable: false,
+          parameters: OVERLAY_GL,
+          updateTriggers: {
+            getColor: [pinned, hoverBinIndex],
+            data: [outlineIdx, refreshRasterArrays().key],
+          },
+        })
+      );
+    }
+    return layers;
+  }
 
   function activeCategoryIndex() {
     const cols = model.get("category_columns") || [];
@@ -581,6 +877,36 @@ export function mountEngine({ model, host }) {
 
   function updatePointLegend() {
     if (!legend) return;
+    if (isRasterMode()) {
+      legend.innerHTML = "";
+      const title = document.createElement("div");
+      title.className = "landmarks__legend-title";
+      const basis = model.get("raster_basis") || "genes";
+      const q = model.get("raster_query_bin");
+      const querying = q != null && q >= 0;
+      title.textContent = querying
+        ? `similarity · ${basis} · bin`
+        : `density · ${basis} · bin`;
+      legend.appendChild(title);
+      const bar = document.createElement("div");
+      bar.className = "landmarks__legend-bar";
+      bar.style.background = `linear-gradient(to top, ${RASTER_SEQ_LOW}, ${RASTER_SEQ_HIGH})`;
+      const scale = document.createElement("div");
+      scale.className = "landmarks__legend-scale";
+      const hi = document.createElement("span");
+      hi.textContent = querying ? "1" : "max";
+      const lo = document.createElement("span");
+      lo.textContent = querying ? "0" : "0";
+      scale.appendChild(hi);
+      scale.appendChild(lo);
+      const row = document.createElement("div");
+      row.className = "landmarks__legend-continuous";
+      row.appendChild(bar);
+      row.appendChild(scale);
+      legend.appendChild(row);
+      legend.hidden = false;
+      return;
+    }
     const mode = model.get("color_by") || "categorical";
     const title = model.get("legend_title") || "";
     const palette = model.get("point_palette") || [];
@@ -817,10 +1143,11 @@ export function mountEngine({ model, host }) {
   }
 
   function buildPointsLayer() {
-    if (!deckModules) return null;
+    if (!deckModules) return [];
+    if (isRasterMode()) return [];
     const { ScatterplotLayer } = deckModules;
     const data = getPointsData();
-    if (!data.length) return null;
+    if (!data.length) return [];
     // point_size is radius in the same units as x/y (µm for micron data).
     const size = model.get("point_size") ?? 2;
     const roleTrigger = [
@@ -1320,6 +1647,7 @@ export function mountEngine({ model, host }) {
 
   function buildNeighborhoodLayers() {
     if (!deckModules) return [];
+    if (isRasterMode()) return [];
     const focus = cellLayerFocus();
     const hood = neighborhoodFor(focus);
     if (!focus || !hood || hood.neighborhood === "off") return [];
@@ -1483,6 +1811,7 @@ export function mountEngine({ model, host }) {
     prepareFocusGeom();
     // Selection emphasis lives on the points layer (size + dimming); no outline layers.
     return [
+      ...buildRasterLayers(),
       ...buildNeighborhoodLayers(),
       ...buildPointsLayer(),
       buildInspectHaloLayer(),
@@ -1740,14 +2069,48 @@ export function mountEngine({ model, host }) {
             return;
           }
           const hit = resolvePointerTarget(info);
-          if (hit) setSelected(hit.kind, hit.index);
-          else setSelected("", -1);
+          if (hit) {
+            setSelected(hit.kind, hit.index);
+            return;
+          }
+          if (rasterSimilarityOn() && info?.coordinate) {
+            const bin = pickBinAtWorld(info.coordinate[0], info.coordinate[1]);
+            if (bin >= 0) {
+              model.set("raster_query_bin", bin);
+              model.save_changes();
+              setDeckLayers();
+              return;
+            }
+          }
+          setSelected("", -1);
         },
         onHover: (info) => {
           if (currentMode === "pointer") {
             const hit = resolveHoverTarget(info);
-            webglCanvas.style.cursor =
-              hit?.kind === "landmark" ? "pointer" : "default";
+            if (rasterSimilarityOn() && info?.coordinate) {
+              const pinned = model.get("raster_query_bin");
+              const bin =
+                pinned != null && pinned >= 0
+                  ? -1
+                  : pickBinAtWorld(info.coordinate[0], info.coordinate[1]);
+              if (bin !== hoverBinIndex) {
+                hoverBinIndex = bin;
+                if (hoverRaf) cancelAnimationFrame(hoverRaf);
+                hoverRaf = requestAnimationFrame(() => {
+                  hoverRaf = 0;
+                  setDeckLayers();
+                });
+              }
+              webglCanvas.style.cursor =
+                hit?.kind === "landmark" || bin >= 0 ? "pointer" : "default";
+            } else {
+              if (hoverBinIndex >= 0) {
+                hoverBinIndex = -1;
+                setDeckLayers();
+              }
+              webglCanvas.style.cursor =
+                hit?.kind === "landmark" ? "pointer" : "default";
+            }
             if (sameTarget(hoverTarget, hit)) return;
             hoverTarget = hit;
             for (const fn of hoverListeners) {
@@ -1773,6 +2136,10 @@ export function mountEngine({ model, host }) {
                 /* ignore */
               }
             }
+            setDeckLayers();
+          }
+          if (hoverBinIndex >= 0) {
+            hoverBinIndex = -1;
             setDeckLayers();
           }
           if (isLandmarkDrawMode(currentMode)) {
@@ -2836,6 +3203,11 @@ export function mountEngine({ model, host }) {
       event.preventDefault();
       resetDraft();
       setSelected("", -1);
+      if ((model.get("raster_query_bin") ?? -1) >= 0) {
+        model.set("raster_query_bin", -1);
+        model.save_changes();
+      }
+      hoverBinIndex = -1;
       setDeckLayers();
       return;
     }
@@ -3044,6 +3416,51 @@ export function mountEngine({ model, host }) {
       updateUI();
       updatePointLegend();
       setDeckLayers();
+    });
+  });
+  [
+    "render_mode",
+    "raster_bin_rows",
+    "raster_bin_cols",
+    "raster_bin_counts",
+    "raster_features",
+    "raster_feature_dim",
+    "raster_n_bins",
+    "raster_n_cols",
+    "raster_n_rows",
+    "raster_origin_x",
+    "raster_origin_y",
+    "raster_bin_size",
+    "raster_status",
+    "raster_query_bin",
+    "raster_threshold",
+    "raster_similarity_enabled",
+    "raster_basis",
+  ].forEach((k) => {
+    onChange(k, () => {
+      if (
+        k === "raster_bin_rows" ||
+        k === "raster_bin_cols" ||
+        k === "raster_bin_counts" ||
+        k === "raster_features" ||
+        k === "raster_feature_dim" ||
+        k === "raster_n_bins" ||
+        k === "raster_n_cols" ||
+        k === "raster_n_rows" ||
+        k === "raster_origin_x" ||
+        k === "raster_origin_y" ||
+        k === "raster_bin_size"
+      ) {
+        rasterCache.key = "";
+        rasterScores = null;
+        rasterScoreKey = "";
+        rasterImageCache = { key: "", image: null, bounds: null };
+      }
+      if (k === "render_mode" && !isRasterMode()) {
+        hoverBinIndex = -1;
+      }
+      if (deckgl) setDeckLayers();
+      updatePointLegend();
     });
   });
 
