@@ -27,6 +27,7 @@ import {
   setMode as setModeTrait,
   setRasterBasis as setRasterBasisTrait,
   setRasterBinSize as setRasterBinSizeTrait,
+  setRasterEmbeddingDims as setRasterEmbeddingDimsTrait,
   setRasterEmbeddingKey as setRasterEmbeddingKeyTrait,
   setRasterThreshold as setRasterThresholdTrait,
   setRenderMode as setRenderModeTrait,
@@ -64,6 +65,9 @@ export type LandmarksState = {
   raster_bin_size: number;
   raster_basis: string;
   raster_embedding_key: string;
+  raster_embedding_dims: number[];
+  raster_feature_dim: number;
+  raster_feature_labels: string[];
   raster_threshold: number;
   raster_query_bin: number;
   raster_status: string;
@@ -100,6 +104,9 @@ const MODEL_KEYS: (keyof LandmarksState)[] = [
   "raster_bin_size",
   "raster_basis",
   "raster_embedding_key",
+  "raster_embedding_dims",
+  "raster_feature_dim",
+  "raster_feature_labels",
   "raster_threshold",
   "raster_query_bin",
   "raster_status",
@@ -129,6 +136,7 @@ export type LandmarksModel = LandmarksState & {
   setRasterBinSize(size: number): void;
   setRasterBasis(basis: string): void;
   setRasterEmbeddingKey(key: string): void;
+  setRasterEmbeddingDims(dims: number[]): void;
   setRasterThreshold(value: number): void;
   clearRasterQuery(): void;
   activeNeighborhood(): ReturnType<typeof neighborhoodFor>;
@@ -228,6 +236,9 @@ export function useLandmarksModel(model: AnyModel): LandmarksModel {
     },
     setRasterEmbeddingKey(key) {
       setRasterEmbeddingKeyTrait(model, key);
+    },
+    setRasterEmbeddingDims(dims) {
+      setRasterEmbeddingDimsTrait(model, dims);
     },
     setRasterThreshold(value) {
       setRasterThresholdTrait(model, value);

@@ -33,7 +33,6 @@ from .raster import (
     build_grid,
     composition_hist_window,
     default_bin_size,
-    l2_normalize_rows,
     pack_bin_arrays,
     pack_features,
 )
@@ -315,6 +314,8 @@ class LandmarksWidget(AnyWidget):
     raster_bin_size = traitlets.Float(0.0).tag(sync=True)
     raster_basis = traitlets.Unicode("genes").tag(sync=True)  # genes | embedding | composition
     raster_embedding_key = traitlets.Unicode("X_umap").tag(sync=True)
+    # Empty = all dims. Client may also mask; Python slices on rebuild when non-empty.
+    raster_embedding_dims = traitlets.List(traitlets.Int(), default_value=[]).tag(sync=True)
     # Reserved for pathway / score columns (slice A); unused in MVP.
     raster_obs_key = traitlets.Unicode("").tag(sync=True)
     raster_gene_mode = traitlets.Unicode("active").tag(sync=True)
@@ -509,6 +510,7 @@ class LandmarksWidget(AnyWidget):
             render_mode="points",
             raster_bin_size=float(init_bin_size),
             raster_basis="genes",
+            raster_embedding_dims=[],
             raster_status="",
             **knn_idx.to_sync(prefix="neighbor"),
             **radius_idx.to_sync(prefix="radius"),
@@ -778,6 +780,8 @@ class LandmarksWidget(AnyWidget):
             mat = mat.reshape(-1, 1)
         if mat.shape[0] != n:
             raise ValueError(f"obsm[{key!r}] rows {mat.shape[0]} != n_obs {n}")
+        # Pack all dims; the engine masks with ``raster_embedding_dims`` for
+        # rest-state RGB and cosine (empty = all).
         labels = [f"{key}_{i}" for i in range(mat.shape[1])]
         return mat, labels
 
@@ -862,8 +866,10 @@ class LandmarksWidget(AnyWidget):
                 self._clear_raster_sync(status=f"error:{exc}")
                 return
 
+            # Keep raw bin means for rest-state observation coloring; the engine
+            # L2-normalizes rows when scoring cosine similarity.
             if B.shape[1] > 0:
-                B = l2_normalize_rows(B)
+                B = np.asarray(B, dtype=np.float32)
 
             packs = pack_bin_arrays(assignment.rows, assignment.cols, assignment.counts)
             self.raster_origin_x = float(grid.origin_x)

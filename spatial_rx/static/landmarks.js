@@ -83,12 +83,27 @@ const OTHER_SIZE_SCALE = 0.55;
 /** Unselected point alpha multiplier while focused. */
 const OTHER_ALPHA_SCALE = 0.28;
 const BUFFERABLE = ["line", "spline", "gradient"];
-/** Raster density/similarity: black (low) → white (high). Achromatic so
- * category/selection hues can sit on top without competing chromatically. */
+/** Cream → magenta sequential (matches landmarks.py `_SEQUENTIAL_*`). */
+const RASTER_SEQ_LOW = [243, 230, 212];
+const RASTER_SEQ_HIGH = [255, 0, 153];
+/** Additive embedding channels (keep in sync with helpers GENE_COLORS). */
+const RASTER_RGB_CHANNELS = ["#ff0099", "#b8ff00", "#00b7ff"];
+
+/** Similarity: black (low) → white (high). */
 function sampleRasterGray(t) {
   const u = Math.max(0, Math.min(1, Number(t) || 0));
   const v = Math.round(u * 255);
   return [v, v, v];
+}
+
+/** Rest-state genes / composition: cream → magenta. */
+function sampleRasterMagenta(t) {
+  const u = Math.max(0, Math.min(1, Number(t) || 0));
+  return [
+    Math.round(RASTER_SEQ_LOW[0] + (RASTER_SEQ_HIGH[0] - RASTER_SEQ_LOW[0]) * u),
+    Math.round(RASTER_SEQ_LOW[1] + (RASTER_SEQ_HIGH[1] - RASTER_SEQ_LOW[1]) * u),
+    Math.round(RASTER_SEQ_LOW[2] + (RASTER_SEQ_HIGH[2] - RASTER_SEQ_LOW[2]) * u),
+  ];
 }
 
 function rasterGrayCssGradient(dir = "to top") {
@@ -98,8 +113,10 @@ function rasterGrayCssGradient(dir = "to top") {
 const RASTER_DENSITY_ALPHA = 0.85;
 const RASTER_DIM_ALPHA = 0.18;
 const RASTER_QUERY_STROKE = "#ffffff";
-const RASTER_HOVER_STROKE = "#a3a3a3";
+const RASTER_HOVER_STROKE = "#e5e5e5";
 const RASTER_TEXTURE_MAX = 1024;
+const RASTER_LANDMARK_GRAY = "#c4c4c4";
+const RASTER_WINDOW_SEGMENTS = 48;
 
 /** CSS/Penner easeOutQuart for camera transitions. */
 function easeOutQuart(t) {
@@ -445,19 +462,132 @@ export function mountEngine({ model, host }) {
     if (queryIdx < 0 || queryIdx >= n || !dim || !feats || feats.length < n * dim) {
       return null;
     }
-    const key = `${cache.key}:${queryIdx}`;
+    const dimMask = embeddingDimMask(dim);
+    const key = `${cache.key}:${queryIdx}:${dimMask.join(",")}`;
     if (rasterScoreKey === key && rasterScores) return rasterScores;
-    const scores = new Float32Array(n);
+    // Features are raw means; L2-normalize selected dims for cosine.
+    const q = new Float32Array(dimMask.length);
+    let qn = 0;
     const qOff = queryIdx * dim;
+    for (let k = 0; k < dimMask.length; k++) {
+      const v = feats[qOff + dimMask[k]] || 0;
+      q[k] = v;
+      qn += v * v;
+    }
+    qn = Math.sqrt(qn) || 1;
+    for (let k = 0; k < q.length; k++) q[k] /= qn;
+    const scores = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       let dot = 0;
+      let rn = 0;
       const off = i * dim;
-      for (let d = 0; d < dim; d++) dot += feats[off + d] * feats[qOff + d];
-      scores[i] = dot;
+      for (let k = 0; k < dimMask.length; k++) {
+        const v = feats[off + dimMask[k]] || 0;
+        rn += v * v;
+        dot += v * q[k];
+      }
+      rn = Math.sqrt(rn) || 1;
+      scores[i] = dot / rn;
     }
     rasterScores = scores;
     rasterScoreKey = key;
     return scores;
+  }
+
+  /** Empty trait = all dims. Non-embedding bases ignore the mask. */
+  function embeddingDimMask(dim) {
+    const basis = model.get("raster_basis") || "genes";
+    if (basis !== "embedding") {
+      const all = new Array(dim);
+      for (let i = 0; i < dim; i++) all[i] = i;
+      return all;
+    }
+    const raw = model.get("raster_embedding_dims") || [];
+    const picked = [];
+    const seen = new Set();
+    for (const d of raw) {
+      const i = d | 0;
+      if (i >= 0 && i < dim && !seen.has(i)) {
+        seen.add(i);
+        picked.push(i);
+      }
+    }
+    if (!picked.length) {
+      const all = new Array(dim);
+      for (let i = 0; i < dim; i++) all[i] = i;
+      return all;
+    }
+    return picked;
+  }
+
+  function columnMinMax(feats, n, dim, col) {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const v = feats[i * dim + col];
+      if (!Number.isFinite(v)) continue;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    if (!(hi > lo)) return { lo: 0, span: 1 };
+    return { lo, span: hi - lo };
+  }
+
+  /** Rest-state observation RGB for one compact bin (no similarity). */
+  function observationColorForBin(i, cache, colStats) {
+    const basis = model.get("raster_basis") || "genes";
+    const dim = cache.dim | 0;
+    const feats = cache.features;
+    const n = cache.nBins | 0;
+    if (!dim || !feats || feats.length < n * dim) {
+      return sampleRasterGray(0.35);
+    }
+    const off = i * dim;
+    if (basis === "embedding") {
+      const mask = embeddingDimMask(dim);
+      const channels = mask.slice(0, 3);
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let ci = 0; ci < channels.length; ci++) {
+        const col = channels[ci];
+        const st = colStats[col] || { lo: 0, span: 1 };
+        const t = Math.max(0, Math.min(1, (feats[off + col] - st.lo) / st.span));
+        const rgb = hexToRgbaBytes(RASTER_RGB_CHANNELS[ci % RASTER_RGB_CHANNELS.length], 1);
+        r += rgb[0] * t;
+        g += rgb[1] * t;
+        b += rgb[2] * t;
+      }
+      if (channels.length === 0) return sampleRasterGray(0.35);
+      return [
+        Math.min(255, Math.round(r)),
+        Math.min(255, Math.round(g)),
+        Math.min(255, Math.round(b)),
+      ];
+    }
+    // genes + composition: cream→magenta of a scalar summary.
+    let sum = 0;
+    let count = 0;
+    if (basis === "composition") {
+      // Purity = max category fraction (rows are histograms / means).
+      let s = 0;
+      let mx = 0;
+      for (let d = 0; d < dim; d++) {
+        const v = Math.max(0, feats[off + d] || 0);
+        s += v;
+        if (v > mx) mx = v;
+      }
+      const t = s > 1e-8 ? mx / s : 0;
+      return sampleRasterMagenta(t);
+    }
+    // genes: mean of per-column 0–1 normalized values
+    for (let d = 0; d < dim; d++) {
+      const st = colStats[d] || { lo: 0, span: 1 };
+      const t = Math.max(0, Math.min(1, (feats[off + d] - st.lo) / st.span));
+      sum += t;
+      count += 1;
+    }
+    return sampleRasterMagenta(count ? sum / count : 0);
   }
 
   function activeQueryBin() {
@@ -519,14 +649,16 @@ export function mountEngine({ model, host }) {
       queryIdx >= 0 && (cache.dim | 0) > 0 ? cosineScoresForQuery(queryIdx) : null;
     const threshold = Number(model.get("raster_threshold")) || 0;
     const basis = model.get("raster_basis") || "genes";
+    const dimsKey = (model.get("raster_embedding_dims") || []).join(",");
     const texKey = [
       cache.key,
       queryIdx,
-      scores ? rasterScoreKey : "density",
+      scores ? rasterScoreKey : "observation",
       threshold,
       hoverBinIndex,
       model.get("raster_query_bin"),
       basis,
+      dimsKey,
     ].join("|");
     if (rasterImageCache.key === texKey && rasterImageCache.image) {
       return rasterImageCache;
@@ -546,32 +678,34 @@ export function mountEngine({ model, host }) {
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     const img = ctx.createImageData(tw, th);
     const data = img.data;
-    // transparent default
     data.fill(0);
-
-    let maxCount = 1;
-    for (let i = 0; i < nBins; i++) {
-      const c = cache.counts[i] | 0;
-      if (c > maxCount) maxCount = c;
-    }
 
     const ox = Number(model.get("raster_origin_x")) || 0;
     const oy = Number(model.get("raster_origin_y")) || 0;
     const sx = tw / nCols;
     const sy = th / nRows;
+    const dim = cache.dim | 0;
+    const colStats = [];
+    if (!scores && dim > 0 && cache.features) {
+      for (let d = 0; d < dim; d++) {
+        colStats[d] = columnMinMax(cache.features, nBins, dim, d);
+      }
+    }
 
     for (let i = 0; i < nBins; i++) {
       const col = cache.cols[i] | 0;
       const row = cache.rows[i] | 0;
-      let t = (cache.counts[i] | 0) / maxCount;
       let alpha = RASTER_DENSITY_ALPHA;
+      let r;
+      let g;
+      let b;
       if (scores) {
-        const s = scores[i];
-        t = Math.max(0, Math.min(1, s));
+        const t = Math.max(0, Math.min(1, scores[i]));
         if (t < threshold) alpha = RASTER_DIM_ALPHA;
+        [r, g, b] = sampleRasterGray(t);
+      } else {
+        [r, g, b] = observationColorForBin(i, cache, colStats);
       }
-      const [r, g, b] = sampleRasterGray(t);
-      // Canvas y=0 is top; map world max row → top like neighborhood bake.
       const px0 = Math.floor(col * sx);
       const px1 = Math.max(px0 + 1, Math.floor((col + 1) * sx));
       const py0 = Math.floor((nRows - 1 - row) * sy);
@@ -589,8 +723,6 @@ export function mountEngine({ model, host }) {
       }
     }
     ctx.putImageData(img, 0, 0);
-    // Same convention as neighborhood BitmapLayer: [left, bottom, right, top].
-    // Paint flips row→canvas-y (max row at image top); bounds keep world maxY at top.
     const bounds = [
       ox,
       oy,
@@ -599,6 +731,26 @@ export function mountEngine({ model, host }) {
     ];
     rasterImageCache = { key: texKey, image: canvas, bounds };
     return rasterImageCache;
+  }
+
+  function binWindowCircle(compactIdx) {
+    const cache = refreshRasterArrays();
+    if (compactIdx < 0 || compactIdx >= (cache.nBins | 0)) return null;
+    const size = Number(model.get("raster_bin_size")) || 0;
+    if (!(size > 0)) return null;
+    const ox = Number(model.get("raster_origin_x")) || 0;
+    const oy = Number(model.get("raster_origin_y")) || 0;
+    const col = cache.cols[compactIdx] | 0;
+    const row = cache.rows[compactIdx] | 0;
+    const cx = ox + (col + 0.5) * size;
+    const cy = oy + (row + 0.5) * size;
+    const r = size; // aggregation window radius = one bin width
+    const path = [];
+    for (let i = 0; i <= RASTER_WINDOW_SEGMENTS; i++) {
+      const a = (i / RASTER_WINDOW_SEGMENTS) * Math.PI * 2;
+      path.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+    }
+    return path;
   }
 
   function buildRasterLayers() {
@@ -630,23 +782,23 @@ export function mountEngine({ model, host }) {
         : hoverBinIndex >= 0
           ? hoverBinIndex
           : -1;
-    const poly = outlineIdx >= 0 ? binPolygon(outlineIdx) : null;
-    if (poly) {
+    const windowPath = outlineIdx >= 0 ? binWindowCircle(outlineIdx) : null;
+    if (windowPath) {
       const stroke =
         pinned != null && pinned >= 0 ? RASTER_QUERY_STROKE : RASTER_HOVER_STROKE;
       layers.push(
         new PathLayer({
-          id: "raster-query-outline",
-          data: [{ path: poly }],
+          id: "raster-query-window",
+          data: [{ path: windowPath }],
           getPath: (d) => d.path,
           getColor: hexToRgbaBytes(stroke, 0.95),
-          getWidth: 2.5,
+          getWidth: 2,
           widthUnits: "pixels",
           pickable: false,
           parameters: OVERLAY_GL,
           updateTriggers: {
             getColor: [pinned, hoverBinIndex],
-            data: [outlineIdx, refreshRasterArrays().key],
+            data: [outlineIdx, refreshRasterArrays().key, model.get("raster_bin_size")],
           },
         })
       );
@@ -1237,7 +1389,9 @@ export function mountEngine({ model, host }) {
     const arrowWorld = pixelsToWorld(14);
     (model.get("landmarks") || []).forEach((lm, i) => {
       if (lm.hidden) return;
-      const hex = (typeof lm.color === "string" && lm.color) || COLORS[i % COLORS.length];
+      const rawHex =
+        (typeof lm.color === "string" && lm.color) || COLORS[i % COLORS.length];
+      const hex = isRasterMode() ? RASTER_LANDMARK_GRAY : rawHex;
       const dashed = String(lm.line_style || "solid") === "dashed";
       const selected = kind === "landmark" && i === selectedIdx;
       const alphaScale = dimOthers && !selected ? 0.62 : 1;
@@ -2077,7 +2231,7 @@ export function mountEngine({ model, host }) {
             const hit = resolveHoverTarget(info);
             // Live scrub: always recolor from the bin under the cursor while
             // hovering (pin is only the fallback when the pointer leaves).
-            if (rasterSimilarityOn() && info?.coordinate) {
+            if (isRasterMode() && info?.coordinate) {
               const bin = pickBinAtWorld(info.coordinate[0], info.coordinate[1]);
               if (bin !== hoverBinIndex) {
                 hoverBinIndex = bin;
@@ -2088,7 +2242,7 @@ export function mountEngine({ model, host }) {
                 });
               }
               webglCanvas.style.cursor =
-                hit?.kind === "landmark" || bin >= 0 ? "pointer" : "default";
+                hit?.kind === "landmark" ? "pointer" : "crosshair";
             } else {
               if (hoverBinIndex >= 0) {
                 hoverBinIndex = -1;
@@ -3422,6 +3576,9 @@ export function mountEngine({ model, host }) {
     "raster_threshold",
     "raster_similarity_enabled",
     "raster_basis",
+    "raster_embedding_dims",
+    "raster_embedding_key",
+    "raster_feature_labels",
   ].forEach((k) => {
     onChange(k, () => {
       if (

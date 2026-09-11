@@ -103,6 +103,24 @@ export function setRasterEmbeddingKey(model, key) {
   model.save_changes();
 }
 
+/** Empty array = all embedding dims. */
+export function setRasterEmbeddingDims(model, dims) {
+  const arr = Array.isArray(dims)
+    ? dims.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0)
+    : [];
+  // Dedupe, keep order.
+  const seen = new Set();
+  const ordered = [];
+  for (const d of arr) {
+    if (!seen.has(d)) {
+      seen.add(d);
+      ordered.push(d);
+    }
+  }
+  model.set("raster_embedding_dims", ordered);
+  model.save_changes();
+}
+
 export function setRasterThreshold(model, value) {
   const v = Number(value);
   if (!Number.isFinite(v)) return;

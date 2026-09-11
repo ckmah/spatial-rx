@@ -19,6 +19,7 @@ export {
   setMode,
   setRasterBasis,
   setRasterBinSize,
+  setRasterEmbeddingDims,
   setRasterEmbeddingKey,
   setRasterThreshold,
   setRenderMode,

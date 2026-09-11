@@ -33,10 +33,10 @@ def test_raster_genes_mean_builds_features():
     assert w.raster_feature_dim == 2
     raw = np.frombuffer(base64.b64decode(w.raster_features), dtype=np.float32)
     assert raw.size == w.raster_n_bins * 2
-    # Rows L2-normalized
+    # Raw bin means (engine L2-normalizes for cosine).
     B = raw.reshape(w.raster_n_bins, 2)
-    norms = np.linalg.norm(B, axis=1)
-    assert np.all((norms > 0.99) | (norms < 1e-6))
+    assert np.all(np.isfinite(B))
+    assert np.any(np.abs(B) > 0)
 
     w.raster_query_bin = 0
     assert w.raster_query_bin == 0
@@ -47,6 +47,12 @@ def test_raster_genes_mean_builds_features():
     assert w.raster_basis == "embedding"
     assert w.raster_feature_dim == 2
     assert w.raster_status == "ready"
+    # Dim mask is client-side; packed features stay full-rank.
+    w.raster_embedding_dims = [0]
+    assert w.raster_feature_dim == 2
+    assert w.raster_feature_labels == ["X_pca_0", "X_pca_1"]
+    w.raster_embedding_dims = []
+    assert w.raster_feature_dim == 2
 
     w.set_raster_basis(composition="cell_class")
     assert w.raster_basis == "composition"

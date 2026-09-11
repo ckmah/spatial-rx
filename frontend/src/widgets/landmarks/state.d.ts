@@ -81,6 +81,11 @@ export declare function setRasterEmbeddingKey(
   key: string,
 ): void;
 
+export declare function setRasterEmbeddingDims(
+  model: AnyModel,
+  dims: number[],
+): void;
+
 export declare function setRasterThreshold(
   model: AnyModel,
   value: number,

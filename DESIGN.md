@@ -138,10 +138,10 @@ Restrained achromatic chrome. Data owns saturation on the canvas.
 Landmark cyan/magenta/lime (and amber/violet/mint) for annotations only.
 Categorical points use an Okabe–Ito–based set that avoids that neon triad.
 Genes keep the additive magenta/lime/azure blend. Continuous point coloring
-defaults to warm cream → gene magenta. Raster bin density / similarity uses
-an achromatic **black → white** ramp so category and selection hues can
-overlay without fighting a saturated colormap. Selections stay
-Framer-neutral greys.
+defaults to warm cream → gene magenta. Raster rest-state observation uses
+cream→magenta (genes / composition) or additive magenta/lime/azure (embedding
+dims); similarity scrubbing uses black→white. Selections stay Framer-neutral
+greys.
 
 ### Named Rules
 
