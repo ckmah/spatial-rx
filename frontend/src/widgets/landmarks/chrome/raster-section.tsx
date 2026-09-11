@@ -1,56 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Field,
   FieldDescription,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import type { LandmarksModel } from "../use-landmarks-model";
 
-function formatBinSize(v: number): string {
-  if (!Number.isFinite(v)) return "—";
-  if (v >= 100) return v.toFixed(0);
-  if (v >= 10) return v.toFixed(1);
-  return v.toFixed(2);
-}
+/** Black → white; matches engine `sampleRasterGray`. */
+const RASTER_LEGEND_GRADIENT = "linear-gradient(to right, #000 0%, #fff 100%)";
 
 export function RasterSection({ lm }: { lm: LandmarksModel }) {
   const isRaster = lm.render_mode === "raster";
-  const [binDraft, setBinDraft] = useState(lm.raster_bin_size);
-  const debounceRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    setBinDraft(lm.raster_bin_size);
-  }, [lm.raster_bin_size]);
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
-    };
-  }, []);
-
-  const commitBinSize = (v: number) => {
-    setBinDraft(v);
-    if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => {
-      lm.setRasterBinSize(v);
-    }, 120);
-  };
-
   const status = lm.raster_status || "";
   const pinned = lm.raster_query_bin >= 0;
-
-  const span = Math.max(
-    (lm.x_bounds?.[1] ?? 1) - (lm.x_bounds?.[0] ?? 0),
-    (lm.y_bounds?.[1] ?? 1) - (lm.y_bounds?.[0] ?? 0),
-    1e-3,
-  );
-  const binMin = Math.max(span / 200, 1e-4);
-  const binMax = Math.max(span / 2, binDraft, binMin * 2);
+  const querying = pinned;
+  const basis = lm.raster_basis || "genes";
 
   return (
     <div className="flex flex-col gap-3" data-testid="raster-section">
@@ -79,32 +45,12 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
       {isRaster ? (
         <>
           <Field>
-            <FieldLabel>Bin size</FieldLabel>
-            <div className="landmarks-slider-control">
-              <span className="landmarks-slider-value" aria-hidden>
-                {formatBinSize(binDraft)}
-              </span>
-              <Slider
-                min={binMin}
-                max={binMax}
-                step={(binMax - binMin) / 100}
-                value={[Math.min(Math.max(binDraft, binMin), binMax)]}
-                onValueChange={(v) => commitBinSize(v[0] ?? binDraft)}
-                aria-label="Raster bin size"
-              />
-            </div>
-            <FieldDescription>
-              Square bins in world units (µm when spatial is µm).
-            </FieldDescription>
-          </Field>
-
-          <Field>
             <FieldLabel>Aggregate basis</FieldLabel>
             <ToggleGroup
               type="single"
               variant="outline"
               size="sm"
-              value={lm.raster_basis || "genes"}
+              value={basis}
               onValueChange={(v) => {
                 if (v) lm.setRasterBasis(v);
               }}
@@ -121,12 +67,12 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
                 Composition
               </ToggleGroupItem>
             </ToggleGroup>
-            {lm.raster_basis === "genes" ? (
+            {basis === "genes" ? (
               <FieldDescription>
                 Mean of active genes (select under Genes).
               </FieldDescription>
             ) : null}
-            {lm.raster_basis === "embedding" ? (
+            {basis === "embedding" ? (
               <div className="flex flex-col gap-1.5">
                 <Input
                   value={lm.raster_embedding_key || ""}
@@ -140,55 +86,41 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
                 </FieldDescription>
               </div>
             ) : null}
-            {lm.raster_basis === "composition" ? (
+            {basis === "composition" ? (
               <FieldDescription>
                 Category fractions for the active category column.
               </FieldDescription>
             ) : null}
           </Field>
 
-          <Field>
-            <FieldLabel>Similarity threshold</FieldLabel>
-            <div className="landmarks-slider-control">
-              <span className="landmarks-slider-value" aria-hidden>
-                {lm.raster_threshold.toFixed(2)}
-              </span>
-              <Slider
-                min={0}
-                max={1}
-                step={0.01}
-                value={[lm.raster_threshold]}
-                onValueChange={(v) => lm.setRasterThreshold(v[0] ?? 0)}
-                aria-label="Similarity threshold"
+          <Field data-testid="raster-legend">
+            <FieldLabel>
+              {querying ? `Similarity · ${basis}` : `Density · ${basis}`}
+            </FieldLabel>
+            <div className="flex flex-col gap-1">
+              <div
+                className="h-2.5 w-full rounded-sm border border-border"
+                style={{ background: RASTER_LEGEND_GRADIENT }}
+                aria-hidden
               />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>{querying ? "0" : "low"}</span>
+                <span>{querying ? "1" : "high"}</span>
+              </div>
             </div>
-            <FieldDescription>
-              Dim bins below this cosine score.
-            </FieldDescription>
           </Field>
 
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={!pinned}
-              onClick={() => lm.clearRasterQuery()}
-            >
-              Clear pin
-            </Button>
-            <FieldDescription className="m-0">
-              {status === "computing"
-                ? "Computing bins…"
-                : status.startsWith("error:")
-                  ? status
-                  : pinned
-                    ? `Pinned bin ${lm.raster_query_bin}`
-                    : lm.raster_n_bins
-                      ? `${lm.raster_n_bins} bins · hover to scrub`
-                      : "Ready"}
-            </FieldDescription>
-          </div>
+          <FieldDescription className="m-0" data-testid="raster-status">
+            {status === "computing"
+              ? "Computing bins…"
+              : status.startsWith("error:")
+                ? status
+                : pinned
+                  ? `Pinned bin ${lm.raster_query_bin} · Esc to clear`
+                  : lm.raster_n_bins
+                    ? `${lm.raster_n_bins} bins · hover to scrub · Esc to clear`
+                    : "Ready"}
+          </FieldDescription>
         </>
       ) : null}
     </div>
