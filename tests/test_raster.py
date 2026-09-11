@@ -9,10 +9,12 @@ import pytest
 
 from spatial_rx.raster import (
     aggregate_mean,
+    aggregate_mean_window,
     assign_bins,
     build_grid,
     build_raster_payload,
     composition_hist,
+    composition_hist_window,
     decode_f32,
     default_bin_size,
     l2_normalize_rows,
@@ -85,5 +87,53 @@ def test_build_raster_payload_shape():
 
 
 def test_default_bin_size_from_nn():
-    assert default_bin_size(2.0) == pytest.approx(16.0)
-    assert default_bin_size(None, point_size=0.5) == pytest.approx(10.0)
+    # DEFAULT_BIN_SIZE_NN_MULT = 4 → half the old 8× scale.
+    assert default_bin_size(2.0) == pytest.approx(8.0)
+    assert default_bin_size(None, point_size=0.5) == pytest.approx(5.0)
+
+
+def test_aggregate_mean_window_radius_extremes():
+    """Tiny window ≈ hard bin mean; huge window ≈ global mean per bin."""
+    xy = np.array(
+        [
+            [0.1, 0.1],
+            [0.2, 0.15],
+            [1.1, 0.1],
+            [1.2, 1.2],
+        ],
+        dtype=np.float64,
+    )
+    feats = np.array(
+        [
+            [1.0, 0.0],
+            [3.0, 0.0],
+            [0.0, 4.0],
+            [0.0, 8.0],
+        ],
+        dtype=np.float64,
+    )
+    grid = build_grid(xy, bin_size=1.0)
+    asg = assign_bins(xy, grid)
+    hard = aggregate_mean(feats, asg.compact_ids, asg.counts.shape[0])
+    tiny = aggregate_mean_window(xy, feats, asg, window_radius=0.01)
+    # Each bin center sits near its member cells; tiny radius recovers hard mean.
+    np.testing.assert_allclose(tiny, hard, rtol=1e-5, atol=1e-5)
+
+    huge = aggregate_mean_window(xy, feats, asg, window_radius=1e6)
+    global_mean = feats.mean(axis=0)
+    for i in range(huge.shape[0]):
+        np.testing.assert_allclose(huge[i], global_mean, rtol=1e-5)
+
+    # Neighbor-scale radius should differ from hard for at least one bin.
+    soft = aggregate_mean_window(xy, feats, asg, window_radius=1.0)
+    assert not np.allclose(soft, hard)
+
+
+def test_composition_hist_window_matches_hard_when_radius_tiny():
+    xy = np.array([[0.2, 0.2], [0.3, 0.25], [1.2, 0.2]], dtype=np.float64)
+    codes = np.array([0, 1, 1], dtype=np.int32)
+    grid = build_grid(xy, 1.0)
+    asg = assign_bins(xy, grid)
+    hard = composition_hist(codes, asg.compact_ids, n_cats=2, n_bins=asg.counts.shape[0])
+    soft = composition_hist_window(xy, codes, asg, 2, window_radius=0.05)
+    np.testing.assert_allclose(soft, hard, atol=1e-6)

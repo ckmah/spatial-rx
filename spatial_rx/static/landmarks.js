@@ -734,9 +734,10 @@ export function mountEngine({ model, host }) {
   }
 
   function activeQueryBin() {
+    // Hover wins for live scrubbing; pinned query is the idle fallback.
+    if (hoverBinIndex >= 0) return hoverBinIndex;
     const pinned = model.get("raster_query_bin");
     if (pinned != null && pinned >= 0) return pinned | 0;
-    if (hoverBinIndex >= 0) return hoverBinIndex;
     return -1;
   }
 
@@ -2369,12 +2370,10 @@ export function mountEngine({ model, host }) {
         onHover: (info) => {
           if (currentMode === "pointer") {
             const hit = resolveHoverTarget(info);
+            // Live scrub: always recolor from the bin under the cursor while
+            // hovering (pin is only the fallback when the pointer leaves).
             if (rasterSimilarityOn() && info?.coordinate) {
-              const pinned = model.get("raster_query_bin");
-              const bin =
-                pinned != null && pinned >= 0
-                  ? -1
-                  : pickBinAtWorld(info.coordinate[0], info.coordinate[1]);
+              const bin = pickBinAtWorld(info.coordinate[0], info.coordinate[1]);
               if (bin !== hoverBinIndex) {
                 hoverBinIndex = bin;
                 if (hoverRaf) cancelAnimationFrame(hoverRaf);

@@ -1,4 +1,15 @@
-"""Spatial bin assignment and feature aggregation for raster similarity."""
+"""Spatial bin assignment and feature aggregation for raster similarity.
+
+Aggregation is **windowed**: each bin's feature vector is the mean of cell
+features whose positions fall within ``window_radius`` of the bin center
+(default = ``bin_size``). That softens hard Voronoi boundaries and reads as
+higher effective resolution when bins are small.
+
+deck.gl GPU aggregation layers (``GridLayer`` / ``HeatmapLayer``) collapse to
+1–few channels for display. Similarity needs a multi-d bin×feature matrix for
+client cosine, so we build ``B`` in NumPy (KD-tree / vectorized) and keep hover
+scoring on the JS path — already fast at bin counts (~1k–10k).
+"""
 
 from __future__ import annotations
 
@@ -8,8 +19,10 @@ from typing import Any
 
 import numpy as np
 
-# Default bin edge ≈ this multiple of median nearest-neighbor distance.
-DEFAULT_BIN_SIZE_NN_MULT = 8.0
+# Halved from 8 → finer bins; windowed mean supplies smoothing.
+DEFAULT_BIN_SIZE_NN_MULT = 4.0
+# Aggregate cells within this many bin-widths of each bin center.
+DEFAULT_WINDOW_RADIUS_BINS = 1.0
 
 
 def _encode_i32(arr: np.ndarray) -> str:
@@ -47,7 +60,6 @@ class BinGrid:
         return int(self.n_cols) * int(self.n_rows)
 
     def bounds(self) -> tuple[float, float, float, float]:
-        """World AABB of the full grid (including empty cells): xmin,xmax,ymin,ymax."""
         return (
             float(self.origin_x),
             float(self.origin_x + self.n_cols * self.bin_size),
@@ -61,15 +73,19 @@ class BinAssignment:
     """Per-obs flat bin ids plus compact non-empty indexing."""
 
     grid: BinGrid
-    # Length n_obs; -1 if outside grid (should not happen when built from same xy).
     flat_ids: np.ndarray
-    # Compact index per obs (-1 if empty/outside); length n_obs.
     compact_ids: np.ndarray
-    # Flat id for each compact bin; length n_bins.
     compact_to_flat: np.ndarray
     rows: np.ndarray
     cols: np.ndarray
     counts: np.ndarray
+
+    def centers(self) -> np.ndarray:
+        """World xy of compact bin centers, shape ``(n_bins, 2)``."""
+        size = float(self.grid.bin_size)
+        cx = self.grid.origin_x + (self.cols.astype(np.float64) + 0.5) * size
+        cy = self.grid.origin_y + (self.rows.astype(np.float64) + 0.5) * size
+        return np.column_stack([cx, cy])
 
 
 def default_bin_size(median_nn: float | None, point_size: float | None = None) -> float:
@@ -77,7 +93,7 @@ def default_bin_size(median_nn: float | None, point_size: float | None = None) -
     if median_nn is not None and median_nn > 0 and np.isfinite(median_nn):
         return float(median_nn * DEFAULT_BIN_SIZE_NN_MULT)
     if point_size is not None and point_size > 0 and np.isfinite(point_size):
-        return float(point_size * 20.0)
+        return float(point_size * 10.0)
     return 1.0
 
 
@@ -98,10 +114,8 @@ def build_grid(
     xmax = float(np.max(xy[:, 0]) + pad)
     ymin = float(np.min(xy[:, 1]) - pad)
     ymax = float(np.max(xy[:, 1]) + pad)
-    # Snap origin so cells align; include max edge.
     n_cols = max(1, int(np.ceil((xmax - xmin) / size)))
     n_rows = max(1, int(np.ceil((ymax - ymin) / size)))
-    # If max lands exactly on a boundary, ceil can under-count by 0 — ensure coverage.
     if xmin + n_cols * size <= xmax:
         n_cols += 1
     if ymin + n_rows * size <= ymax:
@@ -131,7 +145,6 @@ def assign_bins(xy: np.ndarray, grid: BinGrid) -> BinAssignment:
     flat = np.full(n, -1, dtype=np.int32)
     flat[inside] = cols[inside] + grid.n_cols * rows[inside]
 
-    # Compact non-empty: stable order by flat id.
     valid = flat >= 0
     if not np.any(valid):
         empty_i32 = np.zeros(0, dtype=np.int32)
@@ -169,7 +182,7 @@ def aggregate_mean(
     compact_ids: np.ndarray,
     n_bins: int,
 ) -> np.ndarray:
-    """Mean-aggregate cell feature rows into bins. Shape ``(n_bins, d)`` float32."""
+    """Hard bin mean: only cells whose center falls in the bin."""
     feats = np.asarray(features, dtype=np.float64)
     if feats.ndim == 1:
         feats = feats.reshape(-1, 1)
@@ -193,13 +206,84 @@ def aggregate_mean(
     return out.astype(np.float32)
 
 
+def _window_member_lists(
+    xy: np.ndarray,
+    centers: np.ndarray,
+    window_radius: float,
+) -> list[Any]:
+    """For each bin center, indices of points within ``window_radius``."""
+    xy = np.asarray(xy, dtype=np.float64)
+    centers = np.asarray(centers, dtype=np.float64)
+    radius = float(window_radius)
+    n_bins = int(centers.shape[0])
+    if n_bins == 0 or xy.shape[0] == 0 or not np.isfinite(radius) or radius <= 0:
+        return [np.zeros(0, dtype=np.int64) for _ in range(n_bins)]
+
+    try:
+        from scipy.spatial import cKDTree
+
+        tree = cKDTree(xy)
+        return tree.query_ball_point(centers, r=radius, return_sorted=False)
+    except Exception:
+        members: list[np.ndarray] = []
+        r2 = radius * radius
+        for i in range(n_bins):
+            d2 = (xy[:, 0] - centers[i, 0]) ** 2 + (xy[:, 1] - centers[i, 1]) ** 2
+            members.append(np.nonzero(d2 <= r2)[0])
+        return members
+
+
+def aggregate_mean_window(
+    xy: np.ndarray,
+    features: np.ndarray,
+    assignment: BinAssignment,
+    *,
+    window_radius: float | None = None,
+) -> np.ndarray:
+    """Mean features of cells within ``window_radius`` of each bin center.
+
+    Default radius = one bin width. Empty windows fall back to the hard-bin mean.
+    """
+    feats = np.asarray(features, dtype=np.float64)
+    if feats.ndim == 1:
+        feats = feats.reshape(-1, 1)
+    if feats.ndim != 2:
+        raise ValueError("features must be (n_obs, d)")
+    xy = np.asarray(xy, dtype=np.float64)
+    n_bins = int(assignment.counts.shape[0])
+    d = int(feats.shape[1])
+    if n_bins == 0:
+        return np.zeros((0, d), dtype=np.float32)
+    if feats.shape[0] != xy.shape[0]:
+        raise ValueError("features rows must match xy rows")
+
+    radius = (
+        float(window_radius)
+        if window_radius is not None
+        else float(assignment.grid.bin_size) * DEFAULT_WINDOW_RADIUS_BINS
+    )
+    centers = assignment.centers()
+    members = _window_member_lists(xy, centers, radius)
+    out = np.zeros((n_bins, d), dtype=np.float64)
+    hard = aggregate_mean(feats, assignment.compact_ids, n_bins)
+
+    for i, idxs in enumerate(members):
+        idxs_arr = np.asarray(idxs, dtype=np.int64)
+        if idxs_arr.size == 0:
+            out[i] = hard[i]
+            continue
+        block = np.nan_to_num(feats[idxs_arr], nan=0.0, posinf=0.0, neginf=0.0)
+        out[i] = block.mean(axis=0)
+    return out.astype(np.float32)
+
+
 def composition_hist(
     codes: np.ndarray,
     compact_ids: np.ndarray,
     n_cats: int,
     n_bins: int,
 ) -> np.ndarray:
-    """Per-bin category fraction histogram. Shape ``(n_bins, n_cats)`` float32."""
+    """Hard-bin category fraction histogram. Shape ``(n_bins, n_cats)`` float32."""
     codes = np.asarray(codes, dtype=np.int32).ravel()
     ids = np.asarray(compact_ids, dtype=np.int32).ravel()
     if codes.shape[0] != ids.shape[0]:
@@ -211,13 +295,56 @@ def composition_hist(
     valid = (ids >= 0) & (codes >= 0) & (codes < n_cats)
     if not np.any(valid):
         return out.astype(np.float32)
-    # Linear index: bin * n_cats + code
     lin = ids[valid].astype(np.int64) * n_cats + codes[valid].astype(np.int64)
     counts = np.bincount(lin, minlength=n_bins * n_cats)
     out = counts.reshape(n_bins, n_cats).astype(np.float64)
     row_sums = out.sum(axis=1, keepdims=True)
     nonzero = row_sums[:, 0] > 0
     out[nonzero] /= row_sums[nonzero]
+    return out.astype(np.float32)
+
+
+def composition_hist_window(
+    xy: np.ndarray,
+    codes: np.ndarray,
+    assignment: BinAssignment,
+    n_cats: int,
+    *,
+    window_radius: float | None = None,
+) -> np.ndarray:
+    """Category fractions within ``window_radius`` of each bin center."""
+    codes = np.asarray(codes, dtype=np.int32).ravel()
+    xy = np.asarray(xy, dtype=np.float64)
+    n_bins = int(assignment.counts.shape[0])
+    n_cats = int(n_cats)
+    if n_bins == 0 or n_cats <= 0:
+        return np.zeros((n_bins, max(n_cats, 0)), dtype=np.float32)
+    if codes.shape[0] != xy.shape[0]:
+        raise ValueError("codes length must match xy rows")
+
+    radius = (
+        float(window_radius)
+        if window_radius is not None
+        else float(assignment.grid.bin_size) * DEFAULT_WINDOW_RADIUS_BINS
+    )
+    centers = assignment.centers()
+    members = _window_member_lists(xy, centers, radius)
+    out = np.zeros((n_bins, n_cats), dtype=np.float64)
+    hard = composition_hist(codes, assignment.compact_ids, n_cats, n_bins)
+
+    for i, idxs in enumerate(members):
+        idxs_arr = np.asarray(idxs, dtype=np.int64)
+        if idxs_arr.size == 0:
+            out[i] = hard[i]
+            continue
+        c = codes[idxs_arr]
+        valid = (c >= 0) & (c < n_cats)
+        if not np.any(valid):
+            out[i] = hard[i]
+            continue
+        counts = np.bincount(c[valid], minlength=n_cats)[:n_cats].astype(np.float64)
+        s = counts.sum()
+        out[i] = counts / s if s > 0 else hard[i]
     return out.astype(np.float32)
 
 
@@ -260,11 +387,17 @@ def build_raster_payload(
     *,
     feature_labels: list[str] | None = None,
     normalize: bool = True,
+    window_radius: float | None = None,
 ) -> dict[str, Any]:
-    """Assign bins and optionally aggregate + pack a feature matrix."""
+    """Assign bins and window-aggregate + pack a feature matrix."""
     grid = build_grid(xy, bin_size)
     assignment = assign_bins(xy, grid)
     n_bins = int(assignment.counts.shape[0])
+    radius = (
+        float(window_radius)
+        if window_radius is not None
+        else float(grid.bin_size) * DEFAULT_WINDOW_RADIUS_BINS
+    )
     payload: dict[str, Any] = {
         "raster_origin_x": float(grid.origin_x),
         "raster_origin_y": float(grid.origin_y),
@@ -272,6 +405,7 @@ def build_raster_payload(
         "raster_n_cols": int(grid.n_cols),
         "raster_n_rows": int(grid.n_rows),
         "raster_n_bins": n_bins,
+        "raster_window_radius": float(radius),
         **pack_bin_arrays(assignment.rows, assignment.cols, assignment.counts),
         "assignment": assignment,
     }
@@ -282,7 +416,7 @@ def build_raster_payload(
         payload["B"] = np.zeros((n_bins, 0), dtype=np.float32)
         return payload
 
-    B = aggregate_mean(features, assignment.compact_ids, n_bins)
+    B = aggregate_mean_window(xy, features, assignment, window_radius=radius)
     if normalize and B.shape[1] > 0:
         B = l2_normalize_rows(B)
     labels = list(feature_labels or [])

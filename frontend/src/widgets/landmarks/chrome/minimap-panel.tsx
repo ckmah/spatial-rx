@@ -52,14 +52,18 @@ function mapLayout(
   };
 }
 
-/** World → minimap; same orientation as the main plot. */
+/**
+ * World → minimap canvas.
+ * deck.gl OrthographicView puts world max-Y at the top of the screen; canvas
+ * y grows downward, so flip Y (maxY → row 0) to match the main plot.
+ */
 function toCanvasXY(
   x: number,
   y: number,
   layout: ReturnType<typeof mapLayout>,
 ) {
   const u = (x - layout.x0) / (layout.x1 - layout.x0 || 1);
-  const v = (y - layout.y0) / (layout.y1 - layout.y0 || 1);
+  const v = (layout.y1 - y) / (layout.y1 - layout.y0 || 1);
   return [layout.ox + u * layout.mapW, layout.oy + v * layout.mapH] as const;
 }
 
@@ -77,7 +81,8 @@ function clientToWorld(
   const v = py / Math.max(layout.mapH, 1);
   return {
     x: layout.x0 + u * (layout.x1 - layout.x0),
-    y: layout.y0 + v * (layout.y1 - layout.y0),
+    // Inverse of the Y flip in toCanvasXY.
+    y: layout.y1 - v * (layout.y1 - layout.y0),
   };
 }
 

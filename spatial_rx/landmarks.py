@@ -28,10 +28,10 @@ from .genes import (
 )
 from .neighbors import DEFAULT_K_MAX, NeighborhoodIndex
 from .raster import (
-    aggregate_mean,
+    aggregate_mean_window,
     assign_bins,
     build_grid,
-    composition_hist,
+    composition_hist_window,
     default_bin_size,
     l2_normalize_rows,
     pack_bin_arrays,
@@ -827,6 +827,8 @@ class LandmarksWidget(AnyWidget):
             grid = build_grid(xy, size)
             assignment = assign_bins(xy, grid)
             n_bins = int(assignment.counts.shape[0])
+            # Window radius = one bin width → soft neighborhood mean around each center.
+            window_radius = float(size)
             basis = str(self.raster_basis or "genes")
             labels: list[str] = []
             B = np.zeros((n_bins, 0), dtype=np.float32)
@@ -834,16 +836,24 @@ class LandmarksWidget(AnyWidget):
                 if basis == "genes":
                     feats, labels = self._gene_feature_matrix()
                     if feats.shape[1]:
-                        B = aggregate_mean(feats, assignment.compact_ids, n_bins)
+                        B = aggregate_mean_window(
+                            xy, feats, assignment, window_radius=window_radius
+                        )
                 elif basis == "embedding":
                     feats, labels = self._embedding_feature_matrix()
                     if feats.shape[1]:
-                        B = aggregate_mean(feats, assignment.compact_ids, n_bins)
+                        B = aggregate_mean_window(
+                            xy, feats, assignment, window_radius=window_radius
+                        )
                 elif basis == "composition":
                     codes, labels = self._composition_codes()
                     if labels:
-                        B = composition_hist(
-                            codes, assignment.compact_ids, len(labels), n_bins
+                        B = composition_hist_window(
+                            xy,
+                            codes,
+                            assignment,
+                            len(labels),
+                            window_radius=window_radius,
                         )
                 else:
                     self._clear_raster_sync(status=f"error:unknown basis {basis}")
