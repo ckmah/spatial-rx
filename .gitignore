@@ -11,4 +11,5 @@ build/
 demos/__marimo__/
 demos/*.lock
 frontend/node_modules/
+frontend/dev/fixture-ileum.json
 spatial_rx/static/bundled/
