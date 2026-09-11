@@ -69,7 +69,9 @@
   inset: 0;
 }
 
-.polyrender__canvas-host > div {
+/* Size only the R3F Canvas root — not Soft Float panels (minimap/HUD), which are
+   also direct children of the host via PolyrenderScene's Fragment. */
+.polyrender__canvas-host > div:not(.polyrender-float) {
   width: 100% !important;
   height: 100% !important;
 }
@@ -130,6 +132,9 @@
   left: 10px;
   bottom: 48px;
   z-index: 2;
+  width: max-content;
+  height: max-content;
+  max-width: calc(100% - 20px);
   pointer-events: none;
   user-select: none;
   display: flex;
@@ -156,6 +161,8 @@
   position: absolute;
   left: 10px;
   bottom: 8px;
+  width: max-content;
+  height: max-content;
   display: flex;
   flex-direction: column;
   gap: 2px;

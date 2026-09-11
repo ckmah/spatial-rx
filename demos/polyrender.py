@@ -16,14 +16,12 @@ app = marimo.App(width="full")
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     # PolyrenderWidget
 
     Meshify stacked 2D outlines into GLB tiles and stream them in a Soft Float /
     React Three Fiber viewer. Sample data is a small liver crop (~50 cells).
-    """
-    )
+    """)
     return
 
 
@@ -56,11 +54,11 @@ def _():
         gdf = gpd.read_parquet(parquet_url)
 
     viewer = mo.ui.anywidget(plot(gdf, on_demand=True, smooth=False, show_progress=False))
-    return gdf, mo, viewer
+    return mo, viewer
 
 
 @app.cell
-def _(mo, viewer):
+def _(viewer):
     viewer
     return
 

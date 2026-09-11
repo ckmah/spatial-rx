@@ -18,6 +18,26 @@ const _gltfLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 
 const h = React.createElement;
 
+// #region agent log
+function _dbg(hypothesisId, location, message, data = {}) {
+  const payload = { hypothesisId, location, message, data, timestamp: Date.now() };
+  try {
+    console.log("[polyrender-dbg]", hypothesisId, location, message, data);
+    if (typeof window !== "undefined") {
+      window.__POLYRENDER_DBG__ = window.__POLYRENDER_DBG__ || [];
+      window.__POLYRENDER_DBG__.push(payload);
+    }
+    fetch("http://127.0.0.1:7399/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      mode: "cors",
+      keepalive: true,
+    }).catch(() => {});
+  } catch (_) {}
+}
+// #endregion
+
 const INITIAL_VIEW_DIR = new THREE.Vector3(0.52, 0.46, 0.72).normalize();
 
 // Orbit zoom vs framing distance (initial camera sits ~fitDistance from target).
@@ -504,6 +524,40 @@ function DemandInvalidate({ opacity }) {
   return null;
 }
 
+// #region agent log
+/** Mount probe: confirms Canvas Suspense children commit (vs blocked by Environment). */
+function CanvasMountProbe({ label }) {
+  useEffect(() => {
+    _dbg("A", `engine.jsx:CanvasMountProbe:${label}`, "probe_mounted", { label });
+    return () => _dbg("A", `engine.jsx:CanvasMountProbe:${label}`, "probe_unmounted", { label });
+  }, [label]);
+  return null;
+}
+
+function EnvironmentHdrProbe() {
+  useEffect(() => {
+    const url =
+      "https://raw.githack.com/pmndrs/drei-assets/456060a26bbeb8fdf79326f224b6d99b8bcce736/hdri/potsdamer_platz_1k.hdr";
+    _dbg("E", "engine.jsx:EnvironmentHdrProbe", "hdr_fetch_start", { url });
+    fetch(url)
+      .then((r) => {
+        _dbg("E", "engine.jsx:EnvironmentHdrProbe", "hdr_fetch_done", {
+          ok: r.ok,
+          status: r.status,
+          statusText: r.statusText,
+        });
+      })
+      .catch((err) => {
+        _dbg("E", "engine.jsx:EnvironmentHdrProbe", "hdr_fetch_error", {
+          name: err && err.name,
+          message: String(err && err.message || err),
+        });
+      });
+  }, []);
+  return null;
+}
+// #endregion
+
 // ---------------------------------------------------------------------------
 // Tile management
 // ---------------------------------------------------------------------------
@@ -534,6 +588,13 @@ function _makeMaterial(wireframe, opacity) {
 }
 
 function TileManager({ tileServerUrl, tilesJsonPath, wireframe, opacity, maxFetches, clipPlanes, minimapRef, maxOrbitDistance }) {
+  // #region agent log
+  _dbg("A", "engine.jsx:TileManager", "tilemanager_render", {
+    tileServerUrl: String(tileServerUrl || ""),
+    tilesJsonPath: String(tilesJsonPath || ""),
+    hasUrl: !!tileServerUrl,
+  });
+  // #endregion
   const { invalidate } = useThree();
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls);
@@ -644,9 +705,26 @@ function TileManager({ tileServerUrl, tilesJsonPath, wireframe, opacity, maxFetc
       if (d <= rLoad) candidates.push({ key, d, tile });
     }
     candidates.sort((a, b) => a.d - b.d);
+    // #region agent log
+    _dbg("F", "engine.jsx:TileManager:_pumpLoads", "pump", {
+      cam: [px, py, pz],
+      rLoad,
+      candidateCount: candidates.length,
+      loadedCount: loadedRef.current.size,
+      pendingCount: pendingRef.current.size,
+      runId: "post-fix",
+    });
+    // #endregion
     for (let j = 0; j < candidates.length; j++) {
       if (pendingRef.current.size >= cap) break;
       const { key, tile } = candidates[j];
+      // #region agent log
+      _dbg("G", "engine.jsx:TileManager:_loadTile", "load_start", {
+        key,
+        url: `${base}/${tile.glb}`,
+        runId: "post-fix",
+      });
+      // #endregion
       _loadTile(key, `${base}/${tile.glb}`, null);
     }
   }
@@ -721,6 +799,16 @@ function TileManager({ tileServerUrl, tilesJsonPath, wireframe, opacity, maxFetc
         loadedRef.current.set(key, gltf.scene);
         // Only now discard the old LOD — avoids the blank-frame flicker.
         if (swapOutKey && swapOutKey !== key) _unloadTile(swapOutKey, false);
+        // #region agent log
+        _dbg("F", "engine.jsx:TileManager:_loadTile", "load_ok", {
+          key,
+          url,
+          loadedCount: loadedRef.current.size,
+          pendingCount: pendingRef.current.size,
+          cam: [camera.position.x, camera.position.y, camera.position.z],
+          runId: "post-fix",
+        });
+        // #endregion
         setVersion((v) => v + 1);
         invalidateRef.current();
         _pumpLoads();
@@ -728,6 +816,14 @@ function TileManager({ tileServerUrl, tilesJsonPath, wireframe, opacity, maxFetc
       undefined,
       (err) => {
         pendingRef.current.delete(key);
+        // #region agent log
+        _dbg("G", "engine.jsx:TileManager:_loadTile", "load_error", {
+          key,
+          url,
+          message: String((err && err.message) || err),
+          runId: "post-fix",
+        });
+        // #endregion
         console.error("[TileManager] tile load error", key, err);
         invalidateRef.current();
         _pumpLoads();
@@ -736,6 +832,13 @@ function TileManager({ tileServerUrl, tilesJsonPath, wireframe, opacity, maxFetc
   }
 
   useEffect(() => {
+    // #region agent log
+    _dbg("C", "engine.jsx:TileManager:tilesEffect", "effect_enter", {
+      tileServerUrl: String(tileServerUrl || ""),
+      tilesJsonPath: String(tilesJsonPath || ""),
+      willEarlyReturn: !tileServerUrl,
+    });
+    // #endregion
     if (!tileServerUrl) return;
     const ac = new AbortController();
     let alive = true;
@@ -745,6 +848,9 @@ function TileManager({ tileServerUrl, tilesJsonPath, wireframe, opacity, maxFetc
     _disposeAllLoaded();
 
     const url = `${tileServerUrl}/${tilesJsonPath}`;
+    // #region agent log
+    _dbg("C", "engine.jsx:TileManager:tilesEffect", "fetch_start", { url, gen });
+    // #endregion
     fetch(url, { signal: ac.signal })
       .then((r) => {
         if (!alive || gen !== fetchGenRef.current) return Promise.reject(new Error("stale"));
@@ -753,6 +859,12 @@ function TileManager({ tileServerUrl, tilesJsonPath, wireframe, opacity, maxFetc
       })
       .then((data) => {
         if (!alive || gen !== fetchGenRef.current) return;
+        // #region agent log
+        _dbg("C", "engine.jsx:TileManager:tilesEffect", "fetch_ok", {
+          url,
+          tileCount: Array.isArray(data && data.tiles) ? data.tiles.length : -1,
+        });
+        // #endregion
         // Precompute key->tile for hot-path lookups.
         try {
           data._tileByKey = new Map((data.tiles || []).map((t) => [`${t.col}_${t.row}`, t]));
@@ -776,11 +888,28 @@ function TileManager({ tileServerUrl, tilesJsonPath, wireframe, opacity, maxFetc
       })
       .catch((err) => {
         if (!alive) return;
-        if (err && (err.name === "AbortError" || err.message === "stale")) return;
+        if (err && (err.name === "AbortError" || err.message === "stale")) {
+          // #region agent log
+          _dbg("C", "engine.jsx:TileManager:tilesEffect", "fetch_aborted_or_stale", {
+            name: err && err.name,
+            message: String(err && err.message || err),
+          });
+          // #endregion
+          return;
+        }
+        // #region agent log
+        _dbg("C", "engine.jsx:TileManager:tilesEffect", "fetch_error", {
+          name: err && err.name,
+          message: String(err && err.message || err),
+        });
+        // #endregion
         console.error("[TileManager] tiles.json fetch error:", err);
       });
 
     return () => {
+      // #region agent log
+      _dbg("C", "engine.jsx:TileManager:tilesEffect", "effect_cleanup", { gen });
+      // #endregion
       alive = false;
       ac.abort();
       fetchGenRef.current += 1;
@@ -1091,6 +1220,29 @@ function Minimap2D({ model, bbox, posRef, tgtRef, centroidsB64, cellIdsJson, qua
     ctx.arc(mapX(px), mapY(py), 3.2, 0, Math.PI * 2);
     ctx.fill();
   }, [bbox, posRef, tgtRef, tick, quadRef, tileStateRef]);
+
+  // #region agent log
+  useEffect(() => {
+    if (!bbox || bbox.length !== 6) return;
+    const id = requestAnimationFrame(() => {
+      const el = canvasRef.current && canvasRef.current.parentElement;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      // Log once per size bucket to avoid tick spam.
+      const bucket = `${Math.round(r.width)}x${Math.round(r.height)}`;
+      if (el.dataset.prDbgBox === bucket) return;
+      el.dataset.prDbgBox = bucket;
+      _dbg("H", "engine.jsx:Minimap2D", "overlay_box", {
+        w: r.width,
+        h: r.height,
+        className: el.className,
+        runId: "post-fix",
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [bbox, tick]);
+  // #endregion
+
   if (!bbox || bbox.length !== 6) return null;
   return h(
     "div",
@@ -1153,6 +1305,38 @@ export function PolyrenderScene({
   const bboxKey = hasBbox ? bbox.join(",") : "";
   const hasServer = !!tileServerUrl;
 
+  // #region agent log
+  _dbg("B", "engine.jsx:PolyrenderScene", "scene_render", {
+    tileServerUrl: String(tileServerUrl || ""),
+    tilesJsonPath: String(tilesJsonPath || ""),
+    hasServer,
+    hasBbox,
+    bboxLen: Array.isArray(bbox) ? bbox.length : -1,
+    onDemand: !!onDemand,
+    maxOrbitDistance: Number(maxOrbitDistance) || 0,
+    willMountTileManager: !!(hasBbox && hasServer),
+  });
+  useEffect(() => {
+    const url =
+      "https://raw.githack.com/pmndrs/drei-assets/456060a26bbeb8fdf79326f224b6d99b8bcce736/hdri/potsdamer_platz_1k.hdr";
+    _dbg("E", "engine.jsx:PolyrenderScene", "hdr_fetch_start_outside_canvas", { url });
+    fetch(url)
+      .then((r) => {
+        _dbg("E", "engine.jsx:PolyrenderScene", "hdr_fetch_done_outside_canvas", {
+          ok: r.ok,
+          status: r.status,
+          statusText: r.statusText,
+        });
+      })
+      .catch((err) => {
+        _dbg("E", "engine.jsx:PolyrenderScene", "hdr_fetch_error_outside_canvas", {
+          name: err && err.name,
+          message: String((err && err.message) || err),
+        });
+      });
+  }, []);
+  // #endregion
+
   const clipPlanes = useMemo(() => {
     if (!hasBbox) return null;
     const bz0 = bbox[2];
@@ -1174,12 +1358,21 @@ export function PolyrenderScene({
         shadows: true,
         dpr: [1, 2],
         onCreated: ({ gl, camera }) => {
+          // #region agent log
+          _dbg("D", "engine.jsx:Canvas:onCreated", "canvas_created", {
+            frameloop: "demand",
+          });
+          // #endregion
           camera.up.set(0, 0, 1);
           gl.shadowMap.enabled = true;
           gl.shadowMap.type = THREE.PCFSoftShadowMap;
           gl.localClippingEnabled = true;
         },
       },
+      // #region agent log
+      h(CanvasMountProbe, { label: "before-environment" }),
+      h(EnvironmentHdrProbe),
+      // #endregion
       h(AdaptiveDpr),
       h(DemandInvalidate, { opacity }),
       h("ambientLight", { intensity: 0.32 }),
@@ -1190,6 +1383,9 @@ export function PolyrenderScene({
       hasBbox && h(KeyLight, { bbox }),
       h("directionalLight", { position: [-3, -2, -4], intensity: 0.22 }),
       h(Environment, { preset: "city", background: false }),
+      // #region agent log
+      h(CanvasMountProbe, { label: "after-environment" }),
+      // #endregion
       h(ZUpOrbitControls),
       hasBbox &&
         h(
