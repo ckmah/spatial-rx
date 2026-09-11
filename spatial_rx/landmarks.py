@@ -28,6 +28,7 @@ from .genes import (
 )
 from .neighbors import DEFAULT_K_MAX, NeighborhoodIndex
 from .raster import (
+    DEFAULT_WINDOW_RADIUS_BINS,
     aggregate_mean_window,
     assign_bins,
     build_grid,
@@ -205,6 +206,62 @@ def _median_nn_distance(knn: NeighborhoodIndex | None) -> float | None:
     return float(np.median(np.asarray(first, dtype=np.float64)))
 
 
+_SPATIAL_OBSM_SKIP = frozenset(
+    {
+        "spatial",
+        "X_spatial",
+        "spatial_compartments",
+        "spatial_connectivities",
+    }
+)
+_EMBEDDING_KEY_PREF = (
+    "X_pca",
+    "X_pca_harmony",
+    "X_scVI",
+    "X_scvi",
+    "X_svd",
+    "X_umap",
+    "X_tsne",
+)
+
+
+def _discover_embedding_keys(adata: AnnData, *, spatial_key: str = "spatial") -> list[str]:
+    """List 2d+ ``obsm`` keys suitable as raster embedding bases."""
+    import numpy as np
+
+    skip = set(_SPATIAL_OBSM_SKIP) | {spatial_key}
+    keys: list[str] = []
+    obsm = getattr(adata, "obsm", None)
+    if obsm is None:
+        return keys
+    for key in obsm.keys():
+        name = str(key)
+        if name in skip:
+            continue
+        try:
+            mat = np.asarray(obsm[key])
+        except Exception:  # noqa: BLE001
+            continue
+        if mat.ndim == 1:
+            mat = mat.reshape(-1, 1)
+        if mat.ndim != 2 or mat.shape[0] != adata.n_obs or mat.shape[1] < 1:
+            continue
+        keys.append(name)
+    # Prefer PCA/scVI-like keys first, then the rest alphabetically.
+    rank = {k: i for i, k in enumerate(_EMBEDDING_KEY_PREF)}
+    keys.sort(key=lambda k: (rank.get(k, len(rank)), k.lower()))
+    return keys
+
+
+def _pick_default_embedding_key(keys: list[str]) -> str:
+    if not keys:
+        return ""
+    for pref in _EMBEDDING_KEY_PREF:
+        if pref in keys:
+            return pref
+    return keys[0]
+
+
 def _spatial_metrics(
     x_arr: "np.ndarray",
     y_arr: "np.ndarray",
@@ -313,8 +370,12 @@ class LandmarksWidget(AnyWidget):
     render_mode = traitlets.Unicode("points").tag(sync=True)  # points | raster
     raster_bin_size = traitlets.Float(0.0).tag(sync=True)
     raster_basis = traitlets.Unicode("genes").tag(sync=True)  # genes | embedding | composition
-    raster_embedding_key = traitlets.Unicode("X_umap").tag(sync=True)
-    # Empty = all dims. Client may also mask; Python slices on rebuild when non-empty.
+    raster_embedding_key = traitlets.Unicode("").tag(sync=True)
+    # Keys discovered from adata.obsm (excludes spatial); UI picks from this list.
+    raster_embedding_keys = traitlets.List(traitlets.Unicode(), default_value=[]).tag(
+        sync=True
+    )
+    # Empty = all dims. Client masks for cosine / RGB (empty = all).
     raster_embedding_dims = traitlets.List(traitlets.Int(), default_value=[]).tag(sync=True)
     # Reserved for pathway / score columns (slice A); unused in MVP.
     raster_obs_key = traitlets.Unicode("").tag(sync=True)
@@ -484,6 +545,8 @@ class LandmarksWidget(AnyWidget):
         gene_meta = gene_catalog(gene_names)
         gene_logged = bool(expression_is_log_scaled(adata)) if gene_names else False
         init_bin_size = default_bin_size(self._median_nn, point_size)
+        embedding_keys = _discover_embedding_keys(adata, spatial_key=spatial_key)
+        embedding_key = _pick_default_embedding_key(embedding_keys)
 
         AnyWidget.__init__(
             self,
@@ -510,6 +573,8 @@ class LandmarksWidget(AnyWidget):
             render_mode="points",
             raster_bin_size=float(init_bin_size),
             raster_basis="genes",
+            raster_embedding_key=embedding_key,
+            raster_embedding_keys=embedding_keys,
             raster_embedding_dims=[],
             raster_status="",
             **knn_idx.to_sync(prefix="neighbor"),
@@ -704,7 +769,13 @@ class LandmarksWidget(AnyWidget):
             self.raster_gene_mode = str(genes or "active")
         elif embedding is not None:
             self.raster_basis = "embedding"
-            self.raster_embedding_key = str(embedding)
+            key = str(embedding)
+            known = list(self.raster_embedding_keys or [])
+            if key and known and key not in known:
+                raise ValueError(
+                    f"unknown embedding key {key!r}; choose from {known}"
+                )
+            self.raster_embedding_key = key or str(self.raster_embedding_key or "")
         else:
             self.raster_basis = "composition"
             if composition:
@@ -831,8 +902,8 @@ class LandmarksWidget(AnyWidget):
             grid = build_grid(xy, size)
             assignment = assign_bins(xy, grid)
             n_bins = int(assignment.counts.shape[0])
-            # Window radius = one bin width → soft neighborhood mean around each center.
-            window_radius = float(size)
+            # Soft neighborhood mean around each bin center.
+            window_radius = float(size) * DEFAULT_WINDOW_RADIUS_BINS
             basis = str(self.raster_basis or "genes")
             labels: list[str] = []
             B = np.zeros((n_bins, 0), dtype=np.float32)

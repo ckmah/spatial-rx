@@ -55,6 +55,8 @@ FIXTURE_KEYS = [
     "raster_bin_size",
     "raster_basis",
     "raster_embedding_key",
+    "raster_embedding_keys",
+    "raster_embedding_dims",
     "raster_obs_key",
     "raster_gene_mode",
     "raster_origin_x",

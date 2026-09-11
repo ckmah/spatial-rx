@@ -115,6 +115,7 @@ export function LayersPanel({
                               ]
                             }
                             label={label}
+                            disabled={lm.render_mode === "raster"}
                             onSelect={() => lm.selectType(col, i)}
                           />
                         ))}

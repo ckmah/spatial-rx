@@ -65,6 +65,7 @@ export type LandmarksState = {
   raster_bin_size: number;
   raster_basis: string;
   raster_embedding_key: string;
+  raster_embedding_keys: string[];
   raster_embedding_dims: number[];
   raster_feature_dim: number;
   raster_feature_labels: string[];
@@ -104,6 +105,7 @@ const MODEL_KEYS: (keyof LandmarksState)[] = [
   "raster_bin_size",
   "raster_basis",
   "raster_embedding_key",
+  "raster_embedding_keys",
   "raster_embedding_dims",
   "raster_feature_dim",
   "raster_feature_labels",

@@ -744,7 +744,7 @@ export function mountEngine({ model, host }) {
     const row = cache.rows[compactIdx] | 0;
     const cx = ox + (col + 0.5) * size;
     const cy = oy + (row + 0.5) * size;
-    const r = size; // aggregation window radius = one bin width
+    const r = size * 2; // aggregation window radius = 2× bin width
     const path = [];
     for (let i = 0; i <= RASTER_WINDOW_SEGMENTS; i++) {
       const a = (i / RASTER_WINDOW_SEGMENTS) * Math.PI * 2;

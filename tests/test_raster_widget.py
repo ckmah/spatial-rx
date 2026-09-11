@@ -64,6 +64,29 @@ def test_raster_genes_mean_builds_features():
     assert w.raster_features == ""
 
 
+def test_raster_discovers_embedding_keys():
+    from spatial_rx import LandmarksWidget
+
+    adata = adata_xy(
+        [0.0, 1.0, 2.0, 3.0],
+        [0.0, 0.5, 1.0, 1.5],
+        color=["A", "A", "B", "B"],
+        color_key="cell_class",
+        genes={"g1": [0.0, 1.0, 2.0, 3.0]},
+    )
+    adata.obsm["X_umap"] = np.random.randn(4, 2).astype(np.float32)
+    adata.obsm["X_pca"] = np.random.randn(4, 8).astype(np.float32)
+    adata.obsm["spatial"] = np.column_stack(
+        [adata.obsm["spatial"][:, 0], adata.obsm["spatial"][:, 1]]
+    )
+    w = LandmarksWidget(adata, color="cell_class", genes=["g1"])
+    assert "X_pca" in w.raster_embedding_keys
+    assert "X_umap" in w.raster_embedding_keys
+    assert "spatial" not in w.raster_embedding_keys
+    # Prefer PCA over UMAP as default.
+    assert w.raster_embedding_key == "X_pca"
+
+
 def test_raster_bin_size_change_rebuilds():
     from spatial_rx import LandmarksWidget
 

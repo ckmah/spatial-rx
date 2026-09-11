@@ -1,26 +1,28 @@
 import { useMemo } from "react";
-import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
+  ComboboxClear,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxValue,
+  useComboboxAnchor,
+} from "@/components/ui/combobox";
 import {
   Field,
   FieldDescription,
   FieldLabel,
 } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { ChevronDownIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 import type { LandmarksModel } from "../use-landmarks-model";
+import { useWidgetPortalContainer } from "./use-widget-portal";
 
 const OBSERVATION_OPTIONS = [
   { value: "genes", label: "Genes" },
@@ -34,9 +36,61 @@ const GRAY_LEGEND = "linear-gradient(to right, #000 0%, #fff 100%)";
 const RGB_LEGEND =
   "linear-gradient(to right, #ff0099 0%, #b8ff00 50%, #00b7ff 100%)";
 
+const COMBO_INPUT =
+  "min-h-8 w-full rounded-[var(--radius)] bg-card/60 text-xs shadow-none";
+
 function observationLabel(basis: string): string {
   return (
     OBSERVATION_OPTIONS.find((o) => o.value === basis)?.label ?? "Genes"
+  );
+}
+
+function SingleCombobox({
+  items,
+  value,
+  onValueChange,
+  placeholder,
+  empty,
+  "aria-label": ariaLabel,
+}: {
+  items: string[];
+  value: string;
+  onValueChange: (next: string) => void;
+  placeholder: string;
+  empty: string;
+  "aria-label": string;
+}) {
+  const [wrapRef, portalEl] = useWidgetPortalContainer();
+
+  return (
+    <div ref={wrapRef}>
+      <Combobox
+        items={items}
+        value={value || null}
+        onValueChange={(next) => {
+          if (typeof next === "string" && next) onValueChange(next);
+        }}
+      >
+        <ComboboxInput
+          placeholder={placeholder}
+          className={COMBO_INPUT}
+          aria-label={ariaLabel}
+        />
+        <ComboboxContent container={portalEl} className="text-xs">
+          <ComboboxEmpty className="text-xs">{empty}</ComboboxEmpty>
+          <ComboboxList>
+            {(item) => {
+              const name = String(item);
+              return (
+                <ComboboxItem key={name} value={name} className="py-1 text-xs">
+                  {name}
+                </ComboboxItem>
+              );
+            }}
+          </ComboboxList>
+        </ComboboxContent>
+      </Combobox>
+    </div>
   );
 }
 
@@ -48,7 +102,9 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
   const basis = lm.raster_basis || "genes";
   const featureLabels = lm.raster_feature_labels || [];
   const selectedDims = lm.raster_embedding_dims || [];
+  const embeddingKeys = lm.raster_embedding_keys || [];
   const categories = lm.category_columns || [];
+  const categoryNames = categories.map((c) => c.name);
 
   const embeddingDimItems = useMemo(() => {
     if (basis !== "embedding") return [];
@@ -58,6 +114,16 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
       return { index, label };
     });
   }, [basis, featureLabels, selectedDims]);
+
+  const dimLabels = embeddingDimItems.map((d) => d.label);
+  const selectedDimLabels = useMemo(() => {
+    if (!embeddingDimItems.length) return [] as string[];
+    if (!selectedDims.length) return dimLabels;
+    const byIndex = new Map(embeddingDimItems.map((d) => [d.index, d.label]));
+    return selectedDims
+      .map((i) => byIndex.get(i))
+      .filter((x): x is string => !!x);
+  }, [embeddingDimItems, selectedDims, dimLabels]);
 
   const allEmbeddingSelected =
     !selectedDims.length ||
@@ -77,28 +143,27 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
       ? "Observation · Embedding (RGB)"
       : `Observation · ${observationLabel(basis)}`;
 
-  const toggleEmbeddingDim = (index: number, on: boolean) => {
+  const setEmbeddingDimsFromLabels = (labels: string[]) => {
+    const byLabel = new Map(embeddingDimItems.map((d) => [d.label, d.index]));
+    const next = labels
+      .map((l) => byLabel.get(l))
+      .filter((x): x is number => typeof x === "number")
+      .sort((a, b) => a - b);
     const full = embeddingDimItems.map((d) => d.index);
-    const current = selectedDims.length ? [...selectedDims] : [...full];
-    let next: number[];
-    if (on) {
-      next = current.includes(index)
-        ? current
-        : [...current, index].sort((a, b) => a - b);
-    } else {
-      next = current.filter((d) => d !== index);
-    }
-    if (!next.length) next = [index];
     if (
-      full.length &&
-      next.length === full.length &&
-      full.every((d) => next.includes(d))
+      !next.length ||
+      (full.length &&
+        next.length === full.length &&
+        full.every((d) => next.includes(d)))
     ) {
       lm.setRasterEmbeddingDims([]);
       return;
     }
     lm.setRasterEmbeddingDims(next);
   };
+
+  const [dimsWrapRef, dimsPortal] = useWidgetPortalContainer();
+  const dimsAnchor = useComboboxAnchor();
 
   return (
     <div className="flex flex-col gap-3" data-testid="raster-section">
@@ -128,38 +193,17 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
         <>
           <Field>
             <FieldLabel>Observation</FieldLabel>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-between text-xs font-normal"
-                  aria-label="Observation"
-                >
-                  {observationLabel(basis)}
-                  <ChevronDownIcon className="size-3.5 opacity-60" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <DropdownMenuRadioGroup
-                  value={basis}
-                  onValueChange={(v) => {
-                    if (v) lm.setRasterBasis(v);
-                  }}
-                >
-                  {OBSERVATION_OPTIONS.map((o) => (
-                    <DropdownMenuRadioItem
-                      key={o.value}
-                      value={o.value}
-                      className="text-xs"
-                    >
-                      {o.label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <SingleCombobox
+              items={OBSERVATION_OPTIONS.map((o) => o.label)}
+              value={observationLabel(basis)}
+              onValueChange={(label) => {
+                const opt = OBSERVATION_OPTIONS.find((o) => o.label === label);
+                if (opt) lm.setRasterBasis(opt.value);
+              }}
+              placeholder="Select observation"
+              empty="No options"
+              aria-label="Observation"
+            />
 
             {basis === "genes" ? (
               <FieldDescription>
@@ -169,64 +213,91 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
 
             {basis === "embedding" ? (
               <div className="flex flex-col gap-1.5">
-                <Input
-                  value={lm.raster_embedding_key || ""}
-                  onChange={(e) => lm.setRasterEmbeddingKey(e.target.value)}
-                  placeholder="X_pca"
+                <SingleCombobox
+                  items={embeddingKeys}
+                  value={lm.raster_embedding_key || embeddingKeys[0] || ""}
+                  onValueChange={(v) => lm.setRasterEmbeddingKey(v)}
+                  placeholder="Select embedding"
+                  empty="No embeddings in obsm"
                   aria-label="Embedding key"
-                  className="h-8 text-xs"
                 />
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-between text-xs font-normal"
-                      aria-label="Embedding dimensions"
-                    >
-                      {allEmbeddingSelected
-                        ? `All dims (${embeddingDimItems.length || "…"})`
-                        : `${selectedDims.length} of ${embeddingDimItems.length || "…"} dims`}
-                      <ChevronDownIcon className="size-3.5 opacity-60" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="start"
-                    className="max-h-64 w-56 overflow-y-auto"
+                <div ref={dimsWrapRef}>
+                  <Combobox
+                    items={dimLabels}
+                    multiple
+                    value={
+                      allEmbeddingSelected ? dimLabels : selectedDimLabels
+                    }
+                    onValueChange={(next) => {
+                      const arr = Array.isArray(next) ? next.map(String) : [];
+                      setEmbeddingDimsFromLabels(arr);
+                    }}
                   >
-                    <DropdownMenuLabel className="text-xs">
-                      Dimensions
-                    </DropdownMenuLabel>
-                    <DropdownMenuItem
-                      className="text-xs"
-                      onSelect={(e) => {
-                        e.preventDefault();
-                        lm.setRasterEmbeddingDims([]);
-                      }}
-                    >
-                      Select all
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    {embeddingDimItems.map(({ index, label }) => {
-                      const checked =
-                        allEmbeddingSelected || selectedDims.includes(index);
-                      return (
-                        <DropdownMenuCheckboxItem
-                          key={`${index}-${label}`}
-                          checked={checked}
-                          className="text-xs"
-                          onCheckedChange={(on) =>
-                            toggleEmbeddingDim(index, !!on)
+                    <div className="relative">
+                      <ComboboxChips
+                        ref={dimsAnchor}
+                        className={cn(
+                          COMBO_INPUT,
+                          "px-2 py-1",
+                          (allEmbeddingSelected || selectedDimLabels.length) &&
+                            "pr-8",
+                        )}
+                      >
+                        <ComboboxValue>
+                          {allEmbeddingSelected ? (
+                            <span className="text-[0.7rem] text-muted-foreground">
+                              All dims ({dimLabels.length || "…"})
+                            </span>
+                          ) : (
+                            selectedDimLabels.map((label) => (
+                              <ComboboxChip
+                                key={label}
+                                className="gap-1 text-[0.7rem]"
+                              >
+                                {label}
+                              </ComboboxChip>
+                            ))
+                          )}
+                        </ComboboxValue>
+                        <ComboboxChipsInput
+                          placeholder={
+                            allEmbeddingSelected || selectedDimLabels.length
+                              ? ""
+                              : "Select dims"
                           }
-                          onSelect={(e) => e.preventDefault()}
-                        >
-                          {label}
-                        </DropdownMenuCheckboxItem>
-                      );
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                          className="min-w-16 text-xs"
+                          aria-label="Embedding dimensions"
+                        />
+                      </ComboboxChips>
+                      {allEmbeddingSelected || selectedDimLabels.length ? (
+                        <ComboboxClear className="absolute top-1 right-1" />
+                      ) : null}
+                    </div>
+                    <ComboboxContent
+                      container={dimsPortal}
+                      anchor={dimsAnchor}
+                      className="text-xs"
+                    >
+                      <ComboboxEmpty className="text-xs">
+                        No dimensions
+                      </ComboboxEmpty>
+                      <ComboboxList>
+                        {(item) => {
+                          const name = String(item);
+                          return (
+                            <ComboboxItem
+                              key={name}
+                              value={name}
+                              className="py-1 text-xs"
+                            >
+                              {name}
+                            </ComboboxItem>
+                          );
+                        }}
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
+                </div>
                 <FieldDescription>
                   First three selected dims drive magenta / lime / azure.
                   Prefer PCA/scVI over UMAP.
@@ -236,44 +307,19 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
 
             {basis === "composition" ? (
               <div className="flex flex-col gap-1.5">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-between text-xs font-normal"
-                      aria-label="Composition category"
-                    >
-                      {lm.active_category || "Select category"}
-                      <ChevronDownIcon className="size-3.5 opacity-60" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-56">
-                    <DropdownMenuLabel className="text-xs">
-                      Category grouping
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {categories.map((col) => (
-                      <DropdownMenuItem
-                        key={col.name}
-                        className="text-xs"
-                        onSelect={() => {
-                          lm.setActiveCategory(col);
-                          lm.select("", -1);
-                        }}
-                      >
-                        {col.name}
-                        {col.name === lm.active_category ? " ✓" : ""}
-                      </DropdownMenuItem>
-                    ))}
-                    {!categories.length ? (
-                      <DropdownMenuItem disabled className="text-xs">
-                        No categories
-                      </DropdownMenuItem>
-                    ) : null}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <SingleCombobox
+                  items={categoryNames}
+                  value={lm.active_category || ""}
+                  onValueChange={(name) => {
+                    const col = categories.find((c) => c.name === name);
+                    if (!col) return;
+                    lm.setActiveCategory(col);
+                    lm.select("", -1);
+                  }}
+                  placeholder="Select category"
+                  empty="No categories"
+                  aria-label="Composition category"
+                />
                 <FieldDescription>
                   Category fractions; cream → magenta by bin purity. Syncs the
                   Categories panel.

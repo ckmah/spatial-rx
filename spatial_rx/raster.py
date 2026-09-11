@@ -2,7 +2,7 @@
 
 Aggregation is **windowed**: each bin's feature vector is the mean of cell
 features whose positions fall within ``window_radius`` of the bin center
-(default = ``bin_size``). That softens hard Voronoi boundaries and reads as
+(default = ``2 × bin_size``). That softens hard Voronoi boundaries and reads as
 higher effective resolution when bins are small.
 
 deck.gl GPU aggregation layers (``GridLayer`` / ``HeatmapLayer``) collapse to
@@ -22,7 +22,7 @@ import numpy as np
 # Halved from 8 → finer bins; windowed mean supplies smoothing.
 DEFAULT_BIN_SIZE_NN_MULT = 4.0
 # Aggregate cells within this many bin-widths of each bin center.
-DEFAULT_WINDOW_RADIUS_BINS = 1.0
+DEFAULT_WINDOW_RADIUS_BINS = 2.0
 
 
 def _encode_i32(arr: np.ndarray) -> str:
@@ -242,7 +242,7 @@ def aggregate_mean_window(
 ) -> np.ndarray:
     """Mean features of cells within ``window_radius`` of each bin center.
 
-    Default radius = one bin width. Empty windows fall back to the hard-bin mean.
+    Default radius = two bin widths. Empty windows fall back to the hard-bin mean.
     """
     feats = np.asarray(features, dtype=np.float64)
     if feats.ndim == 1:
