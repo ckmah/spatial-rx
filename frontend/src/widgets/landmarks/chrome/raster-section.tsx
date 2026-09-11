@@ -31,7 +31,7 @@ const OBSERVATION_OPTIONS = [
 ] as const;
 
 const MAGENTA_LEGEND =
-  "linear-gradient(to right, #f3e6d4 0%, #ff0099 100%)";
+  "linear-gradient(to right, var(--background) 0%, #ff0099 100%)";
 const GRAY_LEGEND = "linear-gradient(to right, #000 0%, #fff 100%)";
 const RGB_LEGEND =
   "linear-gradient(to right, #ff0099 0%, #b8ff00 50%, #00b7ff 100%)";
@@ -207,7 +207,8 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
 
             {basis === "genes" ? (
               <FieldDescription>
-                Mean of active genes (select under Genes). Cream → magenta.
+                Mean of active genes (select under Genes). Background → magenta
+                (same as points genes); multi-gene uses magenta / lime / azure.
               </FieldDescription>
             ) : null}
 
@@ -321,8 +322,8 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
                   aria-label="Composition category"
                 />
                 <FieldDescription>
-                  Category fractions; cream → magenta by bin purity. Syncs the
-                  Categories panel.
+                  Category fractions; background → magenta by bin purity (matches
+                  genes). Syncs the Categories panel.
                 </FieldDescription>
               </div>
             ) : null}

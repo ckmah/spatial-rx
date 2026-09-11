@@ -83,27 +83,60 @@ const OTHER_SIZE_SCALE = 0.55;
 /** Unselected point alpha multiplier while focused. */
 const OTHER_ALPHA_SCALE = 0.28;
 const BUFFERABLE = ["line", "spline", "gradient"];
-/** Cream → magenta sequential (matches landmarks.py `_SEQUENTIAL_*`). */
-const RASTER_SEQ_LOW = [243, 230, 212];
+/**
+ * Gene / observation high stop (matches helpers GENE_COLORS[0] / DESIGN gene-magenta).
+ * Low stop is the plot background (theme-aware) — same idea as the genes legend
+ * ``var(--background) → magenta``, so continuous scales read on dark and light.
+ */
 const RASTER_SEQ_HIGH = [255, 0, 153];
-/** Additive embedding channels (keep in sync with helpers GENE_COLORS). */
+/** Additive embedding / multi-gene channels (keep in sync with helpers GENE_COLORS). */
 const RASTER_RGB_CHANNELS = ["#ff0099", "#b8ff00", "#00b7ff"];
+
+function clamp01(t) {
+  return Math.max(0, Math.min(1, Number(t) || 0));
+}
+
+function lerpRgb(low, high, t) {
+  const u = clamp01(t);
+  return [
+    Math.round(low[0] + (high[0] - low[0]) * u),
+    Math.round(low[1] + (high[1] - low[1]) * u),
+    Math.round(low[2] + (high[2] - low[2]) * u),
+  ];
+}
 
 /** Similarity: black (low) → white (high). */
 function sampleRasterGray(t) {
-  const u = Math.max(0, Math.min(1, Number(t) || 0));
-  const v = Math.round(u * 255);
+  const v = Math.round(clamp01(t) * 255);
   return [v, v, v];
 }
 
-/** Rest-state genes / composition: cream → magenta. */
-function sampleRasterMagenta(t) {
-  const u = Math.max(0, Math.min(1, Number(t) || 0));
-  return [
-    Math.round(RASTER_SEQ_LOW[0] + (RASTER_SEQ_HIGH[0] - RASTER_SEQ_LOW[0]) * u),
-    Math.round(RASTER_SEQ_LOW[1] + (RASTER_SEQ_HIGH[1] - RASTER_SEQ_LOW[1]) * u),
-    Math.round(RASTER_SEQ_LOW[2] + (RASTER_SEQ_HIGH[2] - RASTER_SEQ_LOW[2]) * u),
-  ];
+/** Parse ``rgb()`` / ``rgba()`` / ``#hex`` to ``[r,g,b]``; fallback black. */
+function cssColorToRgb(css) {
+  const s = String(css || "").trim();
+  if (!s) return [0, 0, 0];
+  if (s[0] === "#") {
+    const h = s.slice(1);
+    const full =
+      h.length === 3
+        ? h
+            .split("")
+            .map((c) => c + c)
+            .join("")
+        : h.padEnd(6, "0").slice(0, 6);
+    const n = Number.parseInt(full, 16);
+    if (!Number.isFinite(n)) return [0, 0, 0];
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const m = s.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+  if (m) {
+    return [
+      Math.round(Number(m[1])),
+      Math.round(Number(m[2])),
+      Math.round(Number(m[3])),
+    ];
+  }
+  return [0, 0, 0];
 }
 
 function rasterGrayCssGradient(dir = "to top") {
@@ -191,9 +224,12 @@ export function mountEngine({ model, host }) {
 
   // React owns theme class apply (dark / landmarks--dark / landmarks--light).
   // Re-clear the deck when those classes change on the container.
+  let rasterImageCache = { key: "", image: null, bounds: null };
   let applyPlotBackground = () => { };
   const themeObserver = new MutationObserver(() => {
     applyPlotBackground();
+    // Observation sequential low-stop tracks plot background — rebuild texture.
+    rasterImageCache = { key: "", image: null, bounds: null };
     if (deckgl) setDeckLayers();
   });
   themeObserver.observe(container, {
@@ -357,7 +393,6 @@ export function mountEngine({ model, host }) {
   let rasterScores = null; // Float32Array | null
   let rasterScoreKey = "";
   let hoverBinIndex = -1;
-  let rasterImageCache = { key: "", image: null, bounds: null };
 
   function refreshCategoryCodes() {
     const b64 = model.get("category_codes") || "";
@@ -533,41 +568,55 @@ export function mountEngine({ model, host }) {
     return { lo, span: hi - lo };
   }
 
-  /** Rest-state observation RGB for one compact bin (no similarity). */
+  /** Plot-canvas RGB used as the continuous low stop (dark/light aware). */
+  function observationLowRgb() {
+    return cssColorToRgb(resolvePlotBackground());
+  }
+
+  /**
+   * Rest-state observation RGB for one compact bin (no similarity).
+   * Matches points-genes language: additive magenta/lime/azure for multi-channel
+   * bases; theme background → magenta for scalar continuous (composition /
+   * single-gene mean), same as the genes legend ``var(--background) → color``.
+   */
   function observationColorForBin(i, cache, colStats) {
     const basis = model.get("raster_basis") || "genes";
     const dim = cache.dim | 0;
     const feats = cache.features;
     const n = cache.nBins | 0;
+    const low = observationLowRgb();
     if (!dim || !feats || feats.length < n * dim) {
-      return sampleRasterGray(0.35);
+      return low;
     }
     const off = i * dim;
     if (basis === "embedding") {
       const mask = embeddingDimMask(dim);
       const channels = mask.slice(0, 3);
+      if (channels.length === 0) return low;
       let r = 0;
       let g = 0;
       let b = 0;
+      let w = 0;
       for (let ci = 0; ci < channels.length; ci++) {
         const col = channels[ci];
         const st = colStats[col] || { lo: 0, span: 1 };
-        const t = Math.max(0, Math.min(1, (feats[off + col] - st.lo) / st.span));
+        const t = clamp01((feats[off + col] - st.lo) / st.span);
+        if (!(t > 0)) continue;
         const rgb = hexToRgbaBytes(RASTER_RGB_CHANNELS[ci % RASTER_RGB_CHANNELS.length], 1);
         r += rgb[0] * t;
         g += rgb[1] * t;
         b += rgb[2] * t;
+        w += t;
       }
-      if (channels.length === 0) return sampleRasterGray(0.35);
+      if (w < 1e-6) return low;
+      // Mix additive signal over the plot background so lows read on light canvases.
+      const a = Math.min(1, w);
       return [
-        Math.min(255, Math.round(r)),
-        Math.min(255, Math.round(g)),
-        Math.min(255, Math.round(b)),
+        Math.min(255, Math.round(low[0] * (1 - a) + r)),
+        Math.min(255, Math.round(low[1] * (1 - a) + g)),
+        Math.min(255, Math.round(low[2] * (1 - a) + b)),
       ];
     }
-    // genes + composition: cream→magenta of a scalar summary.
-    let sum = 0;
-    let count = 0;
     if (basis === "composition") {
       // Purity = max category fraction (rows are histograms / means).
       let s = 0;
@@ -578,16 +627,50 @@ export function mountEngine({ model, host }) {
         if (v > mx) mx = v;
       }
       const t = s > 1e-8 ? mx / s : 0;
-      return sampleRasterMagenta(t);
+      return lerpRgb(low, RASTER_SEQ_HIGH, t);
     }
-    // genes: mean of per-column 0–1 normalized values
-    for (let d = 0; d < dim; d++) {
+    // genes: additive channels like points ``blendGeneColors`` (≤3 dims),
+    // then composite over plot background.
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let w = 0;
+    const nChan = Math.min(dim, RASTER_RGB_CHANNELS.length);
+    for (let d = 0; d < nChan; d++) {
       const st = colStats[d] || { lo: 0, span: 1 };
-      const t = Math.max(0, Math.min(1, (feats[off + d] - st.lo) / st.span));
-      sum += t;
-      count += 1;
+      const t = clamp01((feats[off + d] - st.lo) / st.span);
+      if (!(t > 0)) continue;
+      const rgb = hexToRgbaBytes(RASTER_RGB_CHANNELS[d % RASTER_RGB_CHANNELS.length], 1);
+      r += rgb[0] * t;
+      g += rgb[1] * t;
+      b += rgb[2] * t;
+      w += t;
     }
-    return sampleRasterMagenta(count ? sum / count : 0);
+    if (dim > nChan) {
+      // Extra genes fold into the mean of remaining channels → first channel weight.
+      let extra = 0;
+      let extraN = 0;
+      for (let d = nChan; d < dim; d++) {
+        const st = colStats[d] || { lo: 0, span: 1 };
+        extra += clamp01((feats[off + d] - st.lo) / st.span);
+        extraN += 1;
+      }
+      if (extraN) {
+        const t = extra / extraN;
+        const rgb = hexToRgbaBytes(RASTER_RGB_CHANNELS[0], 1);
+        r += rgb[0] * t;
+        g += rgb[1] * t;
+        b += rgb[2] * t;
+        w += t;
+      }
+    }
+    if (w < 1e-6) return low;
+    const a = Math.min(1, w);
+    return [
+      Math.min(255, Math.round(low[0] * (1 - a) + r)),
+      Math.min(255, Math.round(low[1] * (1 - a) + g)),
+      Math.min(255, Math.round(low[2] * (1 - a) + b)),
+    ];
   }
 
   function activeQueryBin() {
@@ -659,6 +742,8 @@ export function mountEngine({ model, host }) {
       model.get("raster_query_bin"),
       basis,
       dimsKey,
+      // Low stop tracks plot background (dark/light).
+      resolvePlotBackground(),
     ].join("|");
     if (rasterImageCache.key === texKey && rasterImageCache.image) {
       return rasterImageCache;
