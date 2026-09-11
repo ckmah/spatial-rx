@@ -18,6 +18,8 @@ ileum/
   expr.csv                 # 14-gene expression panel, same row order as cells.csv
 recipes/
   *.svg                    # use-case gallery schematics
+polyrender/
+  liver_crop_sample.parquet  # ~50-cell stack for PolyrenderWidget / meshify demos
 figure1_spatial_analogy.png
 ```
 
