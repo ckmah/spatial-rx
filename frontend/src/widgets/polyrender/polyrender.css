@@ -1,0 +1,175 @@
+/* Soft Float shell for Polyrender — mirrors landmarks float tokens */
+
+.polyrender {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  color-scheme: inherit;
+  position: relative;
+  box-sizing: border-box;
+  caret-color: var(--foreground);
+
+  --lm-float-radius: calc(var(--radius) + 0.25rem);
+  --lm-float-border: color-mix(in oklab, var(--border) 85%, transparent);
+  --lm-float-bg: color-mix(in oklab, var(--card) 72%, transparent);
+  --lm-float-blur: blur(14px) saturate(1.05);
+  --lm-float-shadow: 0 10px 28px color-mix(in srgb, #000 12%, transparent);
+
+  --pr-bg: var(--background);
+  --pr-border: color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+.polyrender.polyrender--dark,
+.dark .polyrender {
+  color-scheme: dark;
+  --lm-float-bg: color-mix(in oklab, var(--card) 68%, transparent);
+  --lm-float-border: color-mix(in oklab, var(--border) 100%, transparent);
+  --lm-float-shadow:
+    0 1px 0 rgb(255 255 255 / 6%) inset,
+    0 10px 28px color-mix(in srgb, #000 40%, transparent);
+}
+
+.polyrender.polyrender--light {
+  color-scheme: light;
+  --lm-float-bg: color-mix(in oklab, var(--card) 78%, transparent);
+  --lm-float-shadow: 0 8px 24px color-mix(in srgb, #000 8%, transparent);
+}
+
+.polyrender__body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--pr-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--pr-bg);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #000 6%, transparent),
+    0 8px 24px color-mix(in srgb, #000 8%, transparent);
+}
+
+.polyrender__figure {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.polyrender__canvas-host {
+  position: absolute;
+  inset: 0;
+}
+
+.polyrender__canvas-host > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.polyrender__canvas-host canvas {
+  display: block;
+  outline: none;
+}
+
+.polyrender__chrome {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.polyrender-float {
+  border-radius: var(--lm-float-radius);
+  border: 1px solid var(--lm-float-border);
+  background: var(--lm-float-bg);
+  backdrop-filter: var(--lm-float-blur);
+  -webkit-backdrop-filter: var(--lm-float-blur);
+  box-shadow: var(--lm-float-shadow);
+}
+
+.polyrender-float--toolbar {
+  border-radius: calc(var(--lm-float-radius) + 0.15rem);
+}
+
+.polyrender-float--panel {
+  border-radius: var(--lm-float-radius);
+}
+
+.polyrender-cambar {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  max-width: calc(100% - 20px);
+  pointer-events: auto;
+}
+
+.polyrender-cambar--row2 {
+  top: 52px;
+}
+
+.polyrender-color-input {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--lm-float-border);
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  background: transparent;
+}
+
+.polyrender-minimap {
+  position: absolute;
+  left: 10px;
+  bottom: 48px;
+  z-index: 2;
+  pointer-events: none;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+}
+
+.polyrender-minimap-title {
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  color: color-mix(in oklab, var(--muted-foreground) 90%, transparent);
+}
+
+.polyrender-minimap-canvas {
+  display: block;
+  border-radius: calc(var(--lm-float-radius) - 0.15rem);
+  border: 1px solid var(--lm-float-border);
+  pointer-events: auto;
+}
+
+.polyrender-hud-stack {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: calc(100% - 20px);
+  padding: 6px 8px;
+  pointer-events: none;
+  user-select: none;
+  z-index: 2;
+}
+
+.polyrender-hud-line {
+  font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: color-mix(in oklab, var(--muted-foreground) 95%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

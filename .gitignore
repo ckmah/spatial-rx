@@ -12,3 +12,4 @@ demos/__marimo__/
 demos/*.lock
 frontend/node_modules/
 spatial_rx/static/bundled/
+.polyrender/
