@@ -11,6 +11,7 @@ import type {
 } from "./helpers";
 import {
   applyActiveCategory,
+  clearRasterQuery as clearRasterQueryTrait,
   deleteLandmark as deleteLandmarkTrait,
   deleteSelection as deleteSelectionTrait,
   duplicateLandmark as duplicateLandmarkTrait,
@@ -24,6 +25,12 @@ import {
   setGeneLog1p as setGeneLog1pTrait,
   setGeneScaleMode as setGeneScaleModeTrait,
   setMode as setModeTrait,
+  setRasterBasis as setRasterBasisTrait,
+  setRasterBinSize as setRasterBinSizeTrait,
+  setRasterEmbeddingDims as setRasterEmbeddingDimsTrait,
+  setRasterEmbeddingKey as setRasterEmbeddingKeyTrait,
+  setRasterThreshold as setRasterThresholdTrait,
+  setRenderMode as setRenderModeTrait,
   setSelected,
   toggleLandmarkHidden as toggleLandmarkHiddenTrait,
   toggleSelectionHidden as toggleSelectionHiddenTrait,
@@ -54,6 +61,20 @@ export type LandmarksState = {
   gene_values: string;
   point_size: number;
   default_buffer_width: number;
+  render_mode: string;
+  raster_bin_size: number;
+  raster_window_radius: number;
+  raster_basis: string;
+  raster_embedding_key: string;
+  raster_embedding_keys: string[];
+  raster_embedding_dims: number[];
+  raster_feature_dim: number;
+  raster_feature_labels: string[];
+  raster_threshold: number;
+  raster_query_bin: number;
+  raster_status: string;
+  raster_n_bins: number;
+  raster_similarity_enabled: boolean;
 };
 
 const MODEL_KEYS: (keyof LandmarksState)[] = [
@@ -81,6 +102,20 @@ const MODEL_KEYS: (keyof LandmarksState)[] = [
   "gene_values",
   "point_size",
   "default_buffer_width",
+  "render_mode",
+  "raster_bin_size",
+  "raster_window_radius",
+  "raster_basis",
+  "raster_embedding_key",
+  "raster_embedding_keys",
+  "raster_embedding_dims",
+  "raster_feature_dim",
+  "raster_feature_labels",
+  "raster_threshold",
+  "raster_query_bin",
+  "raster_status",
+  "raster_n_bins",
+  "raster_similarity_enabled",
 ];
 
 export type LandmarksModel = LandmarksState & {
@@ -101,6 +136,13 @@ export type LandmarksModel = LandmarksState & {
   toggleLandmarkHidden(index: number): void;
   toggleSelectionHidden(index: number): void;
   promoteNeighborhoodToSelection(): void;
+  setRenderMode(mode: string): void;
+  setRasterBinSize(size: number): void;
+  setRasterBasis(basis: string): void;
+  setRasterEmbeddingKey(key: string): void;
+  setRasterEmbeddingDims(dims: number[]): void;
+  setRasterThreshold(value: number): void;
+  clearRasterQuery(): void;
   activeNeighborhood(): ReturnType<typeof neighborhoodFor>;
   selectedLandmark(): LandmarkItem | null;
 };
@@ -186,6 +228,27 @@ export function useLandmarksModel(model: AnyModel): LandmarksModel {
     },
     promoteNeighborhoodToSelection() {
       promoteNeighborhoodToSelectionTrait(model);
+    },
+    setRenderMode(mode) {
+      setRenderModeTrait(model, mode);
+    },
+    setRasterBinSize(size) {
+      setRasterBinSizeTrait(model, size);
+    },
+    setRasterBasis(basis) {
+      setRasterBasisTrait(model, basis);
+    },
+    setRasterEmbeddingKey(key) {
+      setRasterEmbeddingKeyTrait(model, key);
+    },
+    setRasterEmbeddingDims(dims) {
+      setRasterEmbeddingDimsTrait(model, dims);
+    },
+    setRasterThreshold(value) {
+      setRasterThresholdTrait(model, value);
+    },
+    clearRasterQuery() {
+      clearRasterQueryTrait(model);
     },
     activeNeighborhood() {
       return neighborhoodFor(

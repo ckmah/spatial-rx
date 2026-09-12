@@ -83,6 +83,73 @@ const OTHER_SIZE_SCALE = 0.55;
 /** Unselected point alpha multiplier while focused. */
 const OTHER_ALPHA_SCALE = 0.28;
 const BUFFERABLE = ["line", "spline", "gradient"];
+/**
+ * Gene / observation high stop (matches helpers GENE_COLORS[0] / DESIGN gene-magenta).
+ * Low stop is the plot background (theme-aware) — same idea as the genes legend
+ * ``var(--background) → magenta``, so continuous scales read on dark and light.
+ */
+const RASTER_SEQ_HIGH = [255, 0, 153];
+/** Additive embedding / multi-gene channels (keep in sync with helpers GENE_COLORS). */
+const RASTER_RGB_CHANNELS = ["#ff0099", "#b8ff00", "#00b7ff"];
+
+function clamp01(t) {
+  return Math.max(0, Math.min(1, Number(t) || 0));
+}
+
+function lerpRgb(low, high, t) {
+  const u = clamp01(t);
+  return [
+    Math.round(low[0] + (high[0] - low[0]) * u),
+    Math.round(low[1] + (high[1] - low[1]) * u),
+    Math.round(low[2] + (high[2] - low[2]) * u),
+  ];
+}
+
+/** Similarity: black (low) → white (high). */
+function sampleRasterGray(t) {
+  const v = Math.round(clamp01(t) * 255);
+  return [v, v, v];
+}
+
+/** Parse ``rgb()`` / ``rgba()`` / ``#hex`` to ``[r,g,b]``; fallback black. */
+function cssColorToRgb(css) {
+  const s = String(css || "").trim();
+  if (!s) return [0, 0, 0];
+  if (s[0] === "#") {
+    const h = s.slice(1);
+    const full =
+      h.length === 3
+        ? h
+            .split("")
+            .map((c) => c + c)
+            .join("")
+        : h.padEnd(6, "0").slice(0, 6);
+    const n = Number.parseInt(full, 16);
+    if (!Number.isFinite(n)) return [0, 0, 0];
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const m = s.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+  if (m) {
+    return [
+      Math.round(Number(m[1])),
+      Math.round(Number(m[2])),
+      Math.round(Number(m[3])),
+    ];
+  }
+  return [0, 0, 0];
+}
+
+function rasterGrayCssGradient(dir = "to top") {
+  return `linear-gradient(${dir}, #000 0%, #fff 100%)`;
+}
+
+const RASTER_DENSITY_ALPHA = 0.85;
+const RASTER_DIM_ALPHA = 0.18;
+const RASTER_QUERY_STROKE = "#ffffff";
+const RASTER_HOVER_STROKE = "#e5e5e5";
+const RASTER_TEXTURE_MAX = 1024;
+const RASTER_LANDMARK_GRAY = "#c4c4c4";
+const RASTER_WINDOW_SEGMENTS = 48;
 
 /** CSS/Penner easeOutQuart for camera transitions. */
 function easeOutQuart(t) {
@@ -157,9 +224,12 @@ export function mountEngine({ model, host }) {
 
   // React owns theme class apply (dark / landmarks--dark / landmarks--light).
   // Re-clear the deck when those classes change on the container.
+  let rasterImageCache = { key: "", image: null, bounds: null };
   let applyPlotBackground = () => { };
   const themeObserver = new MutationObserver(() => {
     applyPlotBackground();
+    // Observation sequential low-stop tracks plot background — rebuild texture.
+    rasterImageCache = { key: "", image: null, bounds: null };
     if (deckgl) setDeckLayers();
   });
   themeObserver.observe(container, {
@@ -312,6 +382,17 @@ export function mountEngine({ model, host }) {
   let geneValues = null;
   let knnGraph = null;
   let radiusGraph = null;
+  let rasterCache = {
+    key: "",
+    rows: null,
+    cols: null,
+    counts: null,
+    features: null,
+    flatToCompact: null,
+  };
+  let rasterScores = null; // Float32Array | null
+  let rasterScoreKey = "";
+  let hoverBinIndex = -1;
 
   function refreshCategoryCodes() {
     const b64 = model.get("category_codes") || "";
@@ -345,6 +426,472 @@ export function mountEngine({ model, host }) {
     return { indptr, indices, distances };
   }
   refreshNeighborGraph();
+
+  function isRasterMode() {
+    return (model.get("render_mode") || "points") === "raster";
+  }
+
+  function rasterSimilarityOn() {
+    return isRasterMode() && !!model.get("raster_similarity_enabled");
+  }
+
+  function refreshRasterArrays() {
+    const rowsB64 = model.get("raster_bin_rows") || "";
+    const colsB64 = model.get("raster_bin_cols") || "";
+    const countsB64 = model.get("raster_bin_counts") || "";
+    const featB64 = model.get("raster_features") || "";
+    const nBins = model.get("raster_n_bins") | 0;
+    const dim = model.get("raster_feature_dim") | 0;
+    const key = [
+      rowsB64.length,
+      colsB64.length,
+      countsB64.length,
+      featB64.length,
+      nBins,
+      dim,
+      model.get("raster_origin_x"),
+      model.get("raster_origin_y"),
+      model.get("raster_bin_size"),
+      model.get("raster_n_cols"),
+      model.get("raster_n_rows"),
+      rowsB64.slice(0, 24),
+      featB64.slice(0, 24),
+    ].join(":");
+    if (key === rasterCache.key) return rasterCache;
+    const rows = rowsB64 ? decodeI32Base64(rowsB64) : new Int32Array(0);
+    const cols = colsB64 ? decodeI32Base64(colsB64) : new Int32Array(0);
+    const counts = countsB64 ? decodeI32Base64(countsB64) : new Int32Array(0);
+    const features = featB64 ? decodeF32Base64(featB64) : new Float32Array(0);
+    const nCols = model.get("raster_n_cols") | 0;
+    const nRows = model.get("raster_n_rows") | 0;
+    const flatToCompact = new Int32Array(Math.max(0, nCols * nRows));
+    flatToCompact.fill(-1);
+    const n = Math.min(nBins, rows.length, cols.length, counts.length);
+    for (let i = 0; i < n; i++) {
+      const flat = (cols[i] | 0) + nCols * (rows[i] | 0);
+      if (flat >= 0 && flat < flatToCompact.length) flatToCompact[flat] = i;
+    }
+    rasterCache = { key, rows, cols, counts, features, flatToCompact, nBins: n, dim };
+    rasterScores = null;
+    rasterScoreKey = "";
+    rasterImageCache = { key: "", image: null, bounds: null };
+    return rasterCache;
+  }
+
+  function lerpHex(a, b, t) {
+    const pa = hexToRgbaBytes(a, 1);
+    const pb = hexToRgbaBytes(b, 1);
+    const u = Math.max(0, Math.min(1, t));
+    return [
+      Math.round(pa[0] + (pb[0] - pa[0]) * u),
+      Math.round(pa[1] + (pb[1] - pa[1]) * u),
+      Math.round(pa[2] + (pb[2] - pa[2]) * u),
+    ];
+  }
+
+  function cosineScoresForQuery(queryIdx) {
+    const cache = refreshRasterArrays();
+    const n = cache.nBins | 0;
+    const dim = cache.dim | 0;
+    const feats = cache.features;
+    if (queryIdx < 0 || queryIdx >= n || !dim || !feats || feats.length < n * dim) {
+      return null;
+    }
+    const dimMask = embeddingDimMask(dim);
+    const key = `${cache.key}:${queryIdx}:${dimMask.join(",")}`;
+    if (rasterScoreKey === key && rasterScores) return rasterScores;
+    // Features are raw means; L2-normalize selected dims for cosine.
+    const q = new Float32Array(dimMask.length);
+    let qn = 0;
+    const qOff = queryIdx * dim;
+    for (let k = 0; k < dimMask.length; k++) {
+      const v = feats[qOff + dimMask[k]] || 0;
+      q[k] = v;
+      qn += v * v;
+    }
+    qn = Math.sqrt(qn) || 1;
+    for (let k = 0; k < q.length; k++) q[k] /= qn;
+    const scores = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let dot = 0;
+      let rn = 0;
+      const off = i * dim;
+      for (let k = 0; k < dimMask.length; k++) {
+        const v = feats[off + dimMask[k]] || 0;
+        rn += v * v;
+        dot += v * q[k];
+      }
+      rn = Math.sqrt(rn) || 1;
+      scores[i] = dot / rn;
+    }
+    rasterScores = scores;
+    rasterScoreKey = key;
+    return scores;
+  }
+
+  /** Empty trait = all dims. Non-embedding bases ignore the mask. */
+  function embeddingDimMask(dim) {
+    const basis = model.get("raster_basis") || "genes";
+    if (basis !== "embedding") {
+      const all = new Array(dim);
+      for (let i = 0; i < dim; i++) all[i] = i;
+      return all;
+    }
+    const raw = model.get("raster_embedding_dims") || [];
+    const picked = [];
+    const seen = new Set();
+    for (const d of raw) {
+      const i = d | 0;
+      if (i >= 0 && i < dim && !seen.has(i)) {
+        seen.add(i);
+        picked.push(i);
+      }
+    }
+    if (!picked.length) {
+      const all = new Array(dim);
+      for (let i = 0; i < dim; i++) all[i] = i;
+      return all;
+    }
+    return picked;
+  }
+
+  function columnMinMax(feats, n, dim, col) {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const v = feats[i * dim + col];
+      if (!Number.isFinite(v)) continue;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    if (!(hi > lo)) return { lo: 0, span: 1 };
+    return { lo, span: hi - lo };
+  }
+
+  /** Plot-canvas RGB used as the continuous low stop (dark/light aware). */
+  function observationLowRgb() {
+    return cssColorToRgb(resolvePlotBackground());
+  }
+
+  /**
+   * Rest-state observation RGB for one compact bin (no similarity).
+   * Matches points-genes language: additive magenta/lime/azure for multi-channel
+   * bases; theme background → magenta for scalar continuous (composition /
+   * single-gene mean), same as the genes legend ``var(--background) → color``.
+   */
+  function observationColorForBin(i, cache, colStats) {
+    const basis = model.get("raster_basis") || "genes";
+    const dim = cache.dim | 0;
+    const feats = cache.features;
+    const n = cache.nBins | 0;
+    const low = observationLowRgb();
+    if (!dim || !feats || feats.length < n * dim) {
+      return low;
+    }
+    const off = i * dim;
+    if (basis === "embedding") {
+      const mask = embeddingDimMask(dim);
+      const channels = mask.slice(0, 3);
+      if (channels.length === 0) return low;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let w = 0;
+      for (let ci = 0; ci < channels.length; ci++) {
+        const col = channels[ci];
+        const st = colStats[col] || { lo: 0, span: 1 };
+        const t = clamp01((feats[off + col] - st.lo) / st.span);
+        if (!(t > 0)) continue;
+        const rgb = hexToRgbaBytes(RASTER_RGB_CHANNELS[ci % RASTER_RGB_CHANNELS.length], 1);
+        r += rgb[0] * t;
+        g += rgb[1] * t;
+        b += rgb[2] * t;
+        w += t;
+      }
+      if (w < 1e-6) return low;
+      // Mix additive signal over the plot background so lows read on light canvases.
+      const a = Math.min(1, w);
+      return [
+        Math.min(255, Math.round(low[0] * (1 - a) + r)),
+        Math.min(255, Math.round(low[1] * (1 - a) + g)),
+        Math.min(255, Math.round(low[2] * (1 - a) + b)),
+      ];
+    }
+    if (basis === "composition") {
+      // Purity = max category fraction (rows are histograms / means).
+      let s = 0;
+      let mx = 0;
+      for (let d = 0; d < dim; d++) {
+        const v = Math.max(0, feats[off + d] || 0);
+        s += v;
+        if (v > mx) mx = v;
+      }
+      const t = s > 1e-8 ? mx / s : 0;
+      return lerpRgb(low, RASTER_SEQ_HIGH, t);
+    }
+    // genes: additive channels like points ``blendGeneColors`` (≤3 dims),
+    // then composite over plot background.
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let w = 0;
+    const nChan = Math.min(dim, RASTER_RGB_CHANNELS.length);
+    for (let d = 0; d < nChan; d++) {
+      const st = colStats[d] || { lo: 0, span: 1 };
+      const t = clamp01((feats[off + d] - st.lo) / st.span);
+      if (!(t > 0)) continue;
+      const rgb = hexToRgbaBytes(RASTER_RGB_CHANNELS[d % RASTER_RGB_CHANNELS.length], 1);
+      r += rgb[0] * t;
+      g += rgb[1] * t;
+      b += rgb[2] * t;
+      w += t;
+    }
+    if (dim > nChan) {
+      // Extra genes fold into the mean of remaining channels → first channel weight.
+      let extra = 0;
+      let extraN = 0;
+      for (let d = nChan; d < dim; d++) {
+        const st = colStats[d] || { lo: 0, span: 1 };
+        extra += clamp01((feats[off + d] - st.lo) / st.span);
+        extraN += 1;
+      }
+      if (extraN) {
+        const t = extra / extraN;
+        const rgb = hexToRgbaBytes(RASTER_RGB_CHANNELS[0], 1);
+        r += rgb[0] * t;
+        g += rgb[1] * t;
+        b += rgb[2] * t;
+        w += t;
+      }
+    }
+    if (w < 1e-6) return low;
+    const a = Math.min(1, w);
+    return [
+      Math.min(255, Math.round(low[0] * (1 - a) + r)),
+      Math.min(255, Math.round(low[1] * (1 - a) + g)),
+      Math.min(255, Math.round(low[2] * (1 - a) + b)),
+    ];
+  }
+
+  function activeQueryBin() {
+    // Hover wins for live scrubbing; pinned query is the idle fallback.
+    if (hoverBinIndex >= 0) return hoverBinIndex;
+    const pinned = model.get("raster_query_bin");
+    if (pinned != null && pinned >= 0) return pinned | 0;
+    return -1;
+  }
+
+  function pickBinAtWorld(x, y) {
+    if (!isRasterMode()) return -1;
+    const cache = refreshRasterArrays();
+    const size = Number(model.get("raster_bin_size")) || 0;
+    const nCols = model.get("raster_n_cols") | 0;
+    const nRows = model.get("raster_n_rows") | 0;
+    if (!(size > 0) || nCols <= 0 || nRows <= 0 || !cache.flatToCompact) return -1;
+    const ox = Number(model.get("raster_origin_x")) || 0;
+    const oy = Number(model.get("raster_origin_y")) || 0;
+    const col = Math.floor((x - ox) / size);
+    const row = Math.floor((y - oy) / size);
+    if (col < 0 || row < 0 || col >= nCols || row >= nRows) return -1;
+    const flat = col + nCols * row;
+    return cache.flatToCompact[flat] ?? -1;
+  }
+
+  function binPolygon(compactIdx) {
+    const cache = refreshRasterArrays();
+    if (compactIdx < 0 || compactIdx >= (cache.nBins | 0)) return null;
+    const size = Number(model.get("raster_bin_size")) || 0;
+    const ox = Number(model.get("raster_origin_x")) || 0;
+    const oy = Number(model.get("raster_origin_y")) || 0;
+    const col = cache.cols[compactIdx] | 0;
+    const row = cache.rows[compactIdx] | 0;
+    const x0 = ox + col * size;
+    const y0 = oy + row * size;
+    const x1 = x0 + size;
+    const y1 = y0 + size;
+    return [
+      [x0, y0],
+      [x1, y0],
+      [x1, y1],
+      [x0, y1],
+      [x0, y0],
+    ];
+  }
+
+  function buildRasterTexture() {
+    const cache = refreshRasterArrays();
+    const nBins = cache.nBins | 0;
+    const nCols = model.get("raster_n_cols") | 0;
+    const nRows = model.get("raster_n_rows") | 0;
+    const size = Number(model.get("raster_bin_size")) || 0;
+    if (!nBins || !nCols || !nRows || !(size > 0)) {
+      return null;
+    }
+    const queryIdx = rasterSimilarityOn() ? activeQueryBin() : -1;
+    const scores =
+      queryIdx >= 0 && (cache.dim | 0) > 0 ? cosineScoresForQuery(queryIdx) : null;
+    const threshold = Number(model.get("raster_threshold")) || 0;
+    const basis = model.get("raster_basis") || "genes";
+    const dimsKey = (model.get("raster_embedding_dims") || []).join(",");
+    const texKey = [
+      cache.key,
+      queryIdx,
+      scores ? rasterScoreKey : "observation",
+      threshold,
+      hoverBinIndex,
+      model.get("raster_query_bin"),
+      basis,
+      dimsKey,
+      // Low stop tracks plot background (dark/light).
+      resolvePlotBackground(),
+    ].join("|");
+    if (rasterImageCache.key === texKey && rasterImageCache.image) {
+      return rasterImageCache;
+    }
+
+    let tw = nCols;
+    let th = nRows;
+    const maxDim = RASTER_TEXTURE_MAX;
+    if (tw > maxDim || th > maxDim) {
+      const scale = maxDim / Math.max(tw, th);
+      tw = Math.max(1, Math.round(tw * scale));
+      th = Math.max(1, Math.round(th * scale));
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = tw;
+    canvas.height = th;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const img = ctx.createImageData(tw, th);
+    const data = img.data;
+    data.fill(0);
+
+    const ox = Number(model.get("raster_origin_x")) || 0;
+    const oy = Number(model.get("raster_origin_y")) || 0;
+    const sx = tw / nCols;
+    const sy = th / nRows;
+    const dim = cache.dim | 0;
+    const colStats = [];
+    if (!scores && dim > 0 && cache.features) {
+      for (let d = 0; d < dim; d++) {
+        colStats[d] = columnMinMax(cache.features, nBins, dim, d);
+      }
+    }
+
+    for (let i = 0; i < nBins; i++) {
+      const col = cache.cols[i] | 0;
+      const row = cache.rows[i] | 0;
+      let alpha = RASTER_DENSITY_ALPHA;
+      let r;
+      let g;
+      let b;
+      if (scores) {
+        const t = Math.max(0, Math.min(1, scores[i]));
+        if (t < threshold) alpha = RASTER_DIM_ALPHA;
+        [r, g, b] = sampleRasterGray(t);
+      } else {
+        [r, g, b] = observationColorForBin(i, cache, colStats);
+      }
+      const px0 = Math.floor(col * sx);
+      const px1 = Math.max(px0 + 1, Math.floor((col + 1) * sx));
+      const py0 = Math.floor((nRows - 1 - row) * sy);
+      const py1 = Math.max(py0 + 1, Math.floor((nRows - row) * sy));
+      const a = Math.round(alpha * 255);
+      for (let y = py0; y < py1; y++) {
+        for (let x = px0; x < px1; x++) {
+          if (x < 0 || y < 0 || x >= tw || y >= th) continue;
+          const o = (y * tw + x) * 4;
+          data[o] = r;
+          data[o + 1] = g;
+          data[o + 2] = b;
+          data[o + 3] = a;
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const bounds = [
+      ox,
+      oy,
+      ox + nCols * size,
+      oy + nRows * size,
+    ];
+    rasterImageCache = { key: texKey, image: canvas, bounds };
+    return rasterImageCache;
+  }
+
+  function binWindowCircle(compactIdx) {
+    const cache = refreshRasterArrays();
+    if (compactIdx < 0 || compactIdx >= (cache.nBins | 0)) return null;
+    const size = Number(model.get("raster_bin_size")) || 0;
+    if (!(size > 0)) return null;
+    const ox = Number(model.get("raster_origin_x")) || 0;
+    const oy = Number(model.get("raster_origin_y")) || 0;
+    const col = cache.cols[compactIdx] | 0;
+    const row = cache.rows[compactIdx] | 0;
+    const cx = ox + (col + 0.5) * size;
+    const cy = oy + (row + 0.5) * size;
+    // Prefer synced window radius (default 20 µm); fall back to 2× bin size.
+    let r = Number(model.get("raster_window_radius")) || 0;
+    if (!(r > 0)) r = size * 2;
+    const path = [];
+    for (let i = 0; i <= RASTER_WINDOW_SEGMENTS; i++) {
+      const a = (i / RASTER_WINDOW_SEGMENTS) * Math.PI * 2;
+      path.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+    }
+    return path;
+  }
+
+  function buildRasterLayers() {
+    if (!deckModules || !isRasterMode()) return [];
+    if ((model.get("raster_status") || "") === "computing") return [];
+    const baked = buildRasterTexture();
+    if (!baked?.image) return [];
+    const { BitmapLayer, PathLayer } = deckModules;
+    const layers = [
+      new BitmapLayer({
+        id: "raster-bins",
+        image: baked.image,
+        bounds: baked.bounds,
+        pickable: false,
+        textureParameters: {
+          minFilter: "nearest",
+          magFilter: "nearest",
+        },
+        parameters: OVERLAY_GL,
+        updateTriggers: {
+          image: baked.key,
+        },
+      }),
+    ];
+    const pinned = model.get("raster_query_bin");
+    const outlineIdx =
+      pinned != null && pinned >= 0
+        ? pinned | 0
+        : hoverBinIndex >= 0
+          ? hoverBinIndex
+          : -1;
+    const windowPath = outlineIdx >= 0 ? binWindowCircle(outlineIdx) : null;
+    if (windowPath) {
+      const stroke =
+        pinned != null && pinned >= 0 ? RASTER_QUERY_STROKE : RASTER_HOVER_STROKE;
+      layers.push(
+        new PathLayer({
+          id: "raster-query-window",
+          data: [{ path: windowPath }],
+          getPath: (d) => d.path,
+          getColor: hexToRgbaBytes(stroke, 0.95),
+          getWidth: 2,
+          widthUnits: "pixels",
+          pickable: false,
+          parameters: OVERLAY_GL,
+          updateTriggers: {
+            getColor: [pinned, hoverBinIndex],
+            data: [outlineIdx, refreshRasterArrays().key, model.get("raster_bin_size")],
+          },
+        })
+      );
+    }
+    return layers;
+  }
 
   function activeCategoryIndex() {
     const cols = model.get("category_columns") || [];
@@ -581,6 +1128,12 @@ export function mountEngine({ model, host }) {
 
   function updatePointLegend() {
     if (!legend) return;
+    if (isRasterMode()) {
+      // Continuous bar lives in the Layers → Raster panel.
+      legend.innerHTML = "";
+      legend.hidden = true;
+      return;
+    }
     const mode = model.get("color_by") || "categorical";
     const title = model.get("legend_title") || "";
     const palette = model.get("point_palette") || [];
@@ -817,10 +1370,11 @@ export function mountEngine({ model, host }) {
   }
 
   function buildPointsLayer() {
-    if (!deckModules) return null;
+    if (!deckModules) return [];
+    if (isRasterMode()) return [];
     const { ScatterplotLayer } = deckModules;
     const data = getPointsData();
-    if (!data.length) return null;
+    if (!data.length) return [];
     // point_size is radius in the same units as x/y (µm for micron data).
     const size = model.get("point_size") ?? 2;
     const roleTrigger = [
@@ -922,7 +1476,9 @@ export function mountEngine({ model, host }) {
     const arrowWorld = pixelsToWorld(14);
     (model.get("landmarks") || []).forEach((lm, i) => {
       if (lm.hidden) return;
-      const hex = (typeof lm.color === "string" && lm.color) || COLORS[i % COLORS.length];
+      const rawHex =
+        (typeof lm.color === "string" && lm.color) || COLORS[i % COLORS.length];
+      const hex = isRasterMode() ? RASTER_LANDMARK_GRAY : rawHex;
       const dashed = String(lm.line_style || "solid") === "dashed";
       const selected = kind === "landmark" && i === selectedIdx;
       const alphaScale = dimOthers && !selected ? 0.62 : 1;
@@ -1320,6 +1876,7 @@ export function mountEngine({ model, host }) {
 
   function buildNeighborhoodLayers() {
     if (!deckModules) return [];
+    if (isRasterMode()) return [];
     const focus = cellLayerFocus();
     const hood = neighborhoodFor(focus);
     if (!focus || !hood || hood.neighborhood === "off") return [];
@@ -1483,6 +2040,7 @@ export function mountEngine({ model, host }) {
     prepareFocusGeom();
     // Selection emphasis lives on the points layer (size + dimming); no outline layers.
     return [
+      ...buildRasterLayers(),
       ...buildNeighborhoodLayers(),
       ...buildPointsLayer(),
       buildInspectHaloLayer(),
@@ -1740,14 +2298,46 @@ export function mountEngine({ model, host }) {
             return;
           }
           const hit = resolvePointerTarget(info);
-          if (hit) setSelected(hit.kind, hit.index);
-          else setSelected("", -1);
+          if (hit) {
+            setSelected(hit.kind, hit.index);
+            return;
+          }
+          if (rasterSimilarityOn() && info?.coordinate) {
+            const bin = pickBinAtWorld(info.coordinate[0], info.coordinate[1]);
+            if (bin >= 0) {
+              model.set("raster_query_bin", bin);
+              model.save_changes();
+              setDeckLayers();
+              return;
+            }
+          }
+          setSelected("", -1);
         },
         onHover: (info) => {
           if (currentMode === "pointer") {
             const hit = resolveHoverTarget(info);
-            webglCanvas.style.cursor =
-              hit?.kind === "landmark" ? "pointer" : "default";
+            // Live scrub: always recolor from the bin under the cursor while
+            // hovering (pin is only the fallback when the pointer leaves).
+            if (isRasterMode() && info?.coordinate) {
+              const bin = pickBinAtWorld(info.coordinate[0], info.coordinate[1]);
+              if (bin !== hoverBinIndex) {
+                hoverBinIndex = bin;
+                if (hoverRaf) cancelAnimationFrame(hoverRaf);
+                hoverRaf = requestAnimationFrame(() => {
+                  hoverRaf = 0;
+                  setDeckLayers();
+                });
+              }
+              webglCanvas.style.cursor =
+                hit?.kind === "landmark" ? "pointer" : "crosshair";
+            } else {
+              if (hoverBinIndex >= 0) {
+                hoverBinIndex = -1;
+                setDeckLayers();
+              }
+              webglCanvas.style.cursor =
+                hit?.kind === "landmark" ? "pointer" : "default";
+            }
             if (sameTarget(hoverTarget, hit)) return;
             hoverTarget = hit;
             for (const fn of hoverListeners) {
@@ -1773,6 +2363,10 @@ export function mountEngine({ model, host }) {
                 /* ignore */
               }
             }
+            setDeckLayers();
+          }
+          if (hoverBinIndex >= 0) {
+            hoverBinIndex = -1;
             setDeckLayers();
           }
           if (isLandmarkDrawMode(currentMode)) {
@@ -2836,6 +3430,11 @@ export function mountEngine({ model, host }) {
       event.preventDefault();
       resetDraft();
       setSelected("", -1);
+      if ((model.get("raster_query_bin") ?? -1) >= 0) {
+        model.set("raster_query_bin", -1);
+        model.save_changes();
+      }
+      hoverBinIndex = -1;
       setDeckLayers();
       return;
     }
@@ -3044,6 +3643,55 @@ export function mountEngine({ model, host }) {
       updateUI();
       updatePointLegend();
       setDeckLayers();
+    });
+  });
+  [
+    "render_mode",
+    "raster_bin_rows",
+    "raster_bin_cols",
+    "raster_bin_counts",
+    "raster_features",
+    "raster_feature_dim",
+    "raster_n_bins",
+    "raster_n_cols",
+    "raster_n_rows",
+    "raster_origin_x",
+    "raster_origin_y",
+    "raster_bin_size",
+    "raster_window_radius",
+    "raster_status",
+    "raster_query_bin",
+    "raster_threshold",
+    "raster_similarity_enabled",
+    "raster_basis",
+    "raster_embedding_dims",
+    "raster_embedding_key",
+    "raster_feature_labels",
+  ].forEach((k) => {
+    onChange(k, () => {
+      if (
+        k === "raster_bin_rows" ||
+        k === "raster_bin_cols" ||
+        k === "raster_bin_counts" ||
+        k === "raster_features" ||
+        k === "raster_feature_dim" ||
+        k === "raster_n_bins" ||
+        k === "raster_n_cols" ||
+        k === "raster_n_rows" ||
+        k === "raster_origin_x" ||
+        k === "raster_origin_y" ||
+        k === "raster_bin_size"
+      ) {
+        rasterCache.key = "";
+        rasterScores = null;
+        rasterScoreKey = "";
+        rasterImageCache = { key: "", image: null, bounds: null };
+      }
+      if (k === "render_mode" && !isRasterMode()) {
+        hoverBinIndex = -1;
+      }
+      if (deckgl) setDeckLayers();
+      updatePointLegend();
     });
   });
 

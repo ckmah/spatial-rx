@@ -78,6 +78,61 @@ export function setGeneLog1p(model, enabled) {
   model.save_changes();
 }
 
+export function setRenderMode(model, mode) {
+  const next = mode === "raster" ? "raster" : "points";
+  model.set("render_mode", next);
+  model.save_changes();
+}
+
+export function setRasterBinSize(model, size) {
+  const v = Number(size);
+  if (!Number.isFinite(v) || v <= 0) return;
+  model.set("raster_bin_size", v);
+  model.save_changes();
+}
+
+export function setRasterBasis(model, basis) {
+  const allowed = new Set(["genes", "embedding", "composition"]);
+  if (!allowed.has(basis)) return;
+  model.set("raster_basis", basis);
+  model.save_changes();
+}
+
+export function setRasterEmbeddingKey(model, key) {
+  model.set("raster_embedding_key", String(key || ""));
+  model.save_changes();
+}
+
+/** Empty array = all embedding dims. */
+export function setRasterEmbeddingDims(model, dims) {
+  const arr = Array.isArray(dims)
+    ? dims.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0)
+    : [];
+  // Dedupe, keep order.
+  const seen = new Set();
+  const ordered = [];
+  for (const d of arr) {
+    if (!seen.has(d)) {
+      seen.add(d);
+      ordered.push(d);
+    }
+  }
+  model.set("raster_embedding_dims", ordered);
+  model.save_changes();
+}
+
+export function setRasterThreshold(model, value) {
+  const v = Number(value);
+  if (!Number.isFinite(v)) return;
+  model.set("raster_threshold", Math.max(0, Math.min(1, v)));
+  model.save_changes();
+}
+
+export function clearRasterQuery(model) {
+  model.set("raster_query_bin", -1);
+  model.save_changes();
+}
+
 export function neighborhoodFor(
   kind,
   index,

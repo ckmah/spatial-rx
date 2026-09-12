@@ -52,7 +52,12 @@ function mapLayout(
   };
 }
 
-/** World → minimap; same orientation as the main plot. */
+/**
+ * World → minimap canvas.
+ * deck.gl OrthographicView defaults to flipY=true, so world +Y goes toward
+ * the bottom of the screen (CSS-like). Canvas y also grows downward, so
+ * minY → row 0 matches the main plot — do not invert Y here.
+ */
 function toCanvasXY(
   x: number,
   y: number,

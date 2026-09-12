@@ -260,6 +260,7 @@ export function LayerRow({
   swatchFillOpacity,
   label,
   hidden,
+  disabled,
   onSelect,
   onRename,
   onDelete,
@@ -272,6 +273,7 @@ export function LayerRow({
   swatchFillOpacity?: number;
   label: string;
   hidden?: boolean;
+  disabled?: boolean;
   onSelect: () => void;
   onRename?: (next: string) => void;
   onDelete?: () => void;
@@ -283,7 +285,7 @@ export function LayerRow({
   const hasMenu = !!(onRename || onDelete || onToggleHidden);
 
   const startRename = () => {
-    if (!onRename) return;
+    if (!onRename || disabled) return;
     setDraft(label);
     setEditing(true);
   };
@@ -291,14 +293,19 @@ export function LayerRow({
   return (
     <div
       role="listitem"
+      aria-disabled={disabled || undefined}
       className={cn(
-        "landmarks-layer-row cursor-pointer text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "landmarks-layer-row text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        disabled ? "cursor-default opacity-60" : "cursor-pointer",
         active && "landmarks-layer-row--active",
         hidden && "opacity-50",
       )}
-      tabIndex={0}
-      onClick={onSelect}
+      tabIndex={disabled ? -1 : 0}
+      onClick={() => {
+        if (!disabled) onSelect();
+      }}
       onKeyDown={(e) => {
+        if (disabled) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onSelect();

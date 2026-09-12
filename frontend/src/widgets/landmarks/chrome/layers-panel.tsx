@@ -22,6 +22,7 @@ import {
 import type { LandmarksModel } from "../use-landmarks-model";
 import { LayerRow } from "./primitives";
 import { GenesCombobox } from "./genes-legend";
+import { RasterSection } from "./raster-section";
 import {
   PANEL_INSET,
   SECTION_TRIGGER,
@@ -60,8 +61,15 @@ export function LayersPanel({
   const accordion = (
     <Accordion
       type="multiple"
-      defaultValue={["categories", "genes", "selections", "landmarks"]}
+      defaultValue={["raster", "categories", "genes", "selections", "landmarks"]}
     >
+      <AccordionItem value="raster" className="border-b">
+        <AccordionTrigger className={SECTION_TRIGGER}>Raster</AccordionTrigger>
+        <AccordionContent className={SECTION_CONTENT}>
+          <RasterSection lm={lm} />
+        </AccordionContent>
+      </AccordionItem>
+
       {category_columns.length ? (
         <AccordionItem value="categories" className="border-b">
           <AccordionTrigger className={SECTION_TRIGGER}>Categories</AccordionTrigger>
@@ -107,6 +115,7 @@ export function LayersPanel({
                               ]
                             }
                             label={label}
+                            disabled={lm.render_mode === "raster"}
                             onSelect={() => lm.selectType(col, i)}
                           />
                         ))}

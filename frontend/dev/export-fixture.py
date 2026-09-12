@@ -51,6 +51,30 @@ FIXTURE_KEYS = [
     "radius_distances",
     "color_vmin",
     "color_vmax",
+    "render_mode",
+    "raster_bin_size",
+    "raster_window_radius",
+    "raster_basis",
+    "raster_embedding_key",
+    "raster_embedding_keys",
+    "raster_embedding_dims",
+    "raster_obs_key",
+    "raster_gene_mode",
+    "raster_origin_x",
+    "raster_origin_y",
+    "raster_n_cols",
+    "raster_n_rows",
+    "raster_n_bins",
+    "raster_bin_rows",
+    "raster_bin_cols",
+    "raster_bin_counts",
+    "raster_features",
+    "raster_feature_dim",
+    "raster_feature_labels",
+    "raster_query_bin",
+    "raster_similarity_enabled",
+    "raster_threshold",
+    "raster_status",
 ]
 
 
@@ -96,6 +120,8 @@ def main() -> None:
         radius=radius,
     )
     widget = LandmarksWidget(adata, color="celltype", genes=["GeneA", "GeneB"])
+    widget.active_genes = ["GeneA", "GeneB"]
+    widget.set_render_mode("raster")
     widget.selections = [
         {
             "id": "lasso-1",
@@ -106,8 +132,10 @@ def main() -> None:
         }
     ]
     widget.landmarks = [{"id": "lm-1", "type": "point", "vertices": [[2500, 800]]}]
-    widget.selected_kind = "landmark"
-    widget.selected_index = 0
+    widget.selected_kind = ""
+    widget.selected_index = -1
+    if widget.raster_n_bins > 0:
+        widget.raster_query_bin = 0
 
     out = Path(__file__).with_name("fixture.json")
     payload = {key: getattr(widget, key) for key in FIXTURE_KEYS}
