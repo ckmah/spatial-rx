@@ -829,7 +829,9 @@ export function mountEngine({ model, host }) {
     const row = cache.rows[compactIdx] | 0;
     const cx = ox + (col + 0.5) * size;
     const cy = oy + (row + 0.5) * size;
-    const r = size * 2; // aggregation window radius = 2× bin width
+    // Prefer synced window radius (default 20 µm); fall back to 2× bin size.
+    let r = Number(model.get("raster_window_radius")) || 0;
+    if (!(r > 0)) r = size * 2;
     const path = [];
     for (let i = 0; i <= RASTER_WINDOW_SEGMENTS; i++) {
       const a = (i / RASTER_WINDOW_SEGMENTS) * Math.PI * 2;
@@ -3656,6 +3658,7 @@ export function mountEngine({ model, host }) {
     "raster_origin_x",
     "raster_origin_y",
     "raster_bin_size",
+    "raster_window_radius",
     "raster_status",
     "raster_query_bin",
     "raster_threshold",

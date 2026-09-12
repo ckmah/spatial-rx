@@ -56,6 +56,7 @@ FIXTURE_KEYS = [
     "color_vmax",
     "render_mode",
     "raster_bin_size",
+    "raster_window_radius",
     "raster_basis",
     "raster_embedding_key",
     "raster_embedding_keys",

@@ -28,12 +28,13 @@ from .genes import (
 )
 from .neighbors import DEFAULT_K_MAX, NeighborhoodIndex
 from .raster import (
-    DEFAULT_WINDOW_RADIUS_BINS,
+    DEFAULT_WINDOW_RADIUS,
     aggregate_mean_window,
     assign_bins,
     build_grid,
     composition_hist_window,
     default_bin_size,
+    default_window_radius,
     pack_bin_arrays,
     pack_features,
 )
@@ -369,6 +370,8 @@ class LandmarksWidget(AnyWidget):
     # --- Raster bins + similarity query ---
     render_mode = traitlets.Unicode("points").tag(sync=True)  # points | raster
     raster_bin_size = traitlets.Float(0.0).tag(sync=True)
+    # Aggregation window radius in world units (µm when spatial is µm).
+    raster_window_radius = traitlets.Float(0.0).tag(sync=True)
     raster_basis = traitlets.Unicode("genes").tag(sync=True)  # genes | embedding | composition
     raster_embedding_key = traitlets.Unicode("").tag(sync=True)
     # Keys discovered from adata.obsm (excludes spatial); UI picks from this list.
@@ -572,6 +575,7 @@ class LandmarksWidget(AnyWidget):
             gene_expression_logged=gene_logged,
             render_mode="points",
             raster_bin_size=float(init_bin_size),
+            raster_window_radius=float(DEFAULT_WINDOW_RADIUS),
             raster_basis="genes",
             raster_embedding_key=embedding_key,
             raster_embedding_keys=embedding_keys,
@@ -902,8 +906,14 @@ class LandmarksWidget(AnyWidget):
             grid = build_grid(xy, size)
             assignment = assign_bins(xy, grid)
             n_bins = int(assignment.counts.shape[0])
-            # Soft neighborhood mean around each bin center.
-            window_radius = float(size) * DEFAULT_WINDOW_RADIUS_BINS
+            # Soft neighborhood mean around each bin center (fixed µm default).
+            window_radius = default_window_radius(size)
+            if (
+                float(self.raster_window_radius) > 0
+                and np.isfinite(float(self.raster_window_radius))
+            ):
+                window_radius = float(self.raster_window_radius)
+            self.raster_window_radius = float(window_radius)
             basis = str(self.raster_basis or "genes")
             labels: list[str] = []
             B = np.zeros((n_bins, 0), dtype=np.float32)
@@ -971,6 +981,7 @@ class LandmarksWidget(AnyWidget):
 
     @traitlets.observe(
         "raster_bin_size",
+        "raster_window_radius",
         "raster_basis",
         "raster_embedding_key",
         "raster_gene_mode",

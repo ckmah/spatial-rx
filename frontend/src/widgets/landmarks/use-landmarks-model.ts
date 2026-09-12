@@ -63,6 +63,7 @@ export type LandmarksState = {
   default_buffer_width: number;
   render_mode: string;
   raster_bin_size: number;
+  raster_window_radius: number;
   raster_basis: string;
   raster_embedding_key: string;
   raster_embedding_keys: string[];
@@ -103,6 +104,7 @@ const MODEL_KEYS: (keyof LandmarksState)[] = [
   "default_buffer_width",
   "render_mode",
   "raster_bin_size",
+  "raster_window_radius",
   "raster_basis",
   "raster_embedding_key",
   "raster_embedding_keys",

@@ -2,8 +2,8 @@
 
 Aggregation is **windowed**: each bin's feature vector is the mean of cell
 features whose positions fall within ``window_radius`` of the bin center
-(default = ``2 × bin_size``). That softens hard Voronoi boundaries and reads as
-higher effective resolution when bins are small.
+(default = ``DEFAULT_WINDOW_RADIUS`` = 20 world units / µm). That softens hard
+Voronoi boundaries and reads as higher effective resolution when bins are small.
 
 deck.gl GPU aggregation layers (``GridLayer`` / ``HeatmapLayer``) collapse to
 1–few channels for display. Similarity needs a multi-d bin×feature matrix for
@@ -19,10 +19,9 @@ from typing import Any
 
 import numpy as np
 
-# Halved from 8 → finer bins; windowed mean supplies smoothing.
-DEFAULT_BIN_SIZE_NN_MULT = 4.0
-# Aggregate cells within this many bin-widths of each bin center.
-DEFAULT_WINDOW_RADIUS_BINS = 2.0
+# Fixed physical defaults (world units; µm when spatial coords are µm).
+DEFAULT_BIN_SIZE = 10.0
+DEFAULT_WINDOW_RADIUS = 20.0
 
 
 def _encode_i32(arr: np.ndarray) -> str:
@@ -88,13 +87,27 @@ class BinAssignment:
         return np.column_stack([cx, cy])
 
 
-def default_bin_size(median_nn: float | None, point_size: float | None = None) -> float:
-    """Pick an initial square bin edge from spatial scale."""
-    if median_nn is not None and median_nn > 0 and np.isfinite(median_nn):
-        return float(median_nn * DEFAULT_BIN_SIZE_NN_MULT)
-    if point_size is not None and point_size > 0 and np.isfinite(point_size):
-        return float(point_size * 10.0)
-    return 1.0
+def default_bin_size(
+    median_nn: float | None = None,
+    point_size: float | None = None,
+) -> float:
+    """Default square bin edge in world units (µm when spatial is µm).
+
+    Fixed at ``DEFAULT_BIN_SIZE`` (10). ``median_nn`` / ``point_size`` are
+    accepted for call-site compatibility but ignored.
+    """
+    del median_nn, point_size
+    return float(DEFAULT_BIN_SIZE)
+
+
+def default_window_radius(bin_size: float | None = None) -> float:
+    """Default aggregation window radius in world units.
+
+    Fixed at ``DEFAULT_WINDOW_RADIUS`` (20). ``bin_size`` is accepted for
+    call-site compatibility but ignored.
+    """
+    del bin_size
+    return float(DEFAULT_WINDOW_RADIUS)
 
 
 def build_grid(
@@ -260,7 +273,7 @@ def aggregate_mean_window(
     radius = (
         float(window_radius)
         if window_radius is not None
-        else float(assignment.grid.bin_size) * DEFAULT_WINDOW_RADIUS_BINS
+        else default_window_radius(float(assignment.grid.bin_size))
     )
     centers = assignment.centers()
     members = _window_member_lists(xy, centers, radius)
@@ -325,7 +338,7 @@ def composition_hist_window(
     radius = (
         float(window_radius)
         if window_radius is not None
-        else float(assignment.grid.bin_size) * DEFAULT_WINDOW_RADIUS_BINS
+        else default_window_radius(float(assignment.grid.bin_size))
     )
     centers = assignment.centers()
     members = _window_member_lists(xy, centers, radius)
@@ -396,7 +409,7 @@ def build_raster_payload(
     radius = (
         float(window_radius)
         if window_radius is not None
-        else float(grid.bin_size) * DEFAULT_WINDOW_RADIUS_BINS
+        else default_window_radius(float(grid.bin_size))
     )
     payload: dict[str, Any] = {
         "raster_origin_x": float(grid.origin_x),

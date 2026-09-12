@@ -86,10 +86,15 @@ def test_build_raster_payload_shape():
     assert raw.size == B.size
 
 
-def test_default_bin_size_from_nn():
-    # DEFAULT_BIN_SIZE_NN_MULT = 4 → half the old 8× scale.
-    assert default_bin_size(2.0) == pytest.approx(8.0)
-    assert default_bin_size(None, point_size=0.5) == pytest.approx(5.0)
+def test_default_bin_size_fixed_microns():
+    # Fixed physical defaults (µm when spatial coords are µm).
+    assert default_bin_size(2.0) == pytest.approx(10.0)
+    assert default_bin_size(None, point_size=0.5) == pytest.approx(10.0)
+    assert default_bin_size(None) == pytest.approx(10.0)
+    from spatial_rx.raster import default_window_radius
+
+    assert default_window_radius(10.0) == pytest.approx(20.0)
+    assert default_window_radius(None) == pytest.approx(20.0)
 
 
 def test_aggregate_mean_window_radius_extremes():
