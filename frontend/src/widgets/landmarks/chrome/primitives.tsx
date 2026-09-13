@@ -69,9 +69,9 @@ export const chromeHitClass =
 export const chromeHitOnClass =
   "bg-foreground text-background hover:bg-foreground hover:text-background";
 
-/** Opaque chrome tooltip surface (portaled into widget so theme tokens apply). */
+/** Inverted chrome tooltip (opposite of theme surface). */
 const chromeTooltipClass =
-  "landmarks-tooltip z-50 w-fit origin-(--radix-tooltip-content-transform-origin) animate-in rounded-md border border-border bg-popover px-2.5 py-1 text-xs font-medium text-balance text-popover-foreground shadow-md fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95";
+  "landmarks-tooltip z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md border border-transparent px-2.5 py-1 text-xs font-medium text-balance shadow-md";
 
 /** Soft float popover — selection dropdown, layer menus, canvas context. */
 export const chromeMenuClass =
@@ -138,11 +138,11 @@ export function ChromeTooltip({
         >
           <span>{label}</span>
           {shortcut ? (
-            <span className="font-normal text-muted-foreground tabular-nums">
+            <span className="landmarks-tooltip-shortcut font-normal tabular-nums">
               {shortcut}
             </span>
           ) : null}
-          <TooltipPrimitive.Arrow className="landmarks-tooltip-arrow z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-popover fill-popover" />
+          <TooltipPrimitive.Arrow className="landmarks-tooltip-arrow z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px]" />
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </Tooltip>

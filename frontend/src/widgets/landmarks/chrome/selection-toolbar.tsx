@@ -24,7 +24,13 @@ import {
   maxBufferWidth,
 } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
-import { ChromeTooltip, ToolbarDivider, chromeHitClass, chromeHitOnClass } from "./primitives";
+import {
+  ChromeTooltip,
+  ColorSwatch,
+  ToolbarDivider,
+  chromeHitClass,
+  chromeHitOnClass,
+} from "./primitives";
 
 const toggleHitClass =
   "size-8 min-w-8 rounded-full border-0 px-0 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground data-[state=on]:bg-foreground data-[state=on]:text-background data-[state=on]:shadow-none data-[spacing=1]:rounded-full";
@@ -110,19 +116,12 @@ function ColorControl({
               e.stopPropagation();
               onChange(c);
             }}
-            className={cn(
-              "inline-flex size-8 items-center justify-center rounded-full",
-              on
-                ? "bg-foreground text-background"
-                : "hover:bg-muted/70",
-            )}
+            className={cn(chromeHitClass, on && chromeHitOnClass)}
           >
-            <span
-              className={cn(
-                "size-4 rounded-full border",
-                on ? "border-2 border-background" : "border-border",
-              )}
-              style={{ background: c }}
+            <ColorSwatch
+              color={c}
+              variant="landmark"
+              className="!size-4 !min-h-4 !min-w-4"
             />
           </button>
         );
@@ -130,23 +129,22 @@ function ColorControl({
       <label
         title="Custom color"
         className={cn(
-          "relative inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full",
-          isCustom
-            ? "bg-foreground text-background"
-            : "hover:bg-muted/70",
+          "relative inline-flex cursor-pointer items-center justify-center",
+          chromeHitClass,
+          isCustom && chromeHitOnClass,
         )}
       >
-        <span
-          className={cn(
-            "flex size-4 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold",
-            isCustom
-              ? "border-2 border-background text-background"
-              : "border border-dashed border-border bg-muted text-muted-foreground",
-          )}
-          style={isCustom ? { background: color } : undefined}
-        >
-          {!isCustom ? "+" : null}
-        </span>
+        {isCustom ? (
+          <ColorSwatch
+            color={color}
+            variant="landmark"
+            className="!size-4 !min-h-4 !min-w-4"
+          />
+        ) : (
+          <span className="flex size-4 items-center justify-center rounded-full border border-dashed border-border text-[10px] font-semibold text-muted-foreground">
+            +
+          </span>
+        )}
         <input
           type="color"
           value={color}
@@ -262,12 +260,12 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
     clearOpen();
     setLmL2(next);
   };
-  /** Hover peek — match tooltip / dropdown open delay. */
-  const scheduleShowL2 = (next: "width" | "color" | "tension") => {
+  /** Hover peek for width/tension — color opens on click only. */
+  const scheduleShowL2 = (next: "width" | "tension") => {
     clearLeave();
     if (lmL2 === next) return;
     clearOpen();
-    openTimer.current = window.setTimeout(() => setLmL2(next), 400);
+    openTimer.current = window.setTimeout(() => setLmL2(next), 80);
   };
   const scheduleWidth = () => {
     clearOpen();
@@ -291,7 +289,7 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
   const canPromote = hoodMode === "radius" || hoodMode === "knn";
 
   return (
-    <TooltipProvider delayDuration={400} skipDelayDuration={0}>
+    <TooltipProvider delayDuration={80} skipDelayDuration={0}>
     <div
       className="landmarks__chrome-context"
       data-testid="context-selection-toolbar"
@@ -424,14 +422,14 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
                 testId="context-color-toggle"
                 active={lmL2 === "color"}
                 expandable
-                onMouseEnter={() => scheduleShowL2("color")}
                 onClick={() =>
                   showL2(lmL2 === "color" ? "width" : "color")
                 }
               >
-                <span
-                  className="size-4 rounded-full border border-border"
-                  style={{ background: color }}
+                <ColorSwatch
+                  color={color}
+                  variant="landmark"
+                  className="!size-4 !min-h-4 !min-w-4"
                 />
               </IconBtn>
               {usesTension ? (

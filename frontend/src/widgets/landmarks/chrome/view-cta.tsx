@@ -17,7 +17,7 @@ export function ViewCta({ lm }: { lm: LandmarksModel }) {
   const tip = rasterOn ? "Points" : "Raster";
 
   return (
-    <TooltipProvider delayDuration={400} skipDelayDuration={0}>
+    <TooltipProvider delayDuration={80} skipDelayDuration={0}>
       <div
         className="landmarks-float landmarks-float--toolbar pointer-events-auto p-1 text-card-foreground"
         data-testid="view-cta"

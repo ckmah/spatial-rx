@@ -6,7 +6,7 @@ import {
   MinusIcon,
   PlusIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -48,16 +48,6 @@ function SelectionShapeMenu({
 }) {
   const [menuContainer, setMenuContainer] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
-  const openTimer = useRef<number | null>(null);
-  const leaveTimer = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (openTimer.current != null) window.clearTimeout(openTimer.current);
-      if (leaveTimer.current != null) window.clearTimeout(leaveTimer.current);
-    },
-    [],
-  );
 
   if (!geometryModes.length) return null;
   const active = isGeometryMode(mode);
@@ -68,44 +58,9 @@ function SelectionShapeMenu({
   const Icon = modeIcon(current);
   const label = MODE_LABELS[current] ?? "Lasso";
 
-  const clearOpen = () => {
-    if (openTimer.current != null) {
-      window.clearTimeout(openTimer.current);
-      openTimer.current = null;
-    }
-  };
-  const clearLeave = () => {
-    if (leaveTimer.current != null) {
-      window.clearTimeout(leaveTimer.current);
-      leaveTimer.current = null;
-    }
-  };
-  /** Immediate open — used when crossing into the menu panel. */
-  const openMenu = () => {
-    clearLeave();
-    clearOpen();
-    setOpen(true);
-  };
-  /** Match tooltip delay before peeking the menu from the trigger. */
-  const scheduleOpen = () => {
-    clearLeave();
-    if (open) return;
-    clearOpen();
-    openTimer.current = window.setTimeout(() => setOpen(true), 400);
-  };
-  const scheduleClose = () => {
-    clearOpen();
-    clearLeave();
-    leaveTimer.current = window.setTimeout(() => setOpen(false), 140);
-  };
-
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <div
-        className="relative"
-        onMouseEnter={scheduleOpen}
-        onMouseLeave={scheduleClose}
-      >
+      <div className="relative">
         <ChromeTooltip label={label} shortcut={MODE_SHORTCUTS[current]}>
           <DropdownMenuTrigger asChild>
             <Button
@@ -127,8 +82,7 @@ function SelectionShapeMenu({
                 );
               }}
               onPointerDown={() => {
-                // Click activates default lasso; hover only peeks the menu.
-                clearOpen();
+                // Click activates default geometry; menu opens via trigger only.
                 if (!active) onMode(defaultMode);
               }}
             >
@@ -143,8 +97,6 @@ function SelectionShapeMenu({
           container={menuContainer}
           className={chromeMenuClass}
           onCloseAutoFocus={(e) => e.preventDefault()}
-          onMouseEnter={openMenu}
-          onMouseLeave={scheduleClose}
         >
           {geometryModes.map((id) => {
             const ItemIcon = modeIcon(id);
@@ -205,7 +157,7 @@ export function Topbar({
   const fullscreenLabel = fullscreen ? "Exit full screen" : "Full screen";
 
   return (
-    <TooltipProvider delayDuration={400} skipDelayDuration={0}>
+    <TooltipProvider delayDuration={80} skipDelayDuration={0}>
       <div
         className="landmarks-float landmarks-float--toolbar pointer-events-auto flex min-h-10 items-center gap-1 px-1.5 py-1 text-card-foreground"
         role="toolbar"

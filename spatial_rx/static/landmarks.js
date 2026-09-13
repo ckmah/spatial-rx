@@ -269,7 +269,8 @@ export function mountEngine({ model, host }) {
     // Pointer-only hover tooltips (Move / Selection / landmark draw: no hover paint).
     if (currentMode !== "pointer") return null;
     const hit = resolvePointerTarget(info);
-    if (!hit) return null;
+    // Landmark hover tips off — cursor affordance stays via getCursor / pickable.
+    if (!hit || hit.kind === "landmark") return null;
     const text = formatInspectTooltip(hit);
     return text ? { text, style: tooltipStyle() } : null;
   }
