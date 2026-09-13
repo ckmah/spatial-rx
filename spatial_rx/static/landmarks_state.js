@@ -25,9 +25,7 @@ export function applyActiveCategory(model, col) {
   model.set("legend_labels", col.labels || []);
   model.set("legend_title", col.name || "");
   model.set("color_by", "categorical");
-  if (model.get("render_mode") === "raster") {
-    model.set("raster_basis", "composition");
-  }
+  model.set("raster_basis", "composition");
   model.save_changes();
 }
 
@@ -63,9 +61,7 @@ export function setActiveGenes(model, names) {
   } else {
     model.set("legend_title", next.join(", "));
   }
-  if (model.get("render_mode") === "raster") {
-    model.set("raster_basis", "genes");
-  }
+  model.set("raster_basis", "genes");
   model.save_changes();
 }
 
@@ -151,9 +147,7 @@ export function setRasterEmbeddingKey(model, key) {
   // Embedding is an exclusive coloring signal — drop gene continuous color.
   model.set("active_genes", []);
   model.set("color_by", "embedding");
-  if (model.get("render_mode") === "raster") {
-    model.set("raster_basis", "embedding");
-  }
+  model.set("raster_basis", "embedding");
   model.save_changes();
 }
 

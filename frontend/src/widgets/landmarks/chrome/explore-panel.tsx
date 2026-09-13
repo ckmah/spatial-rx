@@ -352,8 +352,6 @@ export function ExplorePanel({
 
   const body = (
     <div className="flex flex-col gap-2.5 pb-1.5">
-      <RasterSection lm={lm} />
-
       <Tabs
         value={colorBy}
         onValueChange={onColorBy}
@@ -399,6 +397,8 @@ export function ExplorePanel({
           </TabsContent>
         </div>
       </Tabs>
+
+      <RasterSection lm={lm} />
     </div>
   );
 

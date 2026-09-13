@@ -47,7 +47,7 @@ export function activateCategories(lm: LandmarksModel) {
     lm.setActiveCategory(col);
     return;
   }
-  if (lm.render_mode === "raster") lm.setRasterBasis("composition");
+  lm.setRasterBasis("composition");
 }
 
 export function activateGenes(lm: LandmarksModel) {
@@ -57,14 +57,14 @@ export function activateGenes(lm: LandmarksModel) {
     return;
   }
   // Intent only until the user picks genes; keep raster basis aligned.
-  if (lm.render_mode === "raster") lm.setRasterBasis("genes");
+  lm.setRasterBasis("genes");
 }
 
 export function activateEmbedding(lm: LandmarksModel) {
   const keys = lm.raster_embedding_keys || [];
   const key = lm.raster_embedding_key || keys[0] || "";
   if (!key) {
-    if (lm.render_mode === "raster") lm.setRasterBasis("embedding");
+    lm.setRasterBasis("embedding");
     return;
   }
   lm.setRasterEmbeddingKey(key);

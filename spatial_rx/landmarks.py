@@ -756,7 +756,7 @@ class LandmarksWidget(AnyWidget):
         # Genes are an exclusive observation signal — keep point color_by aligned.
         if genes and self.color_by != "continuous":
             self.color_by = "continuous"
-        if self.render_mode != "raster":
+        if not self._should_maintain_raster_features():
             return
         # Selected genes own the observation signal in bins mode.
         if genes:
@@ -838,8 +838,17 @@ class LandmarksWidget(AnyWidget):
             self.raster_basis = "composition"
             if composition:
                 self.active_category = str(composition)
-        if self.render_mode == "raster":
+        if self._should_maintain_raster_features():
             self._rebuild_raster()
+
+    def _should_maintain_raster_features(self) -> bool:
+        """Keep / rebuild bin features for raster view or probe (points or raster)."""
+        return (
+            self.render_mode == "raster"
+            or self.mode == "probe"
+            or bool(self.raster_similarity_enabled)
+            or int(self.raster_n_bins or 0) > 0
+        )
 
     def clear_raster_query(self) -> None:
         """Clear the pinned similarity query bin."""
@@ -1015,9 +1024,6 @@ class LandmarksWidget(AnyWidget):
             return
         self._raster_rebuild_depth += 1
         try:
-            if self.render_mode != "raster":
-                self._clear_raster_sync(status="")
-                return
             self.raster_status = "computing"
             self.raster_query_bin = -1
             xy = np.column_stack(
@@ -1103,6 +1109,16 @@ class LandmarksWidget(AnyWidget):
             return
         self._pack_embedding_values()
 
+    @traitlets.observe("mode", "raster_similarity_enabled")
+    def _on_probe_traits(self, change: dict) -> None:
+        if change.get("new") == change.get("old"):
+            return
+        if (
+            (self.mode == "probe" or bool(self.raster_similarity_enabled))
+            and int(self.raster_n_bins or 0) <= 0
+        ):
+            self._rebuild_raster()
+
     @traitlets.observe("render_mode")
     def _on_render_mode(self, change: dict) -> None:
         if change.get("new") == change.get("old"):
@@ -1110,8 +1126,7 @@ class LandmarksWidget(AnyWidget):
         mode = str(change.get("new") or "points")
         if mode == "raster":
             self._rebuild_raster()
-        else:
-            self._clear_raster_sync(status="")
+        # Points: retain bin features so probe works without revisiting raster.
 
     @traitlets.observe(
         "raster_bin_size",
@@ -1124,7 +1139,7 @@ class LandmarksWidget(AnyWidget):
     def _on_raster_params(self, change: dict) -> None:
         if change.get("new") == change.get("old"):
             return
-        if self.render_mode != "raster":
+        if not self._should_maintain_raster_features():
             return
         # active_category only affects composition basis
         if change.get("name") == "active_category" and self.raster_basis != "composition":

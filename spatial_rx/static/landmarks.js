@@ -444,11 +444,16 @@ export function mountEngine({ model, host }) {
     return (model.get("render_mode") || "points") === "raster";
   }
 
+  function probeModeOn() {
+    return currentMode === "probe" || !!model.get("raster_similarity_enabled");
+  }
+
+  function hasRasterFeatures() {
+    return (model.get("raster_n_bins") | 0) > 0 && (model.get("raster_feature_dim") | 0) > 0;
+  }
+
   function rasterSimilarityOn() {
-    return (
-      isRasterMode() &&
-      (currentMode === "probe" || !!model.get("raster_similarity_enabled"))
-    );
+    return probeModeOn() && hasRasterFeatures();
   }
 
   function refreshRasterArrays() {
@@ -714,8 +719,8 @@ export function mountEngine({ model, host }) {
   }
 
   function pickBinAtWorld(x, y) {
-    if (!isRasterMode()) return -1;
     const cache = refreshRasterArrays();
+    if (!(cache.nBins | 0)) return -1;
     const size = Number(model.get("raster_bin_size")) || 0;
     const nCols = model.get("raster_n_cols") | 0;
     const nRows = model.get("raster_n_rows") | 0;
@@ -727,6 +732,40 @@ export function mountEngine({ model, host }) {
     if (col < 0 || row < 0 || col >= nCols || row >= nRows) return -1;
     const flat = col + nCols * row;
     return cache.flatToCompact[flat] ?? -1;
+  }
+
+  let pointBinCache = { key: "", bins: null };
+
+  /** Compact bin index per point; rebuilt only when grid or points change. */
+  function pointBinIndices() {
+    const cache = refreshRasterArrays();
+    const pts = getPointsData();
+    const key = `${cache.key}:${pointsCache.key}:${pts.length}`;
+    if (pointBinCache.key === key && pointBinCache.bins && pointBinCache.bins.length === pts.length) {
+      return pointBinCache.bins;
+    }
+    const bins = new Int32Array(pts.length);
+    bins.fill(-1);
+    if ((cache.nBins | 0) > 0) {
+      for (let i = 0; i < pts.length; i++) {
+        bins[i] = pickBinAtWorld(pts[i].x, pts[i].y);
+      }
+    }
+    pointBinCache = { key, bins };
+    return bins;
+  }
+
+  function similarityRgbaForPoint(i, opacity) {
+    if (!rasterSimilarityOn()) return null;
+    const queryIdx = activeQueryBin();
+    if (queryIdx < 0) return null;
+    const scores = cosineScoresForQuery(queryIdx);
+    if (!scores) return null;
+    const bins = pointBinIndices();
+    const bin = bins[i] | 0;
+    if (bin < 0 || bin >= scores.length) return null;
+    const [r, g, b] = sampleRasterGray(scores[bin]);
+    return [r, g, b, Math.round(Math.max(0, Math.min(1, opacity)) * 255)];
   }
 
   function binPolygon(compactIdx) {
@@ -1296,6 +1335,17 @@ export function mountEngine({ model, host }) {
 
   function fillColorForPoint(d) {
     const opacity = POINT_OPACITY;
+    const sim = similarityRgbaForPoint(d.i, opacity);
+    if (sim) {
+      if (!pointRoleMode || !pointRoles) return sim;
+      const role = pointRoles[d.i] || 0;
+      if (role === SEED_ROLE || role === NEIGH_ROLE) {
+        sim[3] = 255;
+        return sim;
+      }
+      sim[3] = Math.round((sim[3] || 255) * OTHER_ALPHA_SCALE);
+      return sim;
+    }
     const mode = model.get("color_by") || "categorical";
     let rgba;
     if (mode === "embedding") {
@@ -1475,6 +1525,12 @@ export function mountEngine({ model, host }) {
       model.get("gene_log1p"),
       model.get("embedding_values"),
       model.get("embedding_channel_labels"),
+      model.get("raster_features"),
+      model.get("raster_query_bin"),
+      model.get("raster_similarity_enabled"),
+      model.get("raster_embedding_dims"),
+      hoverBinIndex,
+      currentMode,
       ...roleTrigger,
     ];
     const pointerHoverPick = currentMode === "pointer";
@@ -2117,11 +2173,47 @@ export function mountEngine({ model, host }) {
     });
   }
 
+
+  /** Query / hover window outline for probe (points or raster). */
+  function buildProbeOutlineLayers() {
+    if (!deckModules || !rasterSimilarityOn() || isRasterMode()) return [];
+    if ((model.get("raster_status") || "") === "computing") return [];
+    const { PathLayer } = deckModules;
+    const pinned = model.get("raster_query_bin");
+    const outlineIdx =
+      pinned != null && pinned >= 0
+        ? pinned | 0
+        : hoverBinIndex >= 0
+          ? hoverBinIndex
+          : -1;
+    const windowPath = outlineIdx >= 0 ? binWindowCircle(outlineIdx) : null;
+    if (!windowPath) return [];
+    const stroke =
+      pinned != null && pinned >= 0 ? RASTER_QUERY_STROKE : RASTER_HOVER_STROKE;
+    return [
+      new PathLayer({
+        id: "probe-query-window",
+        data: [{ path: windowPath }],
+        getPath: (d) => d.path,
+        getColor: hexToRgbaBytes(stroke, 0.95),
+        getWidth: 2,
+        widthUnits: "pixels",
+        pickable: false,
+        parameters: OVERLAY_GL,
+        updateTriggers: {
+          getColor: [pinned, hoverBinIndex],
+          data: [outlineIdx, refreshRasterArrays().key, model.get("raster_bin_size")],
+        },
+      }),
+    ];
+  }
+
   function buildDeckLayers() {
     prepareFocusGeom();
     // Selection emphasis lives on the points layer (size + dimming); no outline layers.
     return [
       ...buildRasterLayers(),
+      ...buildProbeOutlineLayers(),
       ...buildNeighborhoodLayers(),
       ...buildPointsLayer(),
       buildInspectHaloLayer(),
@@ -2402,7 +2494,7 @@ export function mountEngine({ model, host }) {
         },
         onHover: (info) => {
           if (currentMode === "probe") {
-            if (isRasterMode() && info?.coordinate) {
+            if (info?.coordinate && hasRasterFeatures()) {
               const bin = pickBinAtWorld(info.coordinate[0], info.coordinate[1]);
               if (bin !== hoverBinIndex) {
                 hoverBinIndex = bin;
@@ -2418,7 +2510,7 @@ export function mountEngine({ model, host }) {
               setDeckLayers();
               webglCanvas.style.cursor = defaultCursor();
             }
-          } else if (currentMode === "pointer") {
+          } else if (currentMode === "pointer" {
             const hit = resolveHoverTarget(info);
             if (hoverBinIndex >= 0) {
               hoverBinIndex = -1;

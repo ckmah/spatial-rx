@@ -12,7 +12,6 @@ import {
   Label,
 } from "recharts";
 
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -30,10 +29,6 @@ import { cn } from "@/lib/utils";
 
 import { decodeI32Base64 } from "../binary";
 import type { EngineHandle } from "../engine";
-import {
-  LANDMARK_COLORS,
-  SELECTION_COLORS,
-} from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
 import { colorSignal } from "./coloring";
 import {
@@ -42,7 +37,6 @@ import {
   geneDensities,
   resolvePointMask,
 } from "./info-stats";
-import { ColorSwatch } from "./primitives";
 import {
   EMBEDDED_PANEL,
   FLOAT_PANEL,
@@ -54,7 +48,7 @@ import {
 function InfoChartWell({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="landmarks-info-chart flex min-h-44 w-full flex-1 items-center justify-center overflow-hidden"
+      className="landmarks-info-chart flex h-44 w-full shrink-0 items-center justify-center overflow-hidden"
       data-testid="info-chart-well"
     >
       {children}
@@ -221,50 +215,6 @@ export function InfoPanel({
     ],
   );
 
-  const layerChip = useMemo(() => {
-    if (selected_kind === "selection" && selected_index >= 0) {
-      return {
-        label: selections[selected_index]?.id || "Selection",
-        color: SELECTION_COLORS[selected_index % SELECTION_COLORS.length],
-        variant: "selection" as const,
-      };
-    }
-    if (selected_kind === "type" && selected_index >= 0) {
-      const col =
-        category_columns.find((c) => c.name === active_category) || null;
-      const labels = col?.labels || [];
-      const palette = col?.palette || [];
-      return {
-        label: labels[selected_index] || active_category || "Type",
-        color:
-          palette[selected_index % Math.max(palette.length, 1)] || undefined,
-        variant: "solid" as const,
-      };
-    }
-    if (selected_kind === "landmark" && selected_index >= 0) {
-      const item = lm.landmarks[selected_index];
-      const color =
-        (typeof item?.color === "string" && item.color) ||
-        LANDMARK_COLORS[selected_index % LANDMARK_COLORS.length];
-      return {
-        label: item?.id || "Landmark",
-        color,
-        variant: "landmark" as const,
-      };
-    }
-    return {
-      label: active_category || "All cells",
-      color: undefined,
-      variant: "solid" as const,
-    };
-  }, [
-    selected_kind,
-    selected_index,
-    selections,
-    category_columns,
-    active_category,
-    lm.landmarks,
-  ]);
 
   const activeTypeIndex = useMemo(() => {
     if (hoverTypeIndex != null) return hoverTypeIndex;
@@ -508,28 +458,8 @@ export function InfoPanel({
         </FieldDescription>
       );
 
-  const chipLabel = showEmbedding ? embKey : layerChip.label;
-  const chip = (
-    <Badge
-      variant="secondary"
-      title={chipLabel}
-      className="min-w-0 max-w-full shrink gap-1 truncate rounded-md border border-border/60 bg-muted/90 px-1.5 py-0.5 text-[11px] font-normal text-foreground"
-    >
-      {!showEmbedding && layerChip.color ? (
-        <ColorSwatch
-          color={layerChip.color}
-          variant={layerChip.variant}
-          fillOpacity={0.28}
-          className="!size-2.5 !min-h-2.5 !min-w-2.5 !flex-none"
-        />
-      ) : null}
-      <span className="min-w-0 truncate">{chipLabel}</span>
-    </Badge>
-  );
-
   const body = (
     <div className="flex min-h-0 flex-1 flex-col gap-2 pb-1.5">
-      {chip}
       <InfoChartWell>{charts}</InfoChartWell>
     </div>
   );
