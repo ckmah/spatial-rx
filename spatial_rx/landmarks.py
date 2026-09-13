@@ -792,7 +792,7 @@ class LandmarksWidget(AnyWidget):
                 self.raster_basis = "composition"
                 self.color_by = "categorical"
         else:
-            # Points: keep the same observation family that bins were showing.
+            # Points: keep the same observation family that raster was showing.
             if genes or self.raster_basis == "genes":
                 self.color_by = "continuous"
             elif (
@@ -802,6 +802,9 @@ class LandmarksWidget(AnyWidget):
                 self.color_by = "embedding"
             else:
                 self.color_by = "categorical"
+        if m == "raster" and str(self.selected_kind or "") == "type":
+            self.selected_kind = ""
+            self.selected_index = -1
         self.render_mode = m
 
     def set_raster_basis(

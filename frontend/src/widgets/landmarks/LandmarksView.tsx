@@ -13,6 +13,7 @@ import {
   LandmarkCanvasMenu,
   ViewCta,
 } from "./chrome";
+import { FLOAT_PANEL } from "./chrome/sections";
 import { mountEngine, type EngineHandle } from "./engine";
 import {
   GEOMETRY_MODE_IDS,
@@ -219,8 +220,16 @@ export function LandmarksView({
             onMouseDown={(e) => e.stopPropagation()}
             onWheel={(e) => e.stopPropagation()}
           >
-            <InfoPanel lm={lm} engine={engine} />
-            <ExplorePanel lm={lm} />
+            <div
+              className={cn(
+                FLOAT_PANEL,
+                "landmarks__chrome-stack flex min-h-0 flex-1 flex-col overflow-hidden",
+              )}
+              data-testid="info-explore-stack"
+            >
+              <InfoPanel lm={lm} engine={engine} embedded />
+              <ExplorePanel lm={lm} embedded />
+            </div>
             <LayersPanel lm={lm} />
           </div>
         ) : (
@@ -237,8 +246,16 @@ export function LandmarksView({
               onMouseDown={(e) => e.stopPropagation()}
               onWheel={(e) => e.stopPropagation()}
             >
-              <InfoPanel lm={lm} engine={engine} />
-              <ExplorePanel lm={lm} />
+              <div
+                className={cn(
+                  FLOAT_PANEL,
+                  "landmarks__chrome-stack flex min-h-0 flex-1 flex-col overflow-hidden",
+                )}
+                data-testid="info-explore-stack"
+              >
+                <InfoPanel lm={lm} engine={engine} embedded />
+                <ExplorePanel lm={lm} embedded />
+              </div>
             </div>
             <div
               className="landmarks__chrome-minimap"

@@ -15,16 +15,18 @@ export const FIELD_CAPTION =
 /** Secondary meta line under controls. */
 export const META_LINE = "landmarks-meta m-0 truncate text-[11px]";
 /**
- * Soft Float pill Tabs (lab variant B) — quiet tray + solid active chip.
- * Prefer these over stock muted Tabs / outline ToggleGroup.
+ * Soft Float sliding pill Tabs — rounded track + sliding active pill
+ * (transitions.dev tabs-sliding). Pair with SoftFloatSlidingTabs.
  */
 export const PILL_TABS_LIST =
-  "h-8 w-full rounded-md bg-foreground/[0.07] p-0.5 text-foreground/70 dark:bg-foreground/[0.12]";
+  "landmarks-sliding-tabs relative h-8 w-full gap-0.5 rounded-full bg-foreground/[0.07] p-0.5 text-foreground/70 dark:bg-foreground/[0.12]";
 export const PILL_TABS_TRIGGER =
-  "h-full flex-1 rounded-[calc(var(--radius)-2px)] text-xs text-foreground/70 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:bg-foreground dark:data-[state=active]:text-background dark:data-[state=active]:border-transparent";
+  "landmarks-sliding-tab relative z-10 h-full flex-1 rounded-full text-xs font-medium lowercase tracking-wide text-foreground/65 transition-colors data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-background";
 /** @deprecated Use PILL_TABS_LIST. */
 export const SEGMENT_TRAY = PILL_TABS_LIST;
 /** @deprecated Use PILL_TABS_TRIGGER. */
 export const SEGMENT_ITEM = PILL_TABS_TRIGGER;
 export const FLOAT_PANEL =
   "landmarks-float landmarks-float--panel pointer-events-auto max-h-full gap-0 overflow-hidden p-0";
+/** Nested section inside a shared float — no second glass shell. */
+export const EMBEDDED_PANEL = "min-h-0 w-full gap-0 overflow-hidden rounded-none border-0 bg-transparent p-0 shadow-none";

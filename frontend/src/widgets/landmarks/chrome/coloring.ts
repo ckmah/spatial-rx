@@ -1,6 +1,6 @@
 import type { LandmarksModel } from "../use-landmarks-model";
 
-/** Exclusive tissue coloring family (geometry is Points/Bins separately). */
+/** Exclusive tissue coloring family (geometry is Points/Raster separately). */
 export type ColorSignal = "categories" | "genes" | "embedding";
 
 /** Resolve the active coloring family from model traits. */

@@ -73,6 +73,8 @@ FIXTURE_KEYS = [
     "raster_embedding_key",
     "raster_embedding_keys",
     "raster_embedding_dims",
+    "embedding_values",
+    "embedding_channel_labels",
     "raster_obs_key",
     "raster_gene_mode",
     "raster_origin_x",
@@ -352,6 +354,11 @@ def main() -> None:
     ]
     widget.selected_kind = ""
     widget.selected_index = -1
+    if widget.raster_embedding_keys:
+        widget.raster_embedding_dims = [0, 1, 2]
+        # Ensure embedding RGB pack for harness Color → embed.
+        if hasattr(widget, "_pack_embedding_values"):
+            widget._pack_embedding_values()
     if widget.raster_n_bins > 8:
         widget.raster_query_bin = int(widget.raster_n_bins // 4)
 

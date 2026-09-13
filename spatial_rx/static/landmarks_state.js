@@ -106,7 +106,7 @@ export function setRenderMode(model, mode) {
       model.set("color_by", "categorical");
     }
   } else {
-    // Points: keep the same observation family that bins were showing.
+    // Points: keep the same observation family that raster was showing.
     if (genes.length || basis === "genes") {
       model.set("color_by", "continuous");
     } else if (basis === "embedding" || model.get("color_by") === "embedding") {
@@ -116,6 +116,10 @@ export function setRenderMode(model, mode) {
     }
   }
   model.set("render_mode", next);
+  if (next === "raster" && model.get("selected_kind") === "type") {
+    model.set("selected_kind", "");
+    model.set("selected_index", -1);
+  }
   model.save_changes();
 }
 

@@ -43,7 +43,7 @@ import {
   resolvePointMask,
 } from "./info-stats";
 import { ColorSwatch } from "./primitives";
-import { FLOAT_PANEL, PANEL_INSET } from "./sections";
+import { EMBEDDED_PANEL, FLOAT_PANEL, PANEL_INSET } from "./sections";
 
 /** Fixed chart slot so Category / Genes / Embedding swaps do not resize the card. */
 function InfoChartWell({ children }: { children: React.ReactNode }) {
@@ -60,9 +60,11 @@ function InfoChartWell({ children }: { children: React.ReactNode }) {
 export function InfoPanel({
   lm,
   engine = null,
+  embedded = false,
 }: {
   lm: LandmarksModel;
   engine?: EngineHandle | null;
+  embedded?: boolean;
 }) {
   const {
     selected_kind,
@@ -524,6 +526,31 @@ export function InfoPanel({
     </Badge>
   );
 
+  const body = (
+    <div className="flex flex-col gap-2 pb-1.5">
+          {chip}
+          <InfoChartWell>{charts}</InfoChartWell>
+        </div>
+  );
+
+  if (embedded) {
+    return (
+      <div
+        className={cn(EMBEDDED_PANEL, "flex min-h-0 flex-col")}
+        data-testid="info-panel"
+      >
+        <div
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            PANEL_INSET,
+          )}
+        >
+          {body}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Card className={FLOAT_PANEL} data-testid="info-panel">
       <CardHeader className="sr-only">
@@ -537,10 +564,7 @@ export function InfoPanel({
           PANEL_INSET,
         )}
       >
-        <div className="flex flex-col gap-2 pb-1.5">
-          {chip}
-          <InfoChartWell>{charts}</InfoChartWell>
-        </div>
+        {body}
       </CardContent>
     </Card>
   );

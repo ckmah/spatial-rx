@@ -6,23 +6,23 @@ const SIMILARITY_LEGEND =
   "linear-gradient(to right, #3b82f6 0%, #e8e8e8 50%, #ff0099 100%)";
 
 /**
- * Bins-only similarity chrome. View (Points/Bins) lives in the floating Soft
+ * Raster-only similarity chrome. View (Points/Raster) lives in the floating Soft
  * Float View CTA (lab F) — not in Explore.
  */
 export function RasterSection({ lm }: { lm: LandmarksModel }) {
-  const isBins = (lm.render_mode || "points") === "raster";
+  const isRaster = (lm.render_mode || "points") === "raster";
   const status = lm.raster_status || "";
   const pinned = lm.raster_query_bin >= 0;
 
-  if (!isBins) return null;
+  if (!isRaster) return null;
 
   let statusText: string | null = null;
   if (status === "computing") {
-    statusText = "Computing bins…";
+    statusText = "Computing raster…";
   } else if (status.startsWith("error:")) {
     statusText = status;
   } else if (pinned) {
-    statusText = `Pinned bin ${lm.raster_query_bin} · Esc clears`;
+    statusText = `Pinned cell ${lm.raster_query_bin} · Esc clears`;
   }
 
   return (
@@ -37,12 +37,12 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
         style={{ background: SIMILARITY_LEGEND }}
         role="img"
         aria-label={
-          pinned ? "Similarity to pinned bin" : "Similarity to hovered bin"
+          pinned ? "Similarity to pinned cell" : "Similarity to hovered cell"
         }
         title={
           pinned
-            ? "Similarity to pinned bin"
-            : "Hover a bin to scrub similarity; click to pin"
+            ? "Similarity to pinned cell"
+            : "Hover a cell to scrub similarity; click to pin"
         }
         data-testid="raster-legend"
       />

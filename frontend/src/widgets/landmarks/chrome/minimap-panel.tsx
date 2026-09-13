@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { decodeF32Base64 } from "../binary";
 import type { EngineHandle } from "../engine";
 import type { LandmarksModel } from "../use-landmarks-model";
-import { FLOAT_PANEL, PANEL_INSET } from "./sections";
+import { FLOAT_PANEL } from "./sections";
 
 type WorldBounds = [number, number, number, number];
 
@@ -314,7 +314,7 @@ export function MinimapPanel({
       <CardHeader className="sr-only">
         <CardDescription>Minimap of the tissue scatter</CardDescription>
       </CardHeader>
-      <CardContent className={cn("p-0", PANEL_INSET)}>{body}</CardContent>
+      <CardContent className="p-0">{body}</CardContent>
     </Card>
   );
 }

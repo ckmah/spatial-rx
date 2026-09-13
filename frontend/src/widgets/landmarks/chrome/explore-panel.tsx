@@ -16,10 +16,11 @@ import {
 } from "@/components/ui/combobox";
 import { FieldDescription } from "@/components/ui/field";
 import { ItemGroup } from "@/components/ui/item";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Tabs,
   TabsContent,
-  TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -40,17 +41,48 @@ import { GenesCombobox } from "./genes-legend";
 import { LayerRow } from "./primitives";
 import { RasterSection } from "./raster-section";
 import {
-  FIELD_CAPTION,
+  EMBEDDED_PANEL,
   FLOAT_PANEL,
-  META_LINE,
   PANEL_INSET,
-  PILL_TABS_LIST,
   PILL_TABS_TRIGGER,
 } from "./sections";
+import { SoftFloatSlidingTabsList } from "./sliding-tabs";
 import { useWidgetPortalContainer } from "./use-widget-portal";
 
 const COMBO_INPUT =
   "min-h-8 w-full rounded-[var(--radius)] bg-card/60 text-xs shadow-none";
+
+const AVATAR_MAX = 5;
+
+function SubcategoryAvatars({ col }: { col: CategoryColumn }) {
+  const labels = col.labels || [];
+  const palette = col.palette || [];
+  const shown = labels.slice(0, AVATAR_MAX);
+  const extra = labels.length - shown.length;
+  return (
+    <span className="inline-flex items-center" aria-hidden>
+      {shown.map((label, i) => (
+        <span
+          key={`${col.name}-${label}`}
+          title={label}
+          className="size-2.5 rounded-full ring-1 ring-background"
+          style={{
+            background:
+              palette[i % Math.max(palette.length, 1)] ||
+              "var(--muted-foreground)",
+            marginLeft: i === 0 ? 0 : -3,
+          }}
+        />
+      ))}
+      {extra > 0 ? (
+        <span className="ml-0.5 text-[9px] font-medium text-foreground/55">
+          +{extra}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 
 function EmbeddingCombobox({ lm }: { lm: LandmarksModel }) {
   const keys = lm.raster_embedding_keys || [];
@@ -113,12 +145,57 @@ function CategoriesControls({
     selected_kind,
     selected_index,
   } = lm;
+  const rasterOn = (lm.render_mode || "points") === "raster";
 
   if (!category_columns.length) {
     return (
       <FieldDescription>
         No category columns loaded on this AnnData.
       </FieldDescription>
+    );
+  }
+
+  if (rasterOn) {
+    return (
+      <RadioGroup
+        value={active_category || ""}
+        onValueChange={(name) => {
+          const col = category_columns.find((c) => c.name === name);
+          if (!col) return;
+          lm.setActiveCategory(col);
+          lm.select("", -1);
+        }}
+        className="flex flex-col gap-0.5"
+        aria-label="Category"
+        data-testid="explore-category-radios"
+      >
+        {category_columns.map((col: CategoryColumn) => {
+          const id = `cat-radio-${col.name}`;
+          const selected = col.name === active_category;
+          const unique = (col.labels || []).length;
+          return (
+            <Label
+              key={col.name}
+              htmlFor={id}
+              className={cn(
+                "flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-xs font-medium text-foreground/70",
+                "hover:bg-foreground/[0.05] hover:text-foreground",
+                selected && "bg-foreground/[0.07] text-foreground",
+              )}
+            >
+              <RadioGroupItem value={col.name} id={id} />
+              <span className="min-w-0 flex-1 truncate">{col.name}</span>
+              <SubcategoryAvatars col={col} />
+              <span
+                className="tabular-nums text-[10px] text-foreground/55"
+                title="Unique subcategories"
+              >
+                {unique}
+              </span>
+            </Label>
+          );
+        })}
+      </RadioGroup>
     );
   }
 
@@ -148,29 +225,27 @@ function CategoriesControls({
                   <span className="landmarks-trail-cell" />
                 </span>
               </CollapsibleTrigger>
-              {lm.render_mode === "raster" ? null : (
-                <CollapsibleContent className="pl-4">
-                  <ItemGroup className="gap-0.5">
-                    {(col.labels || []).map((label, i) => (
-                      <LayerRow
-                        key={`${col.name}-${label}`}
-                        active={
-                          selected_kind === "type" &&
-                          col.name === active_category &&
-                          selected_index === i
-                        }
-                        color={
-                          (col.palette || [])[
-                            i % Math.max((col.palette || []).length, 1)
-                          ]
-                        }
-                        label={label}
-                        onSelect={() => lm.selectType(col, i)}
-                      />
-                    ))}
-                  </ItemGroup>
-                </CollapsibleContent>
-              )}
+              <CollapsibleContent className="pl-4">
+                <ItemGroup className="gap-0.5">
+                  {(col.labels || []).map((label, i) => (
+                    <LayerRow
+                      key={`${col.name}-${label}`}
+                      active={
+                        selected_kind === "type" &&
+                        col.name === active_category &&
+                        selected_index === i
+                      }
+                      color={
+                        (col.palette || [])[
+                          i % Math.max((col.palette || []).length, 1)
+                        ]
+                      }
+                      label={label}
+                      onSelect={() => lm.selectType(col, i)}
+                    />
+                  ))}
+                </ItemGroup>
+              </CollapsibleContent>
             </Collapsible>
           );
         })}
@@ -180,10 +255,17 @@ function CategoriesControls({
 }
 
 /**
+
  * Right-dock explore chrome: geometry, explicit Color-by control, then the
  * active signal's options. Info is a sibling card above this panel.
  */
-export function ExplorePanel({ lm }: { lm: LandmarksModel }) {
+export function ExplorePanel({
+  lm,
+  embedded = false,
+}: {
+  lm: LandmarksModel;
+  embedded?: boolean;
+}) {
   const modelSignal = colorSignal(lm);
   const [colorBy, setColorBy] = useState<ColorSignal>(modelSignal);
 
@@ -203,6 +285,76 @@ export function ExplorePanel({ lm }: { lm: LandmarksModel }) {
 
   const detail = colorSignalDetail(lm, colorBy);
 
+  const body = (
+    <div className="flex flex-col gap-2.5 pb-1.5">
+      <RasterSection lm={lm} />
+
+      <Tabs
+        value={colorBy}
+        onValueChange={onColorBy}
+        className="flex flex-col gap-1.5"
+        data-testid="explore-color-by"
+      >
+        <SoftFloatSlidingTabsList value={colorBy} aria-label="Color">
+          {(lm.category_columns?.length ?? 0) > 0 ? (
+            <TabsTrigger value="categories" className={PILL_TABS_TRIGGER}>
+              category
+            </TabsTrigger>
+          ) : null}
+          <TabsTrigger value="genes" className={PILL_TABS_TRIGGER}>
+            genes
+          </TabsTrigger>
+          <TabsTrigger value="embedding" className={PILL_TABS_TRIGGER}>
+            embed
+          </TabsTrigger>
+        </SoftFloatSlidingTabsList>
+        <span className="sr-only" data-testid="explore-coloring-by">
+          {detail}
+        </span>
+
+        <div className="pt-0.5" data-testid="explore-color-controls">
+          <TabsContent value="categories" className="m-0">
+            <CategoriesControls lm={lm} signal={colorBy} />
+          </TabsContent>
+          <TabsContent value="genes" className="m-0">
+            {lm.gene_columns.length ? (
+              <GenesCombobox lm={lm} />
+            ) : (
+              <FieldDescription>
+                No genes loaded. Pass genes=… to LandmarksWidget (default: all
+                var names) or call set_expression.
+              </FieldDescription>
+            )}
+          </TabsContent>
+          <TabsContent value="embedding" className="m-0">
+            <div className="flex flex-col gap-1.5">
+              <EmbeddingCombobox lm={lm} />
+              <EmbeddingRgbLegend lm={lm} />
+            </div>
+          </TabsContent>
+        </div>
+      </Tabs>
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div
+        className={cn("landmarks__explore-panel", EMBEDDED_PANEL)}
+        data-testid="explore-panel"
+      >
+        <div
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            PANEL_INSET,
+          )}
+        >
+          {body}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="landmarks__explore-panel">
       <Card className={FLOAT_PANEL} data-testid="explore-panel">
@@ -212,69 +364,7 @@ export function ExplorePanel({ lm }: { lm: LandmarksModel }) {
             PANEL_INSET,
           )}
         >
-          <div className="flex flex-col gap-2.5 pb-2.5">
-            <RasterSection lm={lm} />
-
-            <Tabs
-              value={colorBy}
-              onValueChange={onColorBy}
-              className="flex flex-col gap-1"
-              data-testid="explore-color-by"
-            >
-              <p className={FIELD_CAPTION}>Color by</p>
-              <TabsList className={PILL_TABS_LIST} aria-label="Color by">
-                {(lm.category_columns?.length ?? 0) > 0 ? (
-                  <TabsTrigger
-                    value="categories"
-                    className={PILL_TABS_TRIGGER}
-                  >
-                    Category
-                  </TabsTrigger>
-                ) : null}
-                <TabsTrigger value="genes" className={PILL_TABS_TRIGGER}>
-                  Genes
-                </TabsTrigger>
-                <TabsTrigger value="embedding" className={PILL_TABS_TRIGGER}>
-                  Embedding
-                </TabsTrigger>
-              </TabsList>
-              {colorBy !== "categories" ? (
-                <p
-                  className={META_LINE}
-                  data-testid="explore-coloring-by"
-                  title={detail}
-                >
-                  {detail}
-                </p>
-              ) : (
-                <span className="sr-only" data-testid="explore-coloring-by">
-                  {detail}
-                </span>
-              )}
-
-              <div className="pt-0.5" data-testid="explore-color-controls">
-                <TabsContent value="categories" className="m-0">
-                  <CategoriesControls lm={lm} signal={colorBy} />
-                </TabsContent>
-                <TabsContent value="genes" className="m-0">
-                  {lm.gene_columns.length ? (
-                    <GenesCombobox lm={lm} />
-                  ) : (
-                    <FieldDescription>
-                      No genes loaded. Pass genes=… to LandmarksWidget
-                      (default: all var names) or call set_expression.
-                    </FieldDescription>
-                  )}
-                </TabsContent>
-                <TabsContent value="embedding" className="m-0">
-                  <div className="flex flex-col gap-1.5">
-                    <EmbeddingCombobox lm={lm} />
-                    <EmbeddingRgbLegend lm={lm} />
-                  </div>
-                </TabsContent>
-              </div>
-            </Tabs>
-          </div>
+          {body}
         </CardContent>
       </Card>
     </div>

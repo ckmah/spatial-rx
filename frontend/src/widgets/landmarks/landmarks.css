@@ -698,7 +698,7 @@
    Sit above the window-size handle so the two never overlap. */
 .landmarks__chrome-context {
   position: absolute;
-  bottom: calc(var(--lm-resize-band) + var(--lm-chrome-gap));
+  bottom: calc(var(--lm-resize-band) + var(--lm-chrome-inset));
   left: 50%;
   z-index: 22;
   transform: translateX(-50%);
@@ -896,4 +896,68 @@
 .landmarks-tooltip-arrow {
   background: var(--popover) !important;
   fill: var(--popover) !important;
+}
+
+
+/* Shared Soft Float shell for Info + Explore (no dual-card gap). */
+.landmarks__chrome-dock--right {
+  gap: 0;
+}
+
+.landmarks__chrome-stack {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.landmarks__chrome-stack > [data-testid="info-panel"] {
+  flex: 0 0 auto;
+  max-height: 40%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.landmarks__chrome-stack > .landmarks__explore-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Sliding Soft Float color tabs (transitions.dev tabs-sliding). */
+.landmarks-sliding-tabs {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.landmarks-sliding-tabs__pill {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  z-index: 0;
+  height: calc(100% - 4px);
+  border-radius: 9999px;
+  background: var(--background);
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 12%, transparent);
+  transition:
+    transform var(--lm-tab-pill-dur, 250ms) cubic-bezier(0.22, 1, 0.36, 1),
+    width var(--lm-tab-pill-dur, 250ms) cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 120ms ease;
+  will-change: transform, width;
+  pointer-events: none;
+}
+
+.dark .landmarks-sliding-tabs__pill,
+.landmarks--dark .landmarks-sliding-tabs__pill {
+  background: var(--foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landmarks-sliding-tabs__pill {
+    transition: none !important;
+  }
 }
