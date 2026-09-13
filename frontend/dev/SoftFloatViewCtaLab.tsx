@@ -352,6 +352,7 @@ function VariantIconHoverFlip() {
   const CurrentIcon = binsOn ? Grid2x2 : CircleDot;
   const NextIcon = binsOn ? CircleDot : Grid2x2;
   const nextLabel = binsOn ? "Points" : "Bins";
+  const [preview, setPreview] = useState(false);
 
   return (
     <TissueStage
@@ -372,8 +373,12 @@ function VariantIconHoverFlip() {
             }
             title={`Switch to ${nextLabel}`}
             onClick={() => setView(binsOn ? "points" : "raster")}
+            onMouseEnter={() => setPreview(true)}
+            onMouseLeave={() => setPreview(false)}
+            onFocus={() => setPreview(true)}
+            onBlur={() => setPreview(false)}
             className={cn(
-              "group relative overflow-hidden rounded-full",
+              "relative overflow-hidden rounded-full",
               "text-foreground/70 hover:bg-foreground/10 hover:text-foreground",
             )}
           >
@@ -381,15 +386,16 @@ function VariantIconHoverFlip() {
               aria-hidden
               className={cn(
                 "absolute size-4 transition duration-200 ease-out",
-                "group-hover:scale-75 group-hover:-rotate-45 group-hover:opacity-0",
+                preview && "scale-75 -rotate-45 opacity-0",
               )}
             />
             <NextIcon
               aria-hidden
               className={cn(
-                "pointer-events-none absolute size-4",
-                "scale-75 rotate-45 opacity-0 transition duration-200 ease-out",
-                "group-hover:scale-100 group-hover:rotate-0 group-hover:opacity-100",
+                "pointer-events-none absolute size-4 transition duration-200 ease-out",
+                preview
+                  ? "scale-100 rotate-0 opacity-100"
+                  : "scale-75 rotate-45 opacity-0",
               )}
             />
           </Button>
