@@ -26,9 +26,8 @@ import { EMBEDDED_PANEL, PANEL_INSET, PILL_TABS_TRIGGER } from "./sections";
 import { SoftFloatSlidingTabsList } from "./sliding-tabs";
 
 /**
- * Soft Float right dock order: color pills → info plot → similarity
- * legend → color controls. Single Tabs root keeps the switcher wired to
- * the controls under the chart.
+ * Soft Float right dock: color pills → info plot → similarity legend →
+ * color controls. One Tabs root keeps the switcher wired to the controls.
  */
 export function RightChromeStack({
   lm,
