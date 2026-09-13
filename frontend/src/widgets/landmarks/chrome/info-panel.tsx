@@ -49,7 +49,7 @@ import { EMBEDDED_PANEL, FLOAT_PANEL, PANEL_INSET } from "./sections";
 function InfoChartWell({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="landmarks-info-chart flex h-44 w-full shrink-0 items-center justify-center overflow-hidden"
+      className="landmarks-info-chart flex min-h-44 w-full flex-1 items-center justify-center overflow-hidden"
       data-testid="info-chart-well"
     >
       {children}
@@ -311,10 +311,10 @@ export function InfoPanel({
 
   const charts = showEmbedding ? (
         embeddingCloud.length ? (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1">
+          <div className="flex h-full min-h-0 w-full flex-1 items-center justify-center">
             <svg
               viewBox="0 0 80 80"
-              className="size-36 max-h-full max-w-full"
+              className="h-full max-h-52 w-full max-w-[13rem]"
               role="img"
               aria-label={`${embKey} RGB cloud in current scope`}
             >
@@ -329,11 +329,6 @@ export function InfoPanel({
                 />
               ))}
             </svg>
-            <FieldDescription className="m-0 max-w-[16rem] text-center text-[10px]">
-              <span className="text-foreground">{embKey}</span>
-              {embLabels.length ? ` · ${embLabels.join(", ")}` : ""} ·{" "}
-              {scopeCount.toLocaleString()} cells
-            </FieldDescription>
           </div>
         ) : (
           <FieldDescription className="m-0 max-w-[16rem] text-center">
@@ -508,13 +503,14 @@ export function InfoPanel({
         </FieldDescription>
       );
 
+  const chipLabel = showEmbedding ? embKey : layerChip.label;
   const chip = (
     <Badge
       variant="secondary"
-      title={layerChip.label}
-      className="min-w-0 max-w-full shrink gap-1.5 truncate font-normal"
+      title={chipLabel}
+      className="min-w-0 max-w-full shrink gap-1.5 truncate rounded-md border border-border/60 bg-muted/90 text-sm font-normal text-foreground"
     >
-      {layerChip.color ? (
+      {!showEmbedding && layerChip.color ? (
         <ColorSwatch
           color={layerChip.color}
           variant={layerChip.variant}
@@ -522,15 +518,15 @@ export function InfoPanel({
           className="!size-2.5 !min-h-2.5 !min-w-2.5 !flex-none"
         />
       ) : null}
-      <span className="min-w-0 truncate">{layerChip.label}</span>
+      <span className="min-w-0 truncate">{chipLabel}</span>
     </Badge>
   );
 
   const body = (
-    <div className="flex flex-col gap-2 pb-1.5">
-          {chip}
-          <InfoChartWell>{charts}</InfoChartWell>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col gap-2 pb-1.5">
+      {chip}
+      <InfoChartWell>{charts}</InfoChartWell>
+    </div>
   );
 
   if (embedded) {

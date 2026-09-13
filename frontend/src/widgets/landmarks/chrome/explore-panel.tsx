@@ -50,7 +50,7 @@ import { SoftFloatSlidingTabsList } from "./sliding-tabs";
 import { useWidgetPortalContainer } from "./use-widget-portal";
 
 const COMBO_INPUT =
-  "min-h-8 w-full rounded-[var(--radius)] bg-card/60 text-xs shadow-none";
+  "min-h-8 w-full rounded-[var(--radius)] bg-card/60 text-sm shadow-none";
 
 const AVATAR_MAX = 5;
 
@@ -114,13 +114,13 @@ function EmbeddingCombobox({ lm }: { lm: LandmarksModel }) {
           className={COMBO_INPUT}
           aria-label="Embedding key"
         />
-        <ComboboxContent container={portalEl} className="text-xs">
-          <ComboboxEmpty className="text-xs">No embeddings</ComboboxEmpty>
+        <ComboboxContent container={portalEl} className="text-sm">
+          <ComboboxEmpty className="text-sm">No embeddings</ComboboxEmpty>
           <ComboboxList>
             {(item) => {
               const name = String(item);
               return (
-                <ComboboxItem key={name} value={name} className="py-1 text-xs">
+                <ComboboxItem key={name} value={name} className="py-1 text-sm">
                   {name}
                 </ComboboxItem>
               );
@@ -184,14 +184,17 @@ function CategoriesControls({
               )}
             >
               <RadioGroupItem value={col.name} id={id} />
-              <span className="min-w-0 flex-1 truncate">{col.name}</span>
-              <SubcategoryAvatars col={col} />
-              <span
-                className="tabular-nums text-[10px] text-foreground/55"
-                title="Unique subcategories"
-              >
-                {unique}
+              <span className="min-w-0 flex-1 truncate">
+                {col.name}
+                <span
+                  className="font-normal text-foreground/55"
+                  title="Unique subcategories"
+                >
+                  {" "}
+                  ({unique})
+                </span>
               </span>
+              <SubcategoryAvatars col={col} />
             </Label>
           );
         })}
@@ -219,7 +222,17 @@ function CategoriesControls({
                 }}
               >
                 <ChevronRightIcon className="landmarks-layer-icon shrink-0 transition-transform group-data-[state=open]/cat:rotate-90" />
-                <span className="min-w-0 flex-1 truncate">{col.name}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {col.name}
+                  <span
+                    className="font-normal text-foreground/55"
+                    title="Unique subcategories"
+                  >
+                    {" "}
+                    ({(col.labels || []).length})
+                  </span>
+                </span>
+                <SubcategoryAvatars col={col} />
                 <span className="landmarks-trail" aria-hidden>
                   <span className="landmarks-trail-cell" />
                   <span className="landmarks-trail-cell" />
@@ -345,7 +358,7 @@ export function ExplorePanel({
       >
         <div
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            "min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain",
             PANEL_INSET,
           )}
         >
@@ -360,7 +373,7 @@ export function ExplorePanel({
       <Card className={FLOAT_PANEL} data-testid="explore-panel">
         <CardContent
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            "min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain",
             PANEL_INSET,
           )}
         >

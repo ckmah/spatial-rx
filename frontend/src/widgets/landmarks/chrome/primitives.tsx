@@ -13,6 +13,7 @@ import {
   EyeIcon,
   EyeOffIcon,
   LassoIcon,
+  LocateIcon,
   MousePointer2Icon,
   MoveIcon,
   PencilIcon,
@@ -47,6 +48,7 @@ function FilledCircleIcon(props: LucideProps) {
 const MODE_ICONS: Record<string, ComponentType<LucideProps>> = {
   pointer: MousePointer2Icon,
   move: MoveIcon,
+  probe: LocateIcon,
   selection: LassoIcon,
   lasso: LassoIcon,
   polygon: PentagonIcon,
@@ -64,7 +66,7 @@ export function modeIcon(mode: string) {
 
 /** Shared toolbar hit target — top, bottom, and mobile chrome. */
 export const chromeHitClass =
-  "size-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground";
+  "inline-flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground";
 
 export const chromeHitOnClass =
   "bg-foreground text-background hover:bg-foreground hover:text-background";
@@ -323,7 +325,7 @@ export function LayerRow({
           <Input
             aria-label="Rename layer"
             value={draft}
-            className="h-6 text-xs"
+            className="h-7 text-sm"
             autoFocus
             onClick={(e) => e.stopPropagation()}
             onChange={(e) => setDraft(e.target.value)}
@@ -347,7 +349,7 @@ export function LayerRow({
         ) : (
           <span
             className={cn(
-              "max-w-full truncate text-xs text-foreground",
+              "max-w-full truncate text-sm text-foreground",
               active ? "font-medium" : "font-normal",
             )}
             title={label}

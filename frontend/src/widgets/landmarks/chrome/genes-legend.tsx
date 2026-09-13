@@ -190,7 +190,7 @@ function GenesScaleToggles({ lm }: { lm: LandmarksModel }) {
       </label>
       <label className="flex items-center justify-between gap-2 text-xs text-foreground">
         <span className="min-w-0 leading-snug">
-          log1p
+          log scale
           <span className="mt-0.5 block text-[10px] text-foreground/65">
             Compress high expression
           </span>
@@ -217,7 +217,7 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
   const anchor = useComboboxAnchor();
 
   return (
-    <div ref={wrapRef} className="flex flex-col gap-1.5">
+    <div ref={wrapRef} className="flex min-w-0 flex-col gap-1.5 overflow-x-hidden">
       <Combobox
         items={names}
         multiple
@@ -231,13 +231,13 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
           <ComboboxChips
             ref={anchor}
             className={cn(
-              "min-h-8 rounded-[var(--radius)] bg-card/60 px-2 py-1 text-xs shadow-none",
+              "min-h-8 min-w-0 w-full flex-wrap rounded-md bg-muted/80 px-2 py-1 text-sm shadow-none",
               selected.length > 0 && "pr-8",
             )}
           >
             <ComboboxValue>
               {selected.map((name, i) => (
-                <ComboboxChip key={name} className="gap-1 text-[0.7rem]">
+                <ComboboxChip key={name} className="max-w-full gap-1 truncate rounded-md bg-background/80 text-sm">
                   <ColorSwatch color={GENE_COLORS[i % GENE_COLORS.length]} />
                   {name}
                 </ComboboxChip>
@@ -245,7 +245,7 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
             </ComboboxValue>
             <ComboboxChipsInput
               placeholder={selected.length ? "" : "Select genes"}
-              className="min-w-16 text-xs"
+              className="min-w-12 max-w-full text-sm"
             />
           </ComboboxChips>
           {selected.length > 0 ? (

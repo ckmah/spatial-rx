@@ -34,7 +34,7 @@
   --lm-space-5: 1.25rem;
   --lm-chrome-inset: var(--lm-space-2);
   --lm-chrome-gap: var(--lm-space-1);
-  --lm-chrome-band: 3.25rem;
+  --lm-chrome-band: 3.75rem;
   /* Room under the left dock for the bottom-left minimap (width ≈ 11.5rem, aspect ≈ 1.35). */
   --lm-minimap-slot: calc(11.5rem / 1.35 + var(--lm-chrome-gap) + 1.75rem);
   /* Matches `.landmarks__resize` (bottom 8px + 16px hit area). */
@@ -417,13 +417,23 @@
   box-shadow: var(--lm-float-shadow);
 }
 
-/* Shape roles share the same float material; toolbars slightly rounder than panels. */
+/* Beat shadcn Card opaque bg/radius so glass corners don't flash black. */
+.landmarks-float[data-slot="card"],
+.landmarks-float.bg-card {
+  background: var(--lm-float-bg) !important;
+  border-color: transparent !important;
+  box-shadow: var(--lm-float-shadow) !important;
+}
+
 .landmarks-float--toolbar {
   border-radius: calc(var(--lm-float-radius) + 0.15rem);
 }
 
 .landmarks-float--panel {
   border-radius: var(--lm-float-radius);
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--lm-float-bg);
 }
 
 .landmarks-mode-toggle [data-slot="toggle-group-item"] {
@@ -504,6 +514,8 @@
   height: var(--lm-layer-swatch);
   min-width: var(--lm-layer-swatch);
   min-height: var(--lm-layer-swatch);
+  line-height: 0;
+  vertical-align: middle;
 }
 
 /* Leading glyphs in a layer row (chevron) — square, container-bound. */
@@ -595,7 +607,7 @@
   min-width: 0;
   box-sizing: border-box;
   height: 1.75rem;
-  padding: 3px;
+  padding: 0;
   border-radius: var(--radius);
   /* Outer capsule — fill only; no inset ring (Soft Float elevation is shadow-only). */
   background: color-mix(in oklab, var(--muted) 55%, transparent);
@@ -620,7 +632,7 @@
 
 .landmarks-slider-control [data-slot="slider-track"] {
   height: 100%;
-  border-radius: calc(var(--radius) - 2px);
+  border-radius: var(--radius);
   background: transparent;
   box-shadow: none;
   backdrop-filter: none;
@@ -628,7 +640,7 @@
 }
 
 .landmarks-slider-control [data-slot="slider-range"] {
-  border-radius: calc(var(--radius) - 2px);
+  border-radius: var(--radius);
   background: color-mix(in oklab, var(--card) 82%, var(--foreground));
   box-shadow: none;
 }
@@ -642,8 +654,8 @@
 }
 
 .landmarks-slider-control [data-slot="slider-thumb"] {
-  /* Quiet until hover/focus — fill encodes value; thumb is a grab affordance. */
-  opacity: 0.28;
+  /* Hidden until hover/focus — fill encodes value; thumb is a grab affordance. */
+  opacity: 0;
   background: color-mix(in oklab, var(--foreground) 55%, var(--muted-foreground));
   /* Compose onto Radix centering — never replace -50% or tracking breaks. */
   transform: var(--radix-slider-thumb-transform, translateX(-50%)) translateX(-2px);
@@ -743,7 +755,8 @@
   flex-direction: column;
   gap: var(--lm-chrome-gap);
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
+  background: transparent;
 }
 
 .landmarks__chrome-dock--left {
@@ -939,6 +952,9 @@
   flex: 1 1 auto;
   flex-direction: column;
   overflow: hidden;
+  border-radius: inherit;
+  isolation: isolate;
+  background: transparent;
 }
 
 .landmarks__chrome-stack > [data-testid="info-panel"] {
@@ -970,8 +986,10 @@
   z-index: 0;
   height: calc(100% - 4px);
   border-radius: 9999px;
-  background: var(--background);
-  box-shadow: 0 1px 2px color-mix(in srgb, #000 12%, transparent);
+  background: color-mix(in oklab, var(--background) 88%, var(--foreground));
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
+    0 1px 2px color-mix(in srgb, #000 14%, transparent);
   transition:
     transform var(--lm-tab-pill-dur, 250ms) cubic-bezier(0.22, 1, 0.36, 1),
     width var(--lm-tab-pill-dur, 250ms) cubic-bezier(0.22, 1, 0.36, 1),

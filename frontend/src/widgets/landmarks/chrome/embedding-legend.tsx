@@ -13,6 +13,13 @@ import {
   TERNARY_VERTEX_R,
 } from "./genes-ternary";
 
+/** Show bare channel indices (0, 1, 2) — drop embedding-key prefixes. */
+function channelLabel(raw: string, index: number) {
+  const s = String(raw || "");
+  const m = s.match(/(\d+)\s*$/);
+  return m ? m[1] : String(index);
+}
+
 /** RGB triangle for embedding channels (same additive primaries as genes). */
 export function EmbeddingRgbLegend({ lm }: { lm: LandmarksModel }) {
   const clipId = useId();
@@ -35,7 +42,7 @@ export function EmbeddingRgbLegend({ lm }: { lm: LandmarksModel }) {
       <div className="flex flex-col gap-1">
         <div className="flex min-w-0 items-center gap-1 text-[10px] text-foreground">
           <ColorSwatch color={GENE_COLORS[0]} />
-          <span className="truncate">{labels[0]}</span>
+          <span className="truncate">{channelLabel(labels[0], 0)}</span>
         </div>
         <div
           className="h-2.5 w-full rounded-full"
@@ -57,7 +64,7 @@ export function EmbeddingRgbLegend({ lm }: { lm: LandmarksModel }) {
               className="inline-flex min-w-0 items-center gap-1 truncate text-foreground"
             >
               <ColorSwatch color={GENE_COLORS[i]} />
-              <span className="truncate">{label}</span>
+              <span className="truncate">{channelLabel(label, i)}</span>
             </span>
           ))}
         </div>
@@ -77,13 +84,21 @@ export function EmbeddingRgbLegend({ lm }: { lm: LandmarksModel }) {
     { label: labels[2], dot: TERNARY_DOT_RIGHT, color: GENE_COLORS[2] },
   ];
 
+  const display = vertexLabels.map((v, i) => ({
+    ...v,
+    text: channelLabel(v.label, i),
+  }));
+
   return (
-    <div className="flex flex-col items-center gap-1.5" data-testid="embedding-rgb-legend">
+    <div
+      className="flex flex-col items-center gap-1"
+      data-testid="embedding-rgb-legend"
+    >
       <svg
         viewBox={`0 0 ${TERNARY_SIZE} ${TERNARY_SIZE}`}
         className="size-16"
         role="img"
-        aria-label={`Embedding RGB: ${labels.slice(0, 3).join(", ")}`}
+        aria-label={`Embedding RGB: ${display.map((d) => d.text).join(", ")}`}
       >
         <defs>
           <clipPath id={clipId}>
@@ -105,27 +120,26 @@ export function EmbeddingRgbLegend({ lm }: { lm: LandmarksModel }) {
           className="stroke-border"
           strokeWidth={1}
         />
-        {vertexLabels.map((v) => (
-          <circle
-            key={v.label}
-            cx={v.dot.x}
-            cy={v.dot.y}
-            r={TERNARY_VERTEX_R}
-            fill={v.color}
-          />
+        {display.map((v) => (
+          <g key={v.label}>
+            <circle
+              cx={v.dot.x}
+              cy={v.dot.y}
+              r={TERNARY_VERTEX_R}
+              fill={v.color}
+            />
+            <text
+              x={v.dot.x}
+              y={v.dot.y + (v.dot === TERNARY_DOT_TOP ? -6 : 10)}
+              textAnchor="middle"
+              className="fill-foreground"
+              style={{ fontSize: 9, fontWeight: 600 }}
+            >
+              {v.text}
+            </text>
+          </g>
         ))}
       </svg>
-      <div className="flex w-full flex-col gap-0.5 text-[10px] text-foreground/65">
-        {vertexLabels.map((v) => (
-          <span
-            key={v.label}
-            className="inline-flex min-w-0 items-center gap-1 truncate text-foreground"
-          >
-            <ColorSwatch color={v.color} />
-            <span className="truncate">{v.label}</span>
-          </span>
-        ))}
-      </div>
     </div>
   );
 }

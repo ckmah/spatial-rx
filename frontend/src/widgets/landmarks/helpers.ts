@@ -29,6 +29,7 @@ export const KEYBOARD_SHORTCUTS: { action: string; keys: string }[] = [
 export const MODE_SHORTCUTS: Record<string, string> = {
   pointer: "V",
   move: "H",
+  probe: "Q",
   lasso: "L",
   rectangle: "R",
   ellipse: "O",
@@ -62,6 +63,7 @@ export const TENSION_TYPES = ["spline", "shape", "gradient"];
 export const MODE_LABELS: Record<string, string> = {
   pointer: "Pointer",
   move: "Move",
+  probe: "Probe",
   selection: "Selection",
   lasso: "Lasso",
   polygon: "Shape",
@@ -74,7 +76,7 @@ export const MODE_LABELS: Record<string, string> = {
 };
 
 /** Top-level interaction tools (left ToggleGroup). */
-export const INTERACTION_MODE_IDS = ["pointer", "move"];
+export const INTERACTION_MODE_IDS = ["pointer", "move", "probe"];
 /** Selection geometry modes (lasso dropdown on Topbar). */
 export const GEOMETRY_MODE_IDS = ["lasso", "rectangle", "ellipse", "polygon"];
 export const LANDMARK_MODE_IDS = ["point", "line", "spline", "shape"];
@@ -85,7 +87,7 @@ export function isGeometryMode(mode: string) {
 
 /** Map concrete mode → left-group interaction value (empty when landmark/geometry). */
 export function interactionFromMode(mode: string) {
-  if (mode === "pointer" || mode === "move") return mode;
+  if (mode === "pointer" || mode === "move" || mode === "probe") return mode;
   return "";
 }
 

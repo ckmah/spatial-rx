@@ -263,6 +263,11 @@ export function setSelected(model, kind, index) {
 
 export function setMode(model, mode) {
   model.set("mode", mode);
+  const probe = mode === "probe";
+  model.set("raster_similarity_enabled", probe);
+  if (!probe && model.get("raster_query_bin") >= 0) {
+    model.set("raster_query_bin", -1);
+  }
   model.save_changes();
 }
 

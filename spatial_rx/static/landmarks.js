@@ -321,7 +321,7 @@ export function mountEngine({ model, host }) {
   legend.addEventListener("mousedown", (e) => e.stopPropagation());
   legend.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
 
-  const INTERACTION_MODES = ["pointer", "move"];
+  const INTERACTION_MODES = ["pointer", "move", "probe"];
   const GEOMETRY_MODES = ["lasso", "polygon", "rectangle", "ellipse"];
   const LANDMARK_MODES = ["point", "line", "spline", "shape"];
   const modes = [...INTERACTION_MODES, ...GEOMETRY_MODES, ...LANDMARK_MODES];
@@ -445,7 +445,10 @@ export function mountEngine({ model, host }) {
   }
 
   function rasterSimilarityOn() {
-    return isRasterMode() && !!model.get("raster_similarity_enabled");
+    return (
+      isRasterMode() &&
+      (currentMode === "probe" || !!model.get("raster_similarity_enabled"))
+    );
   }
 
   function refreshRasterArrays() {
@@ -1163,11 +1166,15 @@ export function mountEngine({ model, host }) {
   function defaultCursor() {
     if (currentMode === "move") return "grab";
     if (currentMode === "pointer") return "default";
+    if (currentMode === "probe") return "crosshair";
     return "crosshair";
   }
 
   function syncInteractionMode() {
-    if (currentMode !== "pointer") hoverTarget = null;
+    if (currentMode !== "pointer" && currentMode !== "probe") hoverTarget = null;
+    if (currentMode !== "probe" && hoverBinIndex >= 0) {
+      hoverBinIndex = -1;
+    }
     webglCanvas.style.cursor = defaultCursor();
     if (deckgl) deckgl.setProps({ controller: controllerProps() });
   }
@@ -2366,6 +2373,21 @@ export function mountEngine({ model, host }) {
           }
         },
         onClick: (info) => {
+          if (currentMode === "probe") {
+            if (suppressClick) {
+              suppressClick = false;
+              return;
+            }
+            if (rasterSimilarityOn() && info?.coordinate) {
+              const bin = pickBinAtWorld(info.coordinate[0], info.coordinate[1]);
+              if (bin >= 0) {
+                model.set("raster_query_bin", bin);
+                model.save_changes();
+                setDeckLayers();
+              }
+            }
+            return;
+          }
           if (currentMode !== "pointer") return;
           if (suppressClick) {
             suppressClick = false;
@@ -2376,22 +2398,10 @@ export function mountEngine({ model, host }) {
             setSelected(hit.kind, hit.index);
             return;
           }
-          if (rasterSimilarityOn() && info?.coordinate) {
-            const bin = pickBinAtWorld(info.coordinate[0], info.coordinate[1]);
-            if (bin >= 0) {
-              model.set("raster_query_bin", bin);
-              model.save_changes();
-              setDeckLayers();
-              return;
-            }
-          }
           setSelected("", -1);
         },
         onHover: (info) => {
-          if (currentMode === "pointer") {
-            const hit = resolveHoverTarget(info);
-            // Live scrub: always recolor from the bin under the cursor while
-            // hovering (pin is only the fallback when the pointer leaves).
+          if (currentMode === "probe") {
             if (isRasterMode() && info?.coordinate) {
               const bin = pickBinAtWorld(info.coordinate[0], info.coordinate[1]);
               if (bin !== hoverBinIndex) {
@@ -2402,16 +2412,20 @@ export function mountEngine({ model, host }) {
                   setDeckLayers();
                 });
               }
-              webglCanvas.style.cursor =
-                hit?.kind === "landmark" ? "pointer" : "crosshair";
-            } else {
-              if (hoverBinIndex >= 0) {
-                hoverBinIndex = -1;
-                setDeckLayers();
-              }
-              webglCanvas.style.cursor =
-                hit?.kind === "landmark" ? "pointer" : "default";
+              webglCanvas.style.cursor = "crosshair";
+            } else if (hoverBinIndex >= 0) {
+              hoverBinIndex = -1;
+              setDeckLayers();
+              webglCanvas.style.cursor = defaultCursor();
             }
+          } else if (currentMode === "pointer") {
+            const hit = resolveHoverTarget(info);
+            if (hoverBinIndex >= 0) {
+              hoverBinIndex = -1;
+              setDeckLayers();
+            }
+            webglCanvas.style.cursor =
+              hit?.kind === "landmark" ? "pointer" : "default";
             if (sameTarget(hoverTarget, hit)) return;
             hoverTarget = hit;
             for (const fn of hoverListeners) {
@@ -3149,7 +3163,7 @@ export function mountEngine({ model, host }) {
     }
 
     const vertexHit = hitTestVertex(pt);
-    if (vertexHit && currentMode !== "pointer" && currentMode !== "move") {
+    if (vertexHit && currentMode !== "pointer" && currentMode !== "move" && currentMode !== "probe") {
       startVertexDrag(vertexHit.index, vertexHit.landmarkIndex);
       return;
     }
@@ -3206,7 +3220,7 @@ export function mountEngine({ model, host }) {
   }
 
   function handleMouseUp(event) {
-    if ((currentMode === "pointer" || currentMode === "move") && !isDragging) return;
+    if ((currentMode === "pointer" || currentMode === "move" || currentMode === "probe") && !isDragging) return;
     const pt = eventPoint(event);
     if (isDragging && currentMode === "pointer") {
       isDragging = false;
@@ -3278,7 +3292,7 @@ export function mountEngine({ model, host }) {
     if (suppressClick) { suppressClick = false; return; }
     if (!pt) return;
     // Geometry modes: lasso/rect/ellipse finish above; polygon vertices below.
-    if (currentMode === "pointer" || currentMode === "move") return;
+    if (currentMode === "pointer" || currentMode === "move" || currentMode === "probe") return;
     if (isGeometryMode(currentMode) && currentMode !== "polygon") return;
 
     // Point: place at mouseup position (not mousedown).

@@ -403,7 +403,7 @@ class LandmarksWidget(AnyWidget):
         sync=True
     )
     raster_query_bin = traitlets.Int(-1).tag(sync=True)  # -1 = none (pin)
-    raster_similarity_enabled = traitlets.Bool(True).tag(sync=True)
+    raster_similarity_enabled = traitlets.Bool(False).tag(sync=True)
     raster_threshold = traitlets.Float(0.0).tag(sync=True)
     raster_status = traitlets.Unicode("").tag(sync=True)
 
@@ -964,7 +964,7 @@ class LandmarksWidget(AnyWidget):
         for d in dims:
             norm, _vmin, _vmax = _normalize_column(mat[:, d])
             cols.append(norm.astype(np.float32, copy=False))
-            labels.append(f"{key}_{d}")
+            labels.append(str(int(d)))
         packed = np.column_stack(cols).ravel(order="F")
         self.embedding_values = base64.b64encode(packed.tobytes()).decode("ascii")
         self.embedding_channel_labels = labels
@@ -984,7 +984,7 @@ class LandmarksWidget(AnyWidget):
             raise ValueError(f"obsm[{key!r}] rows {mat.shape[0]} != n_obs {n}")
         # Pack all dims; the engine masks with ``raster_embedding_dims`` for
         # rest-state RGB and cosine (empty = all).
-        labels = [f"{key}_{i}" for i in range(mat.shape[1])]
+        labels = [str(i) for i in range(mat.shape[1])]
         return mat, labels
 
     def _composition_codes(self) -> tuple["np.ndarray", list[str]]:

@@ -56,7 +56,7 @@ def test_raster_genes_mean_builds_features():
     # Dim mask is client-side; packed features stay full-rank.
     w.raster_embedding_dims = [0]
     assert w.raster_feature_dim == 2
-    assert w.raster_feature_labels == ["X_pca_0", "X_pca_1"]
+    assert w.raster_feature_labels == ["0", "1"]
     w.raster_embedding_dims = []
     assert w.raster_feature_dim == 2
 
@@ -200,7 +200,7 @@ def test_embedding_values_pack_for_point_rgb():
     )
     w = LandmarksWidget(adata, color="cell_class", genes=["g1"])
     assert w.raster_embedding_key == "X_pca"
-    assert w.embedding_channel_labels == ["X_pca_0", "X_pca_1", "X_pca_2"]
+    assert w.embedding_channel_labels == ["0", "1", "2"]
     packed = np.frombuffer(base64.b64decode(w.embedding_values), dtype=np.float32)
     assert packed.size == 4 * 3
     assert np.all(packed >= 0) and np.all(packed <= 1)

@@ -116,12 +116,12 @@ function ColorControl({
               e.stopPropagation();
               onChange(c);
             }}
-            className={cn(chromeHitClass, on && chromeHitOnClass)}
+            className={cn(chromeHitClass, "leading-none", on && chromeHitOnClass)}
           >
             <ColorSwatch
               color={c}
               variant="landmark"
-              className="!size-4 !min-h-4 !min-w-4"
+              className="!size-4 !min-h-4 !min-w-4 shrink-0"
             />
           </button>
         );
@@ -129,7 +129,7 @@ function ColorControl({
       <label
         title="Custom color"
         className={cn(
-          "relative inline-flex cursor-pointer items-center justify-center",
+          "relative inline-flex cursor-pointer items-center justify-center leading-none",
           chromeHitClass,
           isCustom && chromeHitOnClass,
         )}
@@ -138,10 +138,10 @@ function ColorControl({
           <ColorSwatch
             color={color}
             variant="landmark"
-            className="!size-4 !min-h-4 !min-w-4"
+            className="!size-4 !min-h-4 !min-w-4 shrink-0"
           />
         ) : (
-          <span className="flex size-4 items-center justify-center rounded-full border border-dashed border-border text-[10px] font-semibold text-muted-foreground">
+          <span className="flex size-4 items-center justify-center rounded-full border border-dashed border-border text-[10px] font-semibold leading-none text-muted-foreground">
             +
           </span>
         )}
@@ -210,7 +210,7 @@ function InlineSlider({
 }
 
 const pillClass =
-  "landmarks-float landmarks-float--toolbar pointer-events-auto flex min-h-10 items-center gap-1 px-1.5 py-1 text-card-foreground";
+  "landmarks-float landmarks-float--toolbar pointer-events-auto flex min-h-10 items-center gap-1 px-1.5 py-0.5 text-card-foreground";
 
 /**
  * Sticky bottom-center context chrome (mirrors Topbar). L2 stacks above L1.
@@ -426,11 +426,13 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
                   showL2(lmL2 === "color" ? "width" : "color")
                 }
               >
-                <ColorSwatch
-                  color={color}
-                  variant="landmark"
-                  className="!size-4 !min-h-4 !min-w-4"
-                />
+                <span className="inline-flex size-full items-center justify-center leading-none">
+                  <ColorSwatch
+                    color={color}
+                    variant="landmark"
+                    className="!size-4 !min-h-4 !min-w-4 shrink-0"
+                  />
+                </span>
               </IconBtn>
               {usesTension ? (
                 <IconBtn
