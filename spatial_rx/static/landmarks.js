@@ -2510,7 +2510,7 @@ export function mountEngine({ model, host }) {
               setDeckLayers();
               webglCanvas.style.cursor = defaultCursor();
             }
-          } else if (currentMode === "pointer" {
+          } else if (currentMode === "pointer") {
             const hit = resolveHoverTarget(info);
             if (hoverBinIndex >= 0) {
               hoverBinIndex = -1;
