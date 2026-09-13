@@ -486,10 +486,9 @@ export function SoftFloatViewCtaLab() {
             Floating Points / Bins CTA
           </h1>
           <p className="m-0 max-w-2xl text-[13px] leading-snug text-foreground/65">
-            Promote View out of Explore into its own Soft Float dock. Button and
-            switch variants only — no tabs. Favorites <strong>D</strong> and{" "}
-            <strong>F</strong> are pinned first; pick before baking into the
-            widget.
+            Promote View out of Explore into its own Soft Float dock.{" "}
+            <strong>F</strong> is shipped in the widget; other variants stay for
+            comparison.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -514,19 +513,19 @@ export function SoftFloatViewCtaLab() {
 
       <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <VariantCard
-          title="D · Labeled Soft Float switch"
+          title="F · Text-in-thumb flip"
           verdict="favorite"
-          note="Bins as the on-mode. Soft Float track (wash → solid), weighted labels, both names always visible."
+          note="Shipped in the widget as ViewCta. Active label on the Soft Float thumb; idle side fades. Arrow keys + click."
         >
-          <VariantLabeledSwitch />
+          <VariantTextThumbFlip />
         </VariantCard>
 
         <VariantCard
-          title="F · Text-in-thumb flip"
-          verdict="favorite"
-          note="Active label rides the Soft Float thumb; idle side fades. Arrow keys + click. Max legibility."
+          title="D · Labeled Soft Float switch"
+          verdict="candidate"
+          note="Runner-up. Bins as the on-mode; Soft Float track + weighted labels. Kept for comparison."
         >
-          <VariantTextThumbFlip />
+          <VariantLabeledSwitch />
         </VariantCard>
 
         <VariantCard

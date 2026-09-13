@@ -11,6 +11,7 @@ import {
   SelectionToolbar,
   Topbar,
   LandmarkCanvasMenu,
+  ViewCta,
 } from "./chrome";
 import { mountEngine, type EngineHandle } from "./engine";
 import {
@@ -203,6 +204,14 @@ export function LandmarksView({
         </div>
 
         <SelectionToolbar lm={lm} />
+
+        <div
+          className="landmarks__chrome-view"
+          onMouseDown={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          <ViewCta lm={lm} />
+        </div>
 
         {narrow ? (
           <div

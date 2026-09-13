@@ -698,16 +698,36 @@
    Sit above the window-size handle so the two never overlap. */
 .landmarks__chrome-context {
   position: absolute;
-  bottom: calc(var(--lm-resize-band) + var(--lm-chrome-gap));
+  bottom: calc(var(--lm-resize-band) + var(--lm-chrome-gap) + 3.25rem);
   left: 50%;
   z-index: 22;
   transform: translateX(-50%);
   pointer-events: none;
 }
 
+/* Soft Float View CTA (lab F) — Points/Bins flip on the canvas. */
+.landmarks__chrome-view {
+  position: absolute;
+  bottom: calc(var(--lm-resize-band) + var(--lm-chrome-gap));
+  left: 50%;
+  z-index: 21;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.landmarks__chrome-view > * {
+  pointer-events: auto;
+}
+
 .landmarks--fs .landmarks__chrome-context,
 .landmarks:fullscreen .landmarks__chrome-context,
 .landmarks--overlay-fs .landmarks__chrome-context {
+  bottom: calc(var(--lm-chrome-inset) + 3.25rem);
+}
+
+.landmarks--fs .landmarks__chrome-view,
+.landmarks:fullscreen .landmarks__chrome-view,
+.landmarks--overlay-fs .landmarks__chrome-view {
   bottom: var(--lm-chrome-inset);
 }
 
