@@ -306,6 +306,7 @@ def main() -> None:
 
     widget = LandmarksWidget(adata, color="celltype", genes=GENES)
     widget.active_genes = ["Lgr5", "Cd3e", "Col1a1"]
+    widget.color_by = "continuous"
     widget.set_render_mode("raster")
     widget.selections = [
         {

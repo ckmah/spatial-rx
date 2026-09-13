@@ -171,8 +171,8 @@ blue→light→magenta. Selections stay Framer-neutral greys.
 - Shell height default 550px (400–1400); plot fills figure under floating chrome
 - Shared chrome scale on `.landmarks`: `--lm-space-*` (4px base), `--lm-chrome-inset`, `--lm-chrome-gap`, `--lm-chrome-band` (3.25rem), `--lm-dock-width` (14rem / 15rem fullscreen)
 - Tool pill (`landmarks__chrome-tools`): reserved top band, centered — docks start below band + gap
-- Wide: left Layers (Categories, Genes, Selections, Landmarks) + right Controls (`landmarks__chrome-dock--*`); max-height accounts for band
-- Narrow (`landmarks--narrow`, width < 640px): Info then Layers in one top-left stack; no side rail, right dock, or minimap
+- Wide: left Layers (Selections, Landmarks) + right Explore (View / Color by) and Info (`landmarks__chrome-dock--*`); max-height accounts for band
+- Narrow (`landmarks--narrow`, width < 640px): Info then Explore then Layers in one top-left stack; no side rail, right dock, or minimap
 - Wide left dock: Layers fills remaining height and scrolls inside the card (multi-open accordion; no nested list max-heights)
 - Narrow stack: Info capped (~45%), Layers flex-fills and scrolls
 - Zoom lives in the top tool pill (in / out / reset), not a separate bottom cluster
@@ -210,7 +210,7 @@ Icon-only select + landmark mode groups, zoom (in / out / reset), and fullscreen
 
 ### Glass docks
 
-`landmarks-float landmarks-float--panel` on Card. Layers accordion (Selections, Categories, Genes, Landmarks). Controls accordion (Style, Stats, Neighbors, Landmark params).
+`landmarks-float landmarks-float--panel` on Card. Layers (Selections, Landmarks). Explore (View Points/Bins + Color by Category/Genes/Embedding). Info (selection-linked composition / gene densities).
 
 ### Compact fields
 

@@ -752,10 +752,14 @@ class LandmarksWidget(AnyWidget):
         if change.get("new") == change.get("old"):
             return
         self._pack_active_gene_values()
+        genes = list(self.active_genes or [])
+        # Genes are an exclusive observation signal — keep point color_by aligned.
+        if genes and self.color_by != "continuous":
+            self.color_by = "continuous"
         if self.render_mode != "raster":
             return
         # Selected genes own the observation signal in bins mode.
-        if list(self.active_genes or []):
+        if genes:
             if self.raster_basis != "genes":
                 # Basis observer rebuilds; avoid a double rebuild here.
                 self.raster_basis = "genes"
@@ -769,10 +773,12 @@ class LandmarksWidget(AnyWidget):
         m = str(mode or "points").lower()
         if m not in ("points", "raster"):
             raise ValueError("render_mode must be 'points' or 'raster'")
+        genes = list(self.active_genes or [])
         if m == "raster":
             # Keep the active observation when flipping geometry.
-            if list(self.active_genes or []):
+            if genes:
                 self.raster_basis = "genes"
+                self.color_by = "continuous"
             elif (
                 (
                     self.raster_basis == "embedding"
@@ -781,8 +787,21 @@ class LandmarksWidget(AnyWidget):
                 and self.raster_embedding_key
             ):
                 self.raster_basis = "embedding"
+                self.color_by = "embedding"
             else:
                 self.raster_basis = "composition"
+                self.color_by = "categorical"
+        else:
+            # Points: keep the same observation family that bins were showing.
+            if genes or self.raster_basis == "genes":
+                self.color_by = "continuous"
+            elif (
+                self.raster_basis == "embedding"
+                or str(self.color_by or "") == "embedding"
+            ):
+                self.color_by = "embedding"
+            else:
+                self.color_by = "categorical"
         self.render_mode = m
 
     def set_raster_basis(
