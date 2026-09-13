@@ -8,7 +8,12 @@ import { cn } from "@/lib/utils";
 
 type HarnessTheme = "light" | "dark";
 type ViewMode = "points" | "raster";
-type Verdict = "candidate" | "strong-cta" | "quiet" | "anti-pattern";
+type Verdict =
+  | "candidate"
+  | "strong-cta"
+  | "quiet"
+  | "anti-pattern"
+  | "favorite";
 
 const STORAGE_KEY = "spatial-rx-harness-theme";
 
@@ -107,13 +112,15 @@ function VariantCard({
   children: ReactNode;
 }) {
   const badge =
-    verdict === "strong-cta"
-      ? "Strong CTA"
-      : verdict === "candidate"
-        ? "Candidate"
-        : verdict === "quiet"
-          ? "Quiet"
-          : "Anti-pattern";
+    verdict === "favorite"
+      ? "Favorite"
+      : verdict === "strong-cta"
+        ? "Strong CTA"
+        : verdict === "candidate"
+          ? "Candidate"
+          : verdict === "quiet"
+            ? "Quiet"
+            : "Anti-pattern";
 
   return (
     <section className="flex flex-col gap-2">
@@ -124,7 +131,8 @@ function VariantCard({
         <span
           className={cn(
             "rounded-md px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-            verdict === "strong-cta" && "bg-foreground text-background",
+            verdict === "favorite" && "bg-foreground text-background",
+            verdict === "strong-cta" && "bg-foreground/90 text-background",
             verdict === "candidate" && "bg-foreground/10 text-foreground/80",
             verdict === "quiet" && "bg-muted text-foreground/70",
             verdict === "anti-pattern" && "bg-destructive/15 text-destructive",
@@ -253,11 +261,13 @@ function VariantLabeledSwitch() {
     <TissueStage
       label="Floating dock"
       dock={
-        <SoftFloatDock className="gap-2 px-2.5 py-1.5">
+        <SoftFloatDock className="gap-2.5 px-3 py-2">
           <span
             className={cn(
-              "text-xs font-medium",
-              !binsOn ? "text-foreground" : "text-foreground/45",
+              "min-w-12 text-right text-xs transition-colors duration-200",
+              !binsOn
+                ? "font-semibold text-foreground"
+                : "font-medium text-foreground/40",
             )}
           >
             Points
@@ -266,11 +276,23 @@ function VariantLabeledSwitch() {
             checked={binsOn}
             onCheckedChange={(on) => setView(on ? "raster" : "points")}
             aria-label="Show bins instead of points"
+            className={cn(
+              // Soft Float track: quiet wash → solid foreground when bins on.
+              "h-5 w-9 border-transparent shadow-none",
+              "data-unchecked:bg-foreground/15 dark:data-unchecked:bg-foreground/20",
+              "data-checked:bg-foreground",
+              // Thumb stays inverse of the track in both themes.
+              "[&_[data-slot=switch-thumb]]:bg-background",
+              "dark:[&_[data-slot=switch-thumb]]:bg-background",
+              "dark:data-checked:[&_[data-slot=switch-thumb]]:bg-background",
+            )}
           />
           <span
             className={cn(
-              "text-xs font-medium",
-              binsOn ? "text-foreground" : "text-foreground/45",
+              "min-w-12 text-left text-xs transition-colors duration-200",
+              binsOn
+                ? "font-semibold text-foreground"
+                : "font-medium text-foreground/40",
             )}
           >
             Bins
@@ -328,29 +350,49 @@ function VariantTextThumbFlip() {
             aria-checked={binsOn}
             aria-label={binsOn ? "Bins view" : "Points view"}
             onClick={() => setView(binsOn ? "points" : "raster")}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                setView("points");
+              } else if (event.key === "ArrowRight") {
+                event.preventDefault();
+                setView("raster");
+              }
+            }}
             className={cn(
-              "relative h-9 w-[9.5rem] rounded-full outline-none",
-              "bg-foreground/[0.08] focus-visible:ring-[3px] focus-visible:ring-ring/50",
-              "dark:bg-foreground/[0.14]",
+              "relative h-9 w-[10.25rem] rounded-full outline-none",
+              // Soft Float inset track — denser than A’s tray, still borderless.
+              "bg-foreground/[0.1] shadow-[inset_0_1px_2px_rgba(0,0,0,0.12)]",
+              "focus-visible:ring-[3px] focus-visible:ring-ring/50",
+              "dark:bg-foreground/[0.16] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)]",
             )}
           >
             <span
               aria-hidden
-              className="absolute inset-y-0 left-0 flex w-1/2 items-center justify-center text-[11px] font-medium text-foreground/45"
+              className={cn(
+                "absolute inset-y-0 left-0 flex w-1/2 items-center justify-center",
+                "text-[11px] font-medium transition-opacity duration-200",
+                binsOn ? "text-foreground/50 opacity-100" : "opacity-0",
+              )}
             >
               Points
             </span>
             <span
               aria-hidden
-              className="absolute inset-y-0 right-0 flex w-1/2 items-center justify-center text-[11px] font-medium text-foreground/45"
+              className={cn(
+                "absolute inset-y-0 right-0 flex w-1/2 items-center justify-center",
+                "text-[11px] font-medium transition-opacity duration-200",
+                binsOn ? "opacity-0" : "text-foreground/50 opacity-100",
+              )}
             >
               Bins
             </span>
             <span
               className={cn(
                 "absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-full",
-                "bg-foreground text-background shadow-sm transition-transform",
+                "bg-foreground text-background shadow-sm",
                 "flex items-center justify-center text-[11px] font-semibold",
+                "transition-transform duration-200 ease-out",
                 binsOn ? "translate-x-[calc(100%+2px)]" : "translate-x-0.5",
               )}
             >
@@ -445,8 +487,9 @@ export function SoftFloatViewCtaLab() {
           </h1>
           <p className="m-0 max-w-2xl text-[13px] leading-snug text-foreground/65">
             Promote View out of Explore into its own Soft Float dock. Button and
-            switch variants only — no tabs. Pick a candidate before baking into
-            the widget.
+            switch variants only — no tabs. Favorites <strong>D</strong> and{" "}
+            <strong>F</strong> are pinned first; pick before baking into the
+            widget.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -470,6 +513,22 @@ export function SoftFloatViewCtaLab() {
       </header>
 
       <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+        <VariantCard
+          title="D · Labeled Soft Float switch"
+          verdict="favorite"
+          note="Bins as the on-mode. Soft Float track (wash → solid), weighted labels, both names always visible."
+        >
+          <VariantLabeledSwitch />
+        </VariantCard>
+
+        <VariantCard
+          title="F · Text-in-thumb flip"
+          verdict="favorite"
+          note="Active label rides the Soft Float thumb; idle side fades. Arrow keys + click. Max legibility."
+        >
+          <VariantTextThumbFlip />
+        </VariantCard>
+
         <VariantCard
           title="A · Twin solid buttons"
           verdict="strong-cta"
@@ -495,27 +554,11 @@ export function SoftFloatViewCtaLab() {
         </VariantCard>
 
         <VariantCard
-          title="D · Labeled Soft Float switch"
-          verdict="candidate"
-          note="Bins as the switched-on mode. Compact; mode names stay visible on both sides."
-        >
-          <VariantLabeledSwitch />
-        </VariantCard>
-
-        <VariantCard
           title="E · Switch + mode chip"
           verdict="quiet"
           note="Chip restates mode; switch does the work. Quieter CTA, more chrome."
         >
           <VariantSwitchWithChip />
-        </VariantCard>
-
-        <VariantCard
-          title="F · Text-in-thumb flip"
-          verdict="strong-cta"
-          note="Custom flip with the active label on the thumb. High legibility; custom a11y."
-        >
-          <VariantTextThumbFlip />
         </VariantCard>
 
         <VariantCard

@@ -442,6 +442,9 @@ export function SoftFloatTabsLab() {
           <Button variant="outline" size="sm" asChild>
             <a href="/">Landmarks harness</a>
           </Button>
+          <Button variant="outline" size="sm" asChild>
+            <a href="/view-cta.html">View CTA lab</a>
+          </Button>
           <Button
             type="button"
             variant="outline"

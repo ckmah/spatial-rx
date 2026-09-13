@@ -54,6 +54,9 @@ export function HarnessShell() {
           <Button asChild variant="outline" size="sm">
             <a href="/tabs.html">Tabs lab</a>
           </Button>
+          <Button asChild variant="outline" size="sm">
+            <a href="/view-cta.html">View CTA lab</a>
+          </Button>
           <Button
             type="button"
             variant="outline"

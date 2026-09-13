@@ -187,6 +187,7 @@ blue→light→magenta. Selections stay Framer-neutral greys.
 - Panels and toolbars share the same glass material; `--toolbar` is slightly rounder than `--panel`
 - Inner chrome stays quiet: slider capsules are fill-only (no inset rings); section dividers use spacing, not rules; segmented controls sit in muted trays without outline strokes
 - Tabs / segments: **Soft Float pill Tabs** (lab variant B) are the Explore View + Color-by control — `PILL_TABS_LIST` / `PILL_TABS_TRIGGER` in `chrome/sections.ts`. Lab remains at `frontend/dev/tabs.html` for alternatives.
+- Floating View CTA (Points/Bins out of Explore): lab at `frontend/dev/view-cta.html`. Favorites under review: **D** labeled Soft Float switch, **F** text-in-thumb flip. Harness links to both labs.
 - Explore distill: View (Points/Bins) + Color by as two compact segment rows; similarity scale only in Bins; status copy only when computing/error/pinned; Color-by meta line only for genes/embedding
 - Captions and helper text on Soft Float use foreground mixes (`--foreground` ~62–72%), not raw `--muted-foreground`, so tissue behind glass does not wash them out
 - Menus / tooltips keep a crisp border (opaque portaled surfaces need an edge)
