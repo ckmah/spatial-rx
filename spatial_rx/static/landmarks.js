@@ -105,10 +105,15 @@ function lerpRgb(low, high, t) {
   ];
 }
 
-/** Similarity: black (low) → white (high). */
+/** Similarity diverging palette centered at 0.5: blue → light → magenta. */
+const RASTER_SIM_LOW = [59, 130, 246]; // #3b82f6
+const RASTER_SIM_MID = [232, 232, 232]; // #e8e8e8
+const RASTER_SIM_HIGH = [255, 0, 153]; // #ff0099
+
 function sampleRasterGray(t) {
-  const v = Math.round(clamp01(t) * 255);
-  return [v, v, v];
+  const u = clamp01(t);
+  if (u <= 0.5) return lerpRgb(RASTER_SIM_LOW, RASTER_SIM_MID, u / 0.5);
+  return lerpRgb(RASTER_SIM_MID, RASTER_SIM_HIGH, (u - 0.5) / 0.5);
 }
 
 /** Parse ``rgb()`` / ``rgba()`` / ``#hex`` to ``[r,g,b]``; fallback black. */
@@ -380,6 +385,7 @@ export function mountEngine({ model, host }) {
   let zoomInterpolator = null;
   let categoryCodes = null;
   let geneValues = null;
+  let embeddingValues = null;
   let knnGraph = null;
   let radiusGraph = null;
   let rasterCache = {
@@ -405,6 +411,12 @@ export function mountEngine({ model, host }) {
     geneValues = b64 ? decodeF32Base64(b64) : null;
   }
   refreshGeneValues();
+
+  function refreshEmbeddingValues() {
+    const b64 = model.get("embedding_values") || "";
+    embeddingValues = b64 ? decodeF32Base64(b64) : null;
+  }
+  refreshEmbeddingValues();
 
   function refreshNeighborGraph() {
     knnGraph = decodeNeighborCsr(
@@ -531,7 +543,7 @@ export function mountEngine({ model, host }) {
 
   /** Empty trait = all dims. Non-embedding bases ignore the mask. */
   function embeddingDimMask(dim) {
-    const basis = model.get("raster_basis") || "genes";
+    const basis = model.get("raster_basis") || "composition";
     if (basis !== "embedding") {
       const all = new Array(dim);
       for (let i = 0; i < dim; i++) all[i] = i;
@@ -575,12 +587,12 @@ export function mountEngine({ model, host }) {
 
   /**
    * Rest-state observation RGB for one compact bin (no similarity).
-   * Matches points-genes language: additive magenta/lime/azure for multi-channel
-   * bases; theme background → magenta for scalar continuous (composition /
-   * single-gene mean), same as the genes legend ``var(--background) → color``.
+   * Composition: majority category → point_palette (same as points categorical).
+   * Genes: selected active_genes — 1 gene background→magenta; multi additive
+   * magenta/lime/azure over background. Embedding: additive RGB channels.
    */
   function observationColorForBin(i, cache, colStats) {
-    const basis = model.get("raster_basis") || "genes";
+    const basis = model.get("raster_basis") || "composition";
     const dim = cache.dim | 0;
     const feats = cache.features;
     const n = cache.nBins | 0;
@@ -618,59 +630,75 @@ export function mountEngine({ model, host }) {
       ];
     }
     if (basis === "composition") {
-      // Purity = max category fraction (rows are histograms / means).
-      let s = 0;
-      let mx = 0;
+      // Majority cell type = argmax category fraction (same palette as points).
+      let best = 0;
+      let bestV = -1;
       for (let d = 0; d < dim; d++) {
         const v = Math.max(0, feats[off + d] || 0);
-        s += v;
-        if (v > mx) mx = v;
+        if (v > bestV) {
+          bestV = v;
+          best = d;
+        }
       }
-      const t = s > 1e-8 ? mx / s : 0;
-      return lerpRgb(low, RASTER_SEQ_HIGH, t);
+      if (!(bestV > 0)) return low;
+      const palette = model.get("point_palette") || [];
+      const hex =
+        palette.length > 0
+          ? palette[((best % palette.length) + palette.length) % palette.length]
+          : FALLBACK_POINT;
+      const rgb = hexToRgbaBytes(hex, 1);
+      return [rgb[0], rgb[1], rgb[2]];
     }
-    // genes: additive channels like points ``blendGeneColors`` (≤3 dims),
-    // then composite over plot background.
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    let w = 0;
-    const nChan = Math.min(dim, RASTER_RGB_CHANNELS.length);
-    for (let d = 0; d < nChan; d++) {
-      const st = colStats[d] || { lo: 0, span: 1 };
-      const t = clamp01((feats[off + d] - st.lo) / st.span);
-      if (!(t > 0)) continue;
-      const rgb = hexToRgbaBytes(RASTER_RGB_CHANNELS[d % RASTER_RGB_CHANNELS.length], 1);
-      r += rgb[0] * t;
-      g += rgb[1] * t;
-      b += rgb[2] * t;
-      w += t;
-    }
-    if (dim > nChan) {
-      // Extra genes fold into the mean of remaining channels → first channel weight.
-      let extra = 0;
-      let extraN = 0;
-      for (let d = nChan; d < dim; d++) {
+    if (basis === "genes") {
+      // Selected active genes only (feature cols match active_genes order).
+      // 1 gene: theme background → magenta (points continuous). Multi: additive
+      // magenta/lime/azure over background (points ``blendGeneColors``).
+      if (dim === 1) {
+        const st = colStats[0] || { lo: 0, span: 1 };
+        const t = clamp01((feats[off] - st.lo) / st.span);
+        return lerpRgb(low, RASTER_SEQ_HIGH, t);
+      }
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let w = 0;
+      const nChan = Math.min(dim, RASTER_RGB_CHANNELS.length);
+      for (let d = 0; d < nChan; d++) {
         const st = colStats[d] || { lo: 0, span: 1 };
-        extra += clamp01((feats[off + d] - st.lo) / st.span);
-        extraN += 1;
-      }
-      if (extraN) {
-        const t = extra / extraN;
-        const rgb = hexToRgbaBytes(RASTER_RGB_CHANNELS[0], 1);
+        const t = clamp01((feats[off + d] - st.lo) / st.span);
+        if (!(t > 0)) continue;
+        const rgb = hexToRgbaBytes(RASTER_RGB_CHANNELS[d % RASTER_RGB_CHANNELS.length], 1);
         r += rgb[0] * t;
         g += rgb[1] * t;
         b += rgb[2] * t;
         w += t;
       }
+      if (dim > nChan) {
+        let extra = 0;
+        let extraN = 0;
+        for (let d = nChan; d < dim; d++) {
+          const st = colStats[d] || { lo: 0, span: 1 };
+          extra += clamp01((feats[off + d] - st.lo) / st.span);
+          extraN += 1;
+        }
+        if (extraN) {
+          const t = extra / extraN;
+          const rgb = hexToRgbaBytes(RASTER_RGB_CHANNELS[0], 1);
+          r += rgb[0] * t;
+          g += rgb[1] * t;
+          b += rgb[2] * t;
+          w += t;
+        }
+      }
+      if (w < 1e-6) return low;
+      const a = Math.min(1, w);
+      return [
+        Math.min(255, Math.round(low[0] * (1 - a) + r)),
+        Math.min(255, Math.round(low[1] * (1 - a) + g)),
+        Math.min(255, Math.round(low[2] * (1 - a) + b)),
+      ];
     }
-    if (w < 1e-6) return low;
-    const a = Math.min(1, w);
-    return [
-      Math.min(255, Math.round(low[0] * (1 - a) + r)),
-      Math.min(255, Math.round(low[1] * (1 - a) + g)),
-      Math.min(255, Math.round(low[2] * (1 - a) + b)),
-    ];
+    return low;
   }
 
   function activeQueryBin() {
@@ -731,7 +759,7 @@ export function mountEngine({ model, host }) {
     const scores =
       queryIdx >= 0 && (cache.dim | 0) > 0 ? cosineScoresForQuery(queryIdx) : null;
     const threshold = Number(model.get("raster_threshold")) || 0;
-    const basis = model.get("raster_basis") || "genes";
+    const basis = model.get("raster_basis") || "composition";
     const dimsKey = (model.get("raster_embedding_dims") || []).join(",");
     const texKey = [
       cache.key,
@@ -742,6 +770,8 @@ export function mountEngine({ model, host }) {
       model.get("raster_query_bin"),
       basis,
       dimsKey,
+      (model.get("point_palette") || []).join(","),
+      (model.get("active_genes") || []).join(","),
       // Low stop tracks plot background (dark/light).
       resolvePlotBackground(),
     ].join("|");
@@ -1029,6 +1059,39 @@ export function mountEngine({ model, host }) {
       Math.round(Math.max(0, Math.min(1, opacity)) * 255),
     ];
   }
+
+  function blendEmbeddingColors(i, opacity) {
+    const pts = getPointsData();
+    const labels = model.get("embedding_channel_labels") || [];
+    const nChan = labels.length | 0;
+    if (!nChan || !embeddingValues || !pts.length) return null;
+    const n = pts.length;
+    if (embeddingValues.length < n * nChan) return null;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let w = 0;
+    const nUse = Math.min(nChan, GENE_COLORS.length);
+    for (let c = 0; c < nUse; c++) {
+      const t = Math.max(0, Math.min(1, embeddingValues[c * n + i] || 0));
+      if (!(t > 0)) continue;
+      const rgb = hexToRgbaBytes(GENE_COLORS[c % GENE_COLORS.length], 1);
+      r += rgb[0] * t;
+      g += rgb[1] * t;
+      b += rgb[2] * t;
+      w += t;
+    }
+    if (w < 1e-6) {
+      return hexToRgbaBytes("#6b7280", opacity * 0.35);
+    }
+    return [
+      Math.min(255, Math.round(r)),
+      Math.min(255, Math.round(g)),
+      Math.min(255, Math.round(b)),
+      Math.round(Math.max(0, Math.min(1, opacity)) * 255),
+    ];
+  }
+
   let draft = [];
   let suppressClick = false;
   let isDragging = false;
@@ -1147,7 +1210,11 @@ export function mountEngine({ model, host }) {
       legend.appendChild(t);
     }
 
-    // Gene legends render in the Layers panel under the combobox.
+    // Gene / embedding legends render in Explore chrome under the combobox.
+    if (mode === "embedding") {
+      legend.hidden = true;
+      return;
+    }
     if (mode === "continuous" && activeGenes.length > 0) {
       legend.hidden = true;
       return;
@@ -1223,7 +1290,11 @@ export function mountEngine({ model, host }) {
     const opacity = POINT_OPACITY;
     const mode = model.get("color_by") || "categorical";
     let rgba;
-    if (mode === "continuous") {
+    if (mode === "embedding") {
+      rgba =
+        blendEmbeddingColors(d.i, opacity) ||
+        hexToRgbaBytes("#6b7280", opacity * 0.35);
+    } else if (mode === "continuous") {
       const activeGenes = model.get("active_genes") || [];
       if (activeGenes.length > 0) {
         rgba =
@@ -1394,6 +1465,8 @@ export function mountEngine({ model, host }) {
       model.get("gene_values"),
       model.get("gene_scale_mode"),
       model.get("gene_log1p"),
+      model.get("embedding_values"),
+      model.get("embedding_channel_labels"),
       ...roleTrigger,
     ];
     const pointerHoverPick = currentMode === "pointer";
@@ -3625,6 +3698,15 @@ export function mountEngine({ model, host }) {
   onChange("gene_values", () => {
     refreshGeneValues();
     setDeckLayers();
+  });
+  onChange("embedding_values", () => {
+    refreshEmbeddingValues();
+    setDeckLayers();
+    updatePointLegend();
+  });
+  onChange("embedding_channel_labels", () => {
+    setDeckLayers();
+    updatePointLegend();
   });
   ["neighbor_indptr", "neighbor_indices", "neighbor_distances", "radius_indptr", "radius_indices", "radius_distances"].forEach((k) => {
     onChange(k, () => {

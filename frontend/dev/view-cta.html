@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Soft Float View CTA lab — spatial-rx</title>
+    <script>
+      (function () {
+        var theme = localStorage.getItem("spatial-rx-harness-theme");
+        var dark = theme !== "light";
+        document.documentElement.className = dark
+          ? "dark dark-theme"
+          : "light light-theme";
+      })();
+    </script>
+    <style>
+      html.light {
+        color-scheme: light;
+        --harness-page-bg: #f4f4f5;
+        --harness-text: #1c2024;
+      }
+      html.dark {
+        color-scheme: dark;
+        --harness-page-bg: #0a0a0a;
+        --harness-text: #edeef0;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--harness-page-bg);
+        color: var(--harness-text);
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="view-cta-lab-root"></div>
+    <script type="module" src="/view-cta-main.tsx"></script>
+  </body>
+</html>

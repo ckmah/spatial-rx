@@ -32,19 +32,21 @@
   --lm-space-3: 0.75rem;
   --lm-space-4: 1rem;
   --lm-space-5: 1.25rem;
-  --lm-chrome-inset: var(--lm-space-3);
-  --lm-chrome-gap: var(--lm-space-2);
+  --lm-chrome-inset: var(--lm-space-2);
+  --lm-chrome-gap: var(--lm-space-1);
   --lm-chrome-band: 3.25rem;
+  /* Room under the left dock for the bottom-left minimap (width ≈ 11.5rem, aspect ≈ 1.35). */
+  --lm-minimap-slot: calc(11.5rem / 1.35 + var(--lm-chrome-gap) + 1.75rem);
   /* Matches `.landmarks__resize` (bottom 8px + 16px hit area). */
   --lm-resize-band: calc(8px + 16px);
   --lm-dock-width: 14rem;
 
-  /* Shared Soft Float surface — panels + toolbars */
+  /* Shared Soft Float surface — panels + toolbars (shadow-only elevation) */
   --lm-float-radius: calc(var(--radius) + 0.25rem);
-  --lm-float-border: color-mix(in oklab, var(--border) 85%, transparent);
-  --lm-float-bg: color-mix(in oklab, var(--card) 72%, transparent);
+  --lm-float-border: transparent;
+  --lm-float-bg: color-mix(in oklab, var(--card) 80%, transparent);
   --lm-float-blur: blur(14px) saturate(1.05);
-  --lm-float-shadow: 0 10px 28px color-mix(in srgb, #000 12%, transparent);
+  --lm-float-shadow: 0 8px 22px color-mix(in srgb, #000 10%, transparent);
 }
 
 .landmarks ::selection {
@@ -92,6 +94,11 @@
     --lm-halo: #ffffff;
     /* Opaque radius-neighborhood wash (~30% #00e5cc on black). */
     --lm-neigh-fill: #00453d;
+    --lm-float-bg: color-mix(in oklab, var(--card) 78%, transparent);
+    --lm-float-border: transparent;
+    --lm-float-shadow:
+      0 1px 0 rgb(255 255 255 / 5%) inset,
+      0 10px 26px color-mix(in srgb, #000 38%, transparent);
   }
 }
 
@@ -109,11 +116,11 @@
   --lm-tooltip-text: #0f172a;
   --lm-halo: #ffffff;
   --lm-neigh-fill: #00453d;
-  --lm-float-bg: color-mix(in oklab, var(--card) 68%, transparent);
-  --lm-float-border: color-mix(in oklab, var(--border) 100%, transparent);
+  --lm-float-bg: color-mix(in oklab, var(--card) 78%, transparent);
+  --lm-float-border: transparent;
   --lm-float-shadow:
-    0 1px 0 rgb(255 255 255 / 6%) inset,
-    0 10px 28px color-mix(in srgb, #000 40%, transparent);
+    0 1px 0 rgb(255 255 255 / 5%) inset,
+    0 10px 26px color-mix(in srgb, #000 38%, transparent);
 }
 
 .landmarks.landmarks--light {
@@ -126,8 +133,9 @@
   --lm-tooltip-text: #f8fafc;
   --lm-halo: #ffffff;
   --lm-neigh-fill: #b3f2e8;
-  --lm-float-bg: color-mix(in oklab, var(--card) 78%, transparent);
-  --lm-float-shadow: 0 8px 24px color-mix(in srgb, #000 8%, transparent);
+  --lm-float-bg: color-mix(in oklab, var(--card) 82%, transparent);
+  --lm-float-border: transparent;
+  --lm-float-shadow: 0 8px 22px color-mix(in srgb, #000 8%, transparent);
 }
 
 .landmarks__body {
@@ -402,7 +410,7 @@
 
 .landmarks-float {
   border-radius: var(--lm-float-radius);
-  border: 1px solid var(--lm-float-border);
+  border: none;
   background: var(--lm-float-bg);
   backdrop-filter: var(--lm-float-blur);
   -webkit-backdrop-filter: var(--lm-float-blur);
@@ -560,44 +568,26 @@
   justify-self: end;
 }
 
-/* Accordion +/- sits in the same end column as delete / category eye */
-.landmarks-float--panel [data-slot="accordion-trigger"] {
-  gap: 0.5rem;
-}
-
-.landmarks-float--panel [data-slot="accordion-trigger"] > span:last-child {
-  position: relative;
-  flex: 0 0 var(--lm-trail) !important;
-  width: var(--lm-trail) !important;
-  min-width: var(--lm-trail) !important;
-  height: var(--lm-trail-hit) !important;
-  max-width: none !important;
-  margin-left: auto;
-}
-
-.landmarks-float--panel [data-slot="accordion-trigger"] > span:last-child > svg {
-  inset: auto !important;
-  top: 50% !important;
-  right: 0 !important;
-  left: auto !important;
-  width: 0.875rem !important;
-  height: 0.875rem !important;
-  margin-top: -0.4375rem;
-}
-
-.landmarks-section-trigger {
+/* Captions on glass: mix from foreground so tissue behind Soft Float stays readable. */
+.landmarks-section-label {
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--muted-foreground);
+  color: color-mix(in oklab, var(--foreground) 72%, transparent);
 }
 
-.landmarks-section-trigger[data-state="open"] {
-  color: var(--foreground);
+.landmarks-field-caption {
+  color: color-mix(in oklab, var(--foreground) 72%, transparent);
 }
 
-.landmarks-section-trigger[data-state="open"] svg {
-  color: var(--foreground);
+.landmarks-meta {
+  color: color-mix(in oklab, var(--foreground) 62%, transparent);
+}
+
+/* Empty / helper copy on float panels — avoid muted-on-glass washout. */
+.landmarks-float--panel [data-slot="field-description"],
+.landmarks-float--panel .text-muted-foreground {
+  color: color-mix(in oklab, var(--foreground) 62%, transparent);
 }
 
 .landmarks-slider-control {
@@ -607,22 +597,19 @@
   height: 1.75rem;
   padding: 3px;
   border-radius: var(--radius);
-  /* Outer capsule — equal gutter around the inner track/fill. */
-  background: color-mix(in oklab, var(--lm-float-bg) 88%, transparent);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, var(--lm-float-border) 90%, transparent);
-  backdrop-filter: var(--lm-float-blur);
-  -webkit-backdrop-filter: var(--lm-float-blur);
+  /* Outer capsule — fill only; no inset ring (Soft Float elevation is shadow-only). */
+  background: color-mix(in oklab, var(--muted) 55%, transparent);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .landmarks--dark .landmarks-slider-control {
-  background: color-mix(in oklab, var(--card) 55%, transparent);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
+  background: color-mix(in oklab, var(--muted) 45%, transparent);
 }
 
 .landmarks--light .landmarks-slider-control {
-  background: color-mix(in oklab, var(--card) 70%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent);
+  background: color-mix(in oklab, var(--muted) 65%, transparent);
 }
 
 /* Capsule value slider — inner track fills the control; range flush to track. */
@@ -741,6 +728,10 @@
 
 .landmarks__chrome-dock--left {
   left: var(--lm-chrome-inset);
+  max-height: calc(
+    100% - var(--lm-chrome-band) - var(--lm-chrome-gap) - var(--lm-minimap-slot) -
+      var(--lm-chrome-inset)
+  );
 }
 
 .landmarks__chrome-dock--right {
@@ -748,6 +739,22 @@
 }
 
 /* Layers fills remaining dock height and scrolls inside the card. */
+.landmarks__chrome-dock .landmarks__explore-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.landmarks__chrome-dock .landmarks__explore-panel > [data-slot="card"] {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .landmarks__chrome-dock .landmarks__layers-panel {
   display: flex;
   flex: 1 1 auto;
@@ -767,15 +774,26 @@
 .landmarks__chrome-dock--right > [data-testid="info-panel"] {
   display: flex;
   min-height: 0;
-  flex: 1 1 auto;
+  /* Stable share of the dock — content swaps inside a fixed chart well. */
+  flex: 0 0 auto;
   flex-direction: column;
+  max-height: 40%;
   overflow: hidden;
 }
 
-/* Bottom-right overview; equal inset on bottom + right. Hidden on narrow. */
+.landmarks__chrome-dock--right > [data-testid="info-panel"] [data-slot="card-content"] {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.landmarks__chrome-dock--right > .landmarks__explore-panel {
+  flex: 1 1 auto;
+}
+
+/* Bottom-left overview; equal inset on bottom + left. Hidden on narrow. */
 .landmarks__chrome-minimap {
   position: absolute;
-  right: var(--lm-chrome-inset);
+  left: var(--lm-chrome-inset);
   bottom: var(--lm-chrome-inset);
   z-index: 16;
   width: min(11.5rem, 30vw);
@@ -803,7 +821,7 @@
 
 .landmarks--narrow .landmarks__chrome-dock--narrow-stack > [data-testid="info-panel"] {
   display: flex;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
   max-height: 45%;
   min-height: 0;
@@ -834,7 +852,7 @@
   );
 }
 
-/* Panel interior: equal inset; accordion rows share one vertical step. */
+/* Panel interior: equal inset. */
 
 .landmarks-float--panel [data-slot="card-header"].sr-only {
   /* Keep a11y title out of the padding box. */
@@ -847,15 +865,6 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-
-.landmarks-float--panel [data-slot="accordion-item"] {
-  margin-top: 0;
-}
-
-.landmarks-float--panel [data-slot="accordion-content"] > div {
-  /* AccordionContent wraps children; SECTION_CONTENT owns open-state padding. */
-  padding-top: 0;
 }
 
 /* Opaque chrome tooltips (portaled into widget; no glass). */

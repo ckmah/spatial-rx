@@ -138,11 +138,12 @@ Restrained achromatic chrome. Data owns saturation on the canvas.
 Landmark cyan/magenta/lime (and amber/violet/mint) for annotations only.
 Categorical points use an Okabe–Ito–based set that avoids that neon triad.
 Genes keep the additive magenta/lime/azure blend. Continuous point coloring
-defaults to warm cream → gene magenta. Raster rest-state observation matches
-points genes: theme background → magenta for scalar continuous (composition /
-single-channel), or additive magenta/lime/azure over the plot background for
-multi-gene / embedding (readable on dark and light canvases). Similarity
-scrubbing uses black→white. Selections stay Framer-neutral greys.
+defaults to warm cream → gene magenta. Points and bins share observation
+signals: categories, genes, and embedding. Embedding colors points and bins
+with additive magenta/lime/azure on the first three dims (RGB triangle legend).
+Composition bins use majority cell-type colors from the point palette;
+single-gene uses theme background → magenta. Similarity scrubbing uses
+blue→light→magenta. Selections stay Framer-neutral greys.
 
 ### Named Rules
 
@@ -180,8 +181,15 @@ scrubbing uses black→white. Selections stay Framer-neutral greys.
 ## Elevation & Depth
 
 - Widget body: soft offset shadow (not flat ring-only)
-- Shared float tokens (`--lm-float-bg`, `--lm-float-border`, `--lm-float-blur`, `--lm-float-shadow`) drive every floating chrome surface
-- Panels and toolbars use the same glass material; `--toolbar` is pill radius, `--panel` is card radius
+- Shared float tokens (`--lm-float-bg`, `--lm-float-blur`, `--lm-float-shadow`) drive every floating chrome surface
+- **Shadow-only Soft Float:** panels and toolbars have no hairline border; elevation is fill + soft drop shadow (craft floor: declare elevation once). `--lm-float-border` stays transparent for token compatibility.
+- Slightly denser frosted fill (~80% card mix) so borderless glass still separates from busy tissue
+- Panels and toolbars share the same glass material; `--toolbar` is slightly rounder than `--panel`
+- Inner chrome stays quiet: slider capsules are fill-only (no inset rings); section dividers use spacing, not rules; segmented controls sit in muted trays without outline strokes
+- Tabs / segments: **Soft Float pill Tabs** (lab variant B) are the Explore View + Color-by control — `PILL_TABS_LIST` / `PILL_TABS_TRIGGER` in `chrome/sections.ts`. Lab remains at `frontend/dev/tabs.html` for alternatives.
+- Explore distill: View (Points/Bins) + Color by as two compact segment rows; similarity scale only in Bins; status copy only when computing/error/pinned; Color-by meta line only for genes/embedding
+- Captions and helper text on Soft Float use foreground mixes (`--foreground` ~62–72%), not raw `--muted-foreground`, so tissue behind glass does not wash them out
+- Menus / tooltips keep a crisp border (opaque portaled surfaces need an edge)
 - Plot canvas: flat — no drop shadows on scatter
 
 Glass is a deliberate float treatment over live canvas, not decorative blur on static chrome.

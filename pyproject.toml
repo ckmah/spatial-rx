@@ -39,6 +39,7 @@ demo = [
     "pandas>=2.0",
     "scipy>=1.11",
     "shapely>=2.1.2",
+    "scanpy>=1.10",
     "squidpy>=1.6",
     "tifffile>=2026.3.3",
 ]

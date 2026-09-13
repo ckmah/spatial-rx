@@ -48,7 +48,7 @@ function GenesHorizontalBar({
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex min-w-0 items-center justify-between gap-1 text-[10px] text-muted-foreground">
+      <div className="flex min-w-0 items-center justify-between gap-1 text-[10px] text-foreground/65">
         {labels.map((label, i) => (
           <span
             key={`${label}-${i}`}
@@ -60,10 +60,10 @@ function GenesHorizontalBar({
         ))}
       </div>
       <div
-        className="h-2.5 w-full rounded-full border border-border"
+        className="h-2.5 w-full rounded-full"
         style={{ background: gradient }}
       />
-      <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums">
+      <div className="flex justify-between text-[10px] text-foreground/65 tabular-nums">
         <span>{formatLegendValue(lo)}</span>
         <span>{formatLegendValue(hi)}</span>
       </div>
@@ -176,7 +176,7 @@ function GenesScaleToggles({ lm }: { lm: LandmarksModel }) {
       <label className="flex items-center justify-between gap-2 text-xs text-foreground">
         <span className="min-w-0 leading-snug">
           Shared scale
-          <span className="mt-0.5 block text-[10px] text-muted-foreground">
+          <span className="mt-0.5 block text-[10px] text-foreground/65">
             Max of selected genes
           </span>
         </span>
@@ -191,7 +191,7 @@ function GenesScaleToggles({ lm }: { lm: LandmarksModel }) {
       <label className="flex items-center justify-between gap-2 text-xs text-foreground">
         <span className="min-w-0 leading-snug">
           log1p
-          <span className="mt-0.5 block text-[10px] text-muted-foreground">
+          <span className="mt-0.5 block text-[10px] text-foreground/65">
             Compress high expression
           </span>
         </span>

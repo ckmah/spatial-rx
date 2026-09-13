@@ -4,6 +4,7 @@ import { useNotebookTheme } from "@/hooks/use-notebook-theme";
 import { cn } from "@/lib/utils";
 
 import {
+  ExplorePanel,
   LayersPanel,
   InfoPanel,
   MinimapPanel,
@@ -210,6 +211,7 @@ export function LandmarksView({
             onWheel={(e) => e.stopPropagation()}
           >
             <InfoPanel lm={lm} engine={engine} />
+            <ExplorePanel lm={lm} />
             <LayersPanel lm={lm} />
           </div>
         ) : (
@@ -227,6 +229,7 @@ export function LandmarksView({
               onWheel={(e) => e.stopPropagation()}
             >
               <InfoPanel lm={lm} engine={engine} />
+              <ExplorePanel lm={lm} />
             </div>
             <div
               className="landmarks__chrome-minimap"

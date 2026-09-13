@@ -10,6 +10,7 @@ def _():
     import anndata as ad
     import numpy as np
     import pandas as pd
+    import scanpy as sc
     import squidpy as sq
     from spatial_rx import (
         LandmarksWidget,
@@ -26,6 +27,7 @@ def _():
         mo,
         np,
         pd,
+        sc,
         sq,
     )
 
@@ -33,7 +35,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Landmarks that stick (M1 demo)
+    # Landmarks
 
     SPF ileum slice from `demos/data/ileum` (Xu et al.).
 
@@ -48,7 +50,7 @@ def _(mo):
 
 
 @app.cell
-def _(ad, mo, np, pd, sq):
+def _(ad, mo, np, pd, sc, sq):
     CLUSTER = "cell_type"
     _cells = pd.read_csv(mo.notebook_dir() / "data" / "ileum" / "cells.csv")
     _expr = pd.read_csv(mo.notebook_dir() / "data" / "ileum" / "expr.csv")
@@ -61,6 +63,8 @@ def _(ad, mo, np, pd, sq):
     )
     adata.obsm["spatial"] = _cells[["x", "y"]].to_numpy(dtype=float)
     adata.obs[CLUSTER] = pd.Categorical(adata.obs[CLUSTER].astype(str))
+    # PCA for the raster Embedding panel (X_pca in obsm).
+    sc.pp.pca(adata, n_comps=min(30, adata.n_vars - 1, adata.n_obs - 1))
     xy = np.asarray(adata.obsm["spatial"], dtype=float)
     radius = 0.05 * float(np.hypot(np.ptp(xy[:, 0]), np.ptp(xy[:, 1])))
     sq.gr.spatial_neighbors(
@@ -69,7 +73,6 @@ def _(ad, mo, np, pd, sq):
     sq.gr.spatial_neighbors(
         adata, coord_type="generic", radius=radius, key_added="spatial_radius"
     )
-
     return CLUSTER, adata
 
 

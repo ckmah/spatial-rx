@@ -18,6 +18,7 @@ from .categories import (
     DEFAULT_CATEGORICAL_PALETTE,
 )
 from .genes import (
+    _normalize_column,
     _column_vector,
     encode_gene_bundle,
     encode_genes_from_adata,
@@ -352,6 +353,11 @@ class LandmarksWidget(AnyWidget):
     gene_log1p = traitlets.Bool(False).tag(sync=True)
     # True when input expression is already log-scaled (disables log1p toggle).
     gene_expression_logged = traitlets.Bool(False).tag(sync=True)
+    # Packed RGB embedding channels for point coloring (col-major float32 [0, 1]).
+    embedding_values = traitlets.Unicode("").tag(sync=True)
+    embedding_channel_labels = traitlets.List(traitlets.Unicode(), default_value=[]).tag(
+        sync=True
+    )
 
     # Precomputed k-NN graph (from adata.obsp) for client-side expand lookup.
     neighbor_indptr = traitlets.Unicode("").tag(sync=True)  # base64 int32
@@ -372,7 +378,7 @@ class LandmarksWidget(AnyWidget):
     raster_bin_size = traitlets.Float(0.0).tag(sync=True)
     # Aggregation window radius in world units (µm when spatial is µm).
     raster_window_radius = traitlets.Float(0.0).tag(sync=True)
-    raster_basis = traitlets.Unicode("genes").tag(sync=True)  # genes | embedding | composition
+    raster_basis = traitlets.Unicode("composition").tag(sync=True)  # genes | embedding | composition
     raster_embedding_key = traitlets.Unicode("").tag(sync=True)
     # Keys discovered from adata.obsm (excludes spatial); UI picks from this list.
     raster_embedding_keys = traitlets.List(traitlets.Unicode(), default_value=[]).tag(
@@ -573,10 +579,12 @@ class LandmarksWidget(AnyWidget):
             active_genes=[],
             gene_log1p=False,
             gene_expression_logged=gene_logged,
+            embedding_values="",
+            embedding_channel_labels=[],
             render_mode="points",
             raster_bin_size=float(init_bin_size),
             raster_window_radius=float(DEFAULT_WINDOW_RADIUS),
-            raster_basis="genes",
+            raster_basis="composition",
             raster_embedding_key=embedding_key,
             raster_embedding_keys=embedding_keys,
             raster_embedding_dims=[],
@@ -587,6 +595,7 @@ class LandmarksWidget(AnyWidget):
         )
         if gene_color is not None:
             self.set_color(gene_color, legend_title=str(color))
+        self._pack_embedding_values()
 
     def set_neighbor_graphs(
         self,
@@ -743,7 +752,16 @@ class LandmarksWidget(AnyWidget):
         if change.get("new") == change.get("old"):
             return
         self._pack_active_gene_values()
-        if self.render_mode == "raster" and self.raster_basis == "genes":
+        if self.render_mode != "raster":
+            return
+        # Selected genes own the observation signal in bins mode.
+        if list(self.active_genes or []):
+            if self.raster_basis != "genes":
+                # Basis observer rebuilds; avoid a double rebuild here.
+                self.raster_basis = "genes"
+                return
+            self._rebuild_raster()
+        elif self.raster_basis == "genes":
             self._rebuild_raster()
 
     def set_render_mode(self, mode: str) -> None:
@@ -751,6 +769,20 @@ class LandmarksWidget(AnyWidget):
         m = str(mode or "points").lower()
         if m not in ("points", "raster"):
             raise ValueError("render_mode must be 'points' or 'raster'")
+        if m == "raster":
+            # Keep the active observation when flipping geometry.
+            if list(self.active_genes or []):
+                self.raster_basis = "genes"
+            elif (
+                (
+                    self.raster_basis == "embedding"
+                    or str(self.color_by or "") == "embedding"
+                )
+                and self.raster_embedding_key
+            ):
+                self.raster_basis = "embedding"
+            else:
+                self.raster_basis = "composition"
         self.render_mode = m
 
     def set_raster_basis(
@@ -808,13 +840,32 @@ class LandmarksWidget(AnyWidget):
         self._raster_assignment = None
 
     def _gene_feature_matrix(self) -> tuple["np.ndarray", list[str]]:
-        """Raw active-gene columns (not display-normalized) for bin means."""
+        """Active-gene columns for bin means, in ``active_genes`` order.
+
+        Prefer display-normalized ``gene_values`` (same [0, 1] packing as point
+        coloring) so bins track the selected genes the user sees on points.
+        Fall back to raw expression only when the packed buffer is missing.
+        """
+        import base64
         import numpy as np
 
         names = [str(g) for g in (self.active_genes or [])]
         n = int(self._data_x.shape[0])
         if not names:
             return np.zeros((n, 0), dtype=np.float64), []
+
+        packed = str(self.gene_values or "")
+        if packed:
+            try:
+                buf = np.frombuffer(base64.b64decode(packed), dtype=np.float32)
+            except Exception:
+                buf = np.zeros(0, dtype=np.float32)
+            n_genes = len(names)
+            if buf.size == n * n_genes:
+                # Column-major pack from encode_gene_bundle / encode_genes_from_adata.
+                mat = np.asarray(buf, dtype=np.float64).reshape((n, n_genes), order="F")
+                return mat, list(names)
+
         frame = getattr(self, "_expr_frame", None)
         cols: list[Any] = []
         used: list[str] = []
@@ -841,6 +892,60 @@ class LandmarksWidget(AnyWidget):
         if not cols:
             return np.zeros((n, 0), dtype=np.float64), []
         return np.column_stack(cols), used
+
+
+    def _embedding_rgb_dims(self, n_dims: int) -> list[int]:
+        """Dims mapped to RGB for point coloring (≤3). Empty trait → first three."""
+        n_dims = int(n_dims)
+        if n_dims <= 0:
+            return []
+        raw = [int(d) for d in (self.raster_embedding_dims or [])]
+        picked: list[int] = []
+        seen: set[int] = set()
+        for d in raw:
+            if d < 0 or d >= n_dims or d in seen:
+                continue
+            seen.add(d)
+            picked.append(d)
+            if len(picked) >= 3:
+                break
+        if not picked:
+            picked = list(range(min(3, n_dims)))
+        return picked[:3]
+
+    def _pack_embedding_values(self) -> None:
+        """Pack ≤3 embedding dims as display-normalized [0, 1] for point RGB."""
+        import base64
+        import numpy as np
+
+        adata = getattr(self, "_adata", None)
+        key = str(self.raster_embedding_key or "")
+        n = int(getattr(self, "_data_x").shape[0])
+        if adata is None or not key or key not in getattr(adata, "obsm", {}):
+            self.embedding_values = ""
+            self.embedding_channel_labels = []
+            return
+        mat = np.asarray(adata.obsm[key], dtype=np.float64)
+        if mat.ndim == 1:
+            mat = mat.reshape(-1, 1)
+        if mat.shape[0] != n:
+            self.embedding_values = ""
+            self.embedding_channel_labels = []
+            return
+        dims = self._embedding_rgb_dims(mat.shape[1])
+        if not dims:
+            self.embedding_values = ""
+            self.embedding_channel_labels = []
+            return
+        cols: list[Any] = []
+        labels: list[str] = []
+        for d in dims:
+            norm, _vmin, _vmax = _normalize_column(mat[:, d])
+            cols.append(norm.astype(np.float32, copy=False))
+            labels.append(f"{key}_{d}")
+        packed = np.column_stack(cols).ravel(order="F")
+        self.embedding_values = base64.b64encode(packed.tobytes()).decode("ascii")
+        self.embedding_channel_labels = labels
 
     def _embedding_feature_matrix(self) -> tuple["np.ndarray", list[str]]:
         import numpy as np
@@ -914,7 +1019,7 @@ class LandmarksWidget(AnyWidget):
             ):
                 window_radius = float(self.raster_window_radius)
             self.raster_window_radius = float(window_radius)
-            basis = str(self.raster_basis or "genes")
+            basis = str(self.raster_basis or "composition")
             labels: list[str] = []
             B = np.zeros((n_bins, 0), dtype=np.float32)
             try:
@@ -968,6 +1073,13 @@ class LandmarksWidget(AnyWidget):
             self.raster_status = "ready"
         finally:
             self._raster_rebuild_depth -= 1
+
+
+    @traitlets.observe("raster_embedding_key", "raster_embedding_dims")
+    def _on_embedding_pack_params(self, change: dict) -> None:
+        if change.get("new") == change.get("old"):
+            return
+        self._pack_embedding_values()
 
     @traitlets.observe("render_mode")
     def _on_render_mode(self, change: dict) -> None:

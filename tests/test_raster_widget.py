@@ -29,8 +29,11 @@ def test_raster_genes_mean_builds_features():
     w.raster_bin_size = 1.0
     w.raster_window_radius = 2.0
     assert w.render_mode == "points"
+    assert w.raster_basis == "composition"
+    w.set_raster_basis(genes="active")
     w.set_render_mode("raster")
     assert w.render_mode == "raster"
+    assert w.raster_basis == "genes"
     assert w.raster_status == "ready"
     assert w.raster_n_bins >= 2
     assert w.raster_feature_dim == 2
@@ -78,12 +81,12 @@ def test_raster_default_bin_and_window_microns():
         genes={"g1": [0.0, 1.0, 2.0, 3.0]},
     )
     w = LandmarksWidget(adata, color="cell_class", genes=["g1"])
-    assert w.raster_bin_size == pytest.approx(10.0)
-    assert w.raster_window_radius == pytest.approx(20.0)
+    assert w.raster_bin_size == pytest.approx(5.0)
+    assert w.raster_window_radius == pytest.approx(10.0)
     w.active_genes = ["g1"]
     w.set_render_mode("raster")
     assert w.raster_status == "ready"
-    assert w.raster_window_radius == pytest.approx(20.0)
+    assert w.raster_window_radius == pytest.approx(10.0)
 
 
 def test_raster_discovers_embedding_keys():
@@ -144,3 +147,62 @@ def test_set_raster_basis_requires_one_kwarg():
     w = LandmarksWidget(adata, color="cell_class", genes=["g1"])
     with pytest.raises(ValueError, match="exactly one"):
         w.set_raster_basis(genes="active", embedding="X_pca")
+
+def test_raster_genes_use_display_normalized_gene_values():
+    """Bin gene features should match packed gene_values (point coloring scale)."""
+    import base64
+    import numpy as np
+    from spatial_rx import LandmarksWidget
+    from tests.helpers import adata_xy
+
+    adata = adata_xy(
+        [0.0, 0.2, 2.0, 2.1],
+        [0.0, 0.1, 0.0, 2.0],
+        color=["Epi", "Epi", "Imm", "Fib"],
+        color_key="cell_class",
+        genes={"Apob": [0.0, 2.0, 0.0, 4.0], "Lgr5": [1.0, 1.0, 0.0, 0.0]},
+    )
+    w = LandmarksWidget(adata, color="cell_class", genes=["Apob", "Lgr5"])
+    w.active_genes = ["Apob"]
+    w.raster_bin_size = 1.0
+    w.raster_window_radius = 2.0
+    w.set_raster_basis(genes="active")
+    w.set_render_mode("raster")
+    assert w.raster_basis == "genes"
+    assert w.raster_feature_dim == 1
+    assert w.raster_feature_labels == ["Apob"]
+    packed = np.frombuffer(base64.b64decode(w.gene_values), dtype=np.float32)
+    assert packed.size == 4
+    # Features are windowed means of [0,1] packed values — stay in [0,1].
+    feats = np.frombuffer(base64.b64decode(w.raster_features), dtype=np.float32)
+    assert feats.size == w.raster_n_bins
+    assert np.all(feats >= -1e-5)
+    assert np.all(feats <= 1.0 + 1e-5)
+
+
+def test_embedding_values_pack_for_point_rgb():
+    """Selecting an embedding packs ≤3 display-normalized channels for points."""
+    import base64
+    import numpy as np
+    from spatial_rx import LandmarksWidget
+    from tests.helpers import adata_xy
+
+    adata = adata_xy(
+        [0.0, 0.2, 2.0, 2.1],
+        [0.0, 0.1, 0.0, 2.0],
+        color=["Epi", "Epi", "Imm", "Fib"],
+        color_key="cell_class",
+        genes={"g1": [0.0, 1.0, 2.0, 3.0]},
+    )
+    adata.obsm["X_pca"] = np.array(
+        [[0.0, 1.0, 2.0], [0.5, 1.0, 0.0], [1.0, 0.0, 1.0], [1.0, 0.5, 0.5]],
+        dtype=np.float32,
+    )
+    w = LandmarksWidget(adata, color="cell_class", genes=["g1"])
+    assert w.raster_embedding_key == "X_pca"
+    assert w.embedding_channel_labels == ["X_pca_0", "X_pca_1", "X_pca_2"]
+    packed = np.frombuffer(base64.b64decode(w.embedding_values), dtype=np.float32)
+    assert packed.size == 4 * 3
+    assert np.all(packed >= 0) and np.all(packed <= 1)
+    w.color_by = "embedding"
+    assert w.color_by == "embedding"

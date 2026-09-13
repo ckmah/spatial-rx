@@ -14,17 +14,10 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   ChartContainer,
@@ -42,13 +35,27 @@ import {
   SELECTION_COLORS,
 } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
+import { colorSignal } from "./coloring";
 import {
   compositionSlices,
+  embeddingTernaryCloud,
   geneDensities,
   resolvePointMask,
 } from "./info-stats";
 import { ColorSwatch } from "./primitives";
-import { FLOAT_PANEL, PANEL_INSET, SECTION_CONTENT, SECTION_TRIGGER } from "./sections";
+import { FLOAT_PANEL, PANEL_INSET } from "./sections";
+
+/** Fixed chart slot so Category / Genes / Embedding swaps do not resize the card. */
+function InfoChartWell({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="landmarks-info-chart flex h-44 w-full shrink-0 items-center justify-center overflow-hidden"
+      data-testid="info-chart-well"
+    >
+      {children}
+    </div>
+  );
+}
 
 export function InfoPanel({
   lm,
@@ -107,7 +114,9 @@ export function InfoPanel({
     });
   }, [engine, category_codes, category_columns, active_category, n]);
   const genes = active_genes || [];
-  const showGenes = genes.length > 0;
+  const signal = colorSignal(lm);
+  const showGenes = signal === "genes";
+  const showEmbedding = signal === "embedding";
 
   const maskOpts = {
     n,
@@ -277,12 +286,66 @@ export function InfoPanel({
     [composition],
   );
 
-  const charts = showGenes ? (
+  const embeddingCloud = useMemo(() => {
+    if (!showEmbedding) return [];
+    const labels = lm.embedding_channel_labels || [];
+    return embeddingTernaryCloud({
+      n,
+      mask: focusMask,
+      embeddingValuesB64: lm.embedding_values || "",
+      nChannels: labels.length,
+    });
+  }, [
+    showEmbedding,
+    n,
+    focusMask,
+    lm.embedding_values,
+    lm.embedding_channel_labels,
+  ]);
+
+  const embKey =
+    lm.raster_embedding_key || lm.raster_embedding_keys?.[0] || "embedding";
+  const embLabels = lm.embedding_channel_labels || [];
+
+  const charts = showEmbedding ? (
+        embeddingCloud.length ? (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1">
+            <svg
+              viewBox="0 0 80 80"
+              className="size-36 max-h-full max-w-full"
+              role="img"
+              aria-label={`${embKey} RGB cloud in current scope`}
+            >
+              {embeddingCloud.map((p, i) => (
+                <circle
+                  key={i}
+                  cx={p.x}
+                  cy={p.y}
+                  r={1.4}
+                  fill={p.color}
+                  fillOpacity={0.85}
+                />
+              ))}
+            </svg>
+            <FieldDescription className="m-0 max-w-[16rem] text-center text-[10px]">
+              <span className="text-foreground">{embKey}</span>
+              {embLabels.length ? ` · ${embLabels.join(", ")}` : ""} ·{" "}
+              {scopeCount.toLocaleString()} cells
+            </FieldDescription>
+          </div>
+        ) : (
+          <FieldDescription className="m-0 max-w-[16rem] text-center">
+            {embLabels.length
+              ? "No cells in this scope for the embedding cloud."
+              : "Pick an embedding in Explore to color points and see the RGB mix."}
+          </FieldDescription>
+        )
+      ) : showGenes ? (
         densities.rows.length && densities.series.length ? (
           <ChartContainer
             config={densityConfig}
-            className="aspect-[4/3] w-full"
-            initialDimension={{ width: 240, height: 180 }}
+            className="h-full max-h-44 w-full aspect-auto"
+            initialDimension={{ width: 240, height: 176 }}
           >
             <AreaChart data={densities.rows} margin={{ left: 4, right: 4, top: 8 }}>
               <CartesianGrid vertical={false} />
@@ -313,14 +376,18 @@ export function InfoPanel({
             </AreaChart>
           </ChartContainer>
         ) : (
-          <FieldDescription>No expression in this scope.</FieldDescription>
+          <FieldDescription className="m-0 text-center">
+            {genes.length
+              ? "No expression in this scope."
+              : "Pick genes in Explore to see densities."}
+          </FieldDescription>
         )
       ) : composition.length ? (
-        <div className="relative w-full max-w-[14rem] self-center pb-0 pt-0">
+        <div className="relative aspect-square h-full max-h-44 w-auto max-w-full">
           <ChartContainer
             config={pieConfig}
-            className="aspect-square w-full [&_.recharts-responsive-container]:!aspect-square"
-            initialDimension={{ width: 200, height: 200 }}
+            className="aspect-square h-full w-full [&_.recharts-responsive-container]:!aspect-square"
+            initialDimension={{ width: 176, height: 176 }}
           >
             <PieChart>
               <ChartTooltip
@@ -432,10 +499,10 @@ export function InfoPanel({
           </ChartContainer>
         </div>
       ) : (
-        <FieldDescription>
+        <FieldDescription className="m-0 text-center">
           {category_columns.length
             ? "No category counts in this scope."
-            : "Select genes for densities, or load categories for composition."}
+            : "Load categories for composition, or color by genes."}
         </FieldDescription>
       );
 
@@ -457,25 +524,12 @@ export function InfoPanel({
     </Badge>
   );
 
-  const body = (
-    <Accordion type="single" collapsible defaultValue="info">
-      <AccordionItem value="info" className="border-b-0">
-        <AccordionTrigger className={SECTION_TRIGGER}>Info</AccordionTrigger>
-        <AccordionContent
-          className={cn(SECTION_CONTENT, "flex flex-col gap-2")}
-        >
-          {chip}
-          {charts}
-        </AccordionContent>
-      </AccordionItem>
-    </Accordion>
-  );
-
   return (
     <Card className={FLOAT_PANEL} data-testid="info-panel">
       <CardHeader className="sr-only">
-        <CardTitle>Info</CardTitle>
-        <CardDescription>Selection-linked composition and gene densities</CardDescription>
+        <CardDescription>
+          Selection-linked composition and gene densities
+        </CardDescription>
       </CardHeader>
       <CardContent
         className={cn(
@@ -483,7 +537,10 @@ export function InfoPanel({
           PANEL_INSET,
         )}
       >
-        {body}
+        <div className="flex flex-col gap-2 pb-1.5">
+          {chip}
+          <InfoChartWell>{charts}</InfoChartWell>
+        </div>
       </CardContent>
     </Card>
   );

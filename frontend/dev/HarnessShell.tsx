@@ -47,10 +47,13 @@ export function HarnessShell() {
         </p>
         <div
           className={cn(
-            "spatial-rx-widget inline-flex",
+            "spatial-rx-widget inline-flex items-center gap-2",
             theme === "dark" && "dark",
           )}
         >
+          <Button asChild variant="outline" size="sm">
+            <a href="/tabs.html">Tabs lab</a>
+          </Button>
           <Button
             type="button"
             variant="outline"

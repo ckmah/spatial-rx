@@ -25,6 +25,9 @@ export function applyActiveCategory(model, col) {
   model.set("legend_labels", col.labels || []);
   model.set("legend_title", col.name || "");
   model.set("color_by", "categorical");
+  if (model.get("render_mode") === "raster") {
+    model.set("raster_basis", "composition");
+  }
   model.save_changes();
 }
 
@@ -60,6 +63,9 @@ export function setActiveGenes(model, names) {
   } else {
     model.set("legend_title", next.join(", "));
   }
+  if (model.get("render_mode") === "raster") {
+    model.set("raster_basis", "genes");
+  }
   model.save_changes();
 }
 
@@ -80,6 +86,23 @@ export function setGeneLog1p(model, enabled) {
 
 export function setRenderMode(model, mode) {
   const next = mode === "raster" ? "raster" : "points";
+  if (next === "raster") {
+    const genes = model.get("active_genes") || [];
+    const basis = model.get("raster_basis");
+    const embKey = model.get("raster_embedding_key");
+    // Keep the active observation when flipping geometry: genes win when set,
+    // otherwise preserve embedding if that was the signal, else composition.
+    if (genes.length) {
+      model.set("raster_basis", "genes");
+    } else if (
+      (basis === "embedding" || model.get("color_by") === "embedding") &&
+      embKey
+    ) {
+      model.set("raster_basis", "embedding");
+    } else {
+      model.set("raster_basis", "composition");
+    }
+  }
   model.set("render_mode", next);
   model.save_changes();
 }
@@ -95,11 +118,26 @@ export function setRasterBasis(model, basis) {
   const allowed = new Set(["genes", "embedding", "composition"]);
   if (!allowed.has(basis)) return;
   model.set("raster_basis", basis);
+  // Align point color_by with the exclusive observation signal.
+  if (basis === "genes") {
+    model.set("color_by", "continuous");
+  } else if (basis === "embedding") {
+    model.set("active_genes", []);
+    model.set("color_by", "embedding");
+  } else if (basis === "composition") {
+    model.set("color_by", "categorical");
+  }
   model.save_changes();
 }
 
 export function setRasterEmbeddingKey(model, key) {
   model.set("raster_embedding_key", String(key || ""));
+  // Embedding is an exclusive coloring signal — drop gene continuous color.
+  model.set("active_genes", []);
+  model.set("color_by", "embedding");
+  if (model.get("render_mode") === "raster") {
+    model.set("raster_basis", "embedding");
+  }
   model.save_changes();
 }
 

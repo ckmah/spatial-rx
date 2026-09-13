@@ -135,3 +135,21 @@ export function buildTernaryFillUrl() {
   ctx.putImageData(img, 0, 0);
   return canvas.toDataURL();
 }
+
+/** Map non-negative channel weights to ternary coordinates (left/top/right). */
+export function ternaryFromWeights(w0: number, w1: number, w2: number) {
+  const a = Math.max(0, w0);
+  const b = Math.max(0, w1);
+  const c = Math.max(0, w2);
+  const s = a + b + c;
+  if (!(s > 0)) {
+    return { x: TERNARY_CENTROID.x, y: TERNARY_CENTROID.y };
+  }
+  const u = a / s;
+  const v = b / s;
+  const w = c / s;
+  return {
+    x: TERNARY_LEFT.x * u + TERNARY_TOP.x * v + TERNARY_RIGHT.x * w,
+    y: TERNARY_LEFT.y * u + TERNARY_TOP.y * v + TERNARY_RIGHT.y * w,
+  };
+}
