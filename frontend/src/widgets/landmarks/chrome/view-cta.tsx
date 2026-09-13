@@ -1,72 +1,61 @@
+import { CircleDot, Grid2x2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import type { LandmarksModel } from "../use-landmarks-model";
+import { ChromeTooltip } from "./primitives";
 
 /**
- * Soft Float View CTA — lab variant F (text-in-thumb flip).
- * Points / Bins lives on the canvas, not inside Explore.
+ * Soft Float View CTA — floating icon that flips to the other mode on hover.
+ * Top-right on the canvas so it stays clear of the context toolbar.
  */
 export function ViewCta({ lm }: { lm: LandmarksModel }) {
   const binsOn = (lm.render_mode || "points") === "raster";
+  const CurrentIcon = binsOn ? Grid2x2 : CircleDot;
+  const NextIcon = binsOn ? CircleDot : Grid2x2;
+  const nextLabel = binsOn ? "Points" : "Bins";
 
   return (
     <div
       className="landmarks-float landmarks-float--toolbar pointer-events-auto p-1 text-card-foreground"
       data-testid="view-cta"
     >
-      <button
-        type="button"
-        role="switch"
-        aria-checked={binsOn}
-        aria-label={binsOn ? "Bins view" : "Points view"}
-        onClick={() => lm.setRenderMode(binsOn ? "points" : "raster")}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowLeft") {
-            event.preventDefault();
-            lm.setRenderMode("points");
-          } else if (event.key === "ArrowRight") {
-            event.preventDefault();
-            lm.setRenderMode("raster");
+      <ChromeTooltip label={`Switch to ${nextLabel}`}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          role="switch"
+          aria-checked={binsOn}
+          aria-label={
+            binsOn
+              ? "Bins view — switch to Points"
+              : "Points view — switch to Bins"
           }
-        }}
-        className={cn(
-          "relative h-9 w-[10.25rem] rounded-full outline-none",
-          "bg-foreground/[0.1] shadow-[inset_0_1px_2px_rgba(0,0,0,0.12)]",
-          "focus-visible:ring-[3px] focus-visible:ring-ring/50",
-          "dark:bg-foreground/[0.16] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)]",
-        )}
-      >
-        <span
-          aria-hidden
+          onClick={() => lm.setRenderMode(binsOn ? "points" : "raster")}
           className={cn(
-            "absolute inset-y-0 left-0 flex w-1/2 items-center justify-center",
-            "text-[11px] font-medium transition-opacity duration-200",
-            binsOn ? "text-foreground/50 opacity-100" : "opacity-0",
+            "group relative overflow-hidden rounded-full",
+            "text-foreground/70 hover:bg-foreground/10 hover:text-foreground",
           )}
         >
-          Points
-        </span>
-        <span
-          aria-hidden
-          className={cn(
-            "absolute inset-y-0 right-0 flex w-1/2 items-center justify-center",
-            "text-[11px] font-medium transition-opacity duration-200",
-            binsOn ? "opacity-0" : "text-foreground/50 opacity-100",
-          )}
-        >
-          Bins
-        </span>
-        <span
-          className={cn(
-            "absolute top-0.5 bottom-0.5 flex w-[calc(50%-2px)] items-center justify-center",
-            "rounded-full bg-foreground text-[11px] font-semibold text-background shadow-sm",
-            "transition-transform duration-200 ease-out",
-            binsOn ? "translate-x-[calc(100%+2px)]" : "translate-x-0.5",
-          )}
-        >
-          {binsOn ? "Bins" : "Points"}
-        </span>
-      </button>
+          <CurrentIcon
+            aria-hidden
+            className={cn(
+              "absolute size-4 transition duration-200 ease-out",
+              "group-hover:scale-75 group-hover:-rotate-45 group-hover:opacity-0",
+            )}
+          />
+          <NextIcon
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute size-4",
+              "scale-75 rotate-45 opacity-0 transition duration-200 ease-out",
+              "group-hover:scale-100 group-hover:rotate-0 group-hover:opacity-100",
+            )}
+          />
+        </Button>
+      </ChromeTooltip>
     </div>
   );
 }

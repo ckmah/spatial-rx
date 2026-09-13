@@ -39,9 +39,11 @@ function applyHarnessTheme(theme: HarnessTheme) {
 function TissueStage({
   dock,
   label,
+  dockPlacement = "bottom",
 }: {
   dock: ReactNode;
   label: string;
+  dockPlacement?: "bottom" | "top-right";
 }) {
   return (
     <div
@@ -70,7 +72,14 @@ function TissueStage({
             "radial-gradient(ellipse at 45% 55%, black 0%, transparent 72%)",
         }}
       />
-      <div className="absolute inset-x-0 bottom-3 flex justify-center px-3">
+      <div
+        className={cn(
+          "absolute z-10",
+          dockPlacement === "top-right"
+            ? "right-2.5 top-2.5"
+            : "inset-x-0 bottom-3 flex justify-center px-3",
+        )}
+      >
         {dock}
       </div>
       <p className="absolute left-3 top-2.5 m-0 text-[10px] font-medium uppercase tracking-wide text-white/55">
@@ -335,6 +344,61 @@ function VariantSwitchWithChip() {
 }
 
 /** F — Text-in-thumb flip (custom; max mode legibility). */
+
+/** Icon Soft Float — current mode at rest; hover flips to the other mode. */
+function VariantIconHoverFlip() {
+  const [view, setView] = useState<ViewMode>("points");
+  const binsOn = view === "raster";
+  const CurrentIcon = binsOn ? Grid2x2 : CircleDot;
+  const NextIcon = binsOn ? CircleDot : Grid2x2;
+  const nextLabel = binsOn ? "Points" : "Bins";
+
+  return (
+    <TissueStage
+      label="Top-right float"
+      dockPlacement="top-right"
+      dock={
+        <SoftFloatDock className="p-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            role="switch"
+            aria-checked={binsOn}
+            aria-label={
+              binsOn
+                ? "Bins view — switch to Points"
+                : "Points view — switch to Bins"
+            }
+            title={`Switch to ${nextLabel}`}
+            onClick={() => setView(binsOn ? "points" : "raster")}
+            className={cn(
+              "group relative overflow-hidden rounded-full",
+              "text-foreground/70 hover:bg-foreground/10 hover:text-foreground",
+            )}
+          >
+            <CurrentIcon
+              aria-hidden
+              className={cn(
+                "absolute size-4 transition duration-200 ease-out",
+                "group-hover:scale-75 group-hover:-rotate-45 group-hover:opacity-0",
+              )}
+            />
+            <NextIcon
+              aria-hidden
+              className={cn(
+                "pointer-events-none absolute size-4",
+                "scale-75 rotate-45 opacity-0 transition duration-200 ease-out",
+                "group-hover:scale-100 group-hover:rotate-0 group-hover:opacity-100",
+              )}
+            />
+          </Button>
+        </SoftFloatDock>
+      }
+    />
+  );
+}
+
 function VariantTextThumbFlip() {
   const [view, setView] = useState<ViewMode>("points");
   const binsOn = view === "raster";
@@ -487,8 +551,8 @@ export function SoftFloatViewCtaLab() {
           </h1>
           <p className="m-0 max-w-2xl text-[13px] leading-snug text-foreground/65">
             Promote View out of Explore into its own Soft Float dock.{" "}
-            <strong>F</strong> is shipped in the widget; other variants stay for
-            comparison.
+            Shipped control: top-right Soft Float <strong>icon hover flip</strong>. Other
+            variants stay for comparison.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -513,9 +577,17 @@ export function SoftFloatViewCtaLab() {
 
       <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <VariantCard
-          title="F · Text-in-thumb flip"
+          title="Icon hover flip"
           verdict="favorite"
-          note="Shipped in the widget as ViewCta. Active label on the Soft Float thumb; idle side fades. Arrow keys + click."
+          note="Shipped as ViewCta — top-right Soft Float icon. Shows current mode; hover rotates to the destination mode, click commits."
+        >
+          <VariantIconHoverFlip />
+        </VariantCard>
+
+        <VariantCard
+          title="F · Text-in-thumb flip"
+          verdict="candidate"
+          note="Earlier favorite. Replaced by the top-right icon hover flip; kept for comparison."
         >
           <VariantTextThumbFlip />
         </VariantCard>

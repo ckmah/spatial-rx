@@ -698,20 +698,19 @@
    Sit above the window-size handle so the two never overlap. */
 .landmarks__chrome-context {
   position: absolute;
-  bottom: calc(var(--lm-resize-band) + var(--lm-chrome-gap) + 3.25rem);
+  bottom: calc(var(--lm-resize-band) + var(--lm-chrome-gap));
   left: 50%;
   z-index: 22;
   transform: translateX(-50%);
   pointer-events: none;
 }
 
-/* Soft Float View CTA (lab F) — Points/Bins flip on the canvas. */
+/* Soft Float View CTA — top-right icon flip, clear of context toolbar. */
 .landmarks__chrome-view {
   position: absolute;
-  bottom: calc(var(--lm-resize-band) + var(--lm-chrome-gap));
-  left: 50%;
-  z-index: 21;
-  transform: translateX(-50%);
+  top: var(--lm-chrome-inset);
+  right: var(--lm-chrome-inset);
+  z-index: 22;
   pointer-events: none;
 }
 
@@ -722,13 +721,14 @@
 .landmarks--fs .landmarks__chrome-context,
 .landmarks:fullscreen .landmarks__chrome-context,
 .landmarks--overlay-fs .landmarks__chrome-context {
-  bottom: calc(var(--lm-chrome-inset) + 3.25rem);
+  bottom: var(--lm-chrome-inset);
 }
 
 .landmarks--fs .landmarks__chrome-view,
 .landmarks:fullscreen .landmarks__chrome-view,
 .landmarks--overlay-fs .landmarks__chrome-view {
-  bottom: var(--lm-chrome-inset);
+  top: var(--lm-chrome-inset);
+  right: var(--lm-chrome-inset);
 }
 
 .landmarks__chrome-dock {
