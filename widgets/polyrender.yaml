@@ -1,0 +1,41 @@
+name: polyrender
+class: PolyrenderWidget
+docstring: Soft Float Fiber viewer for meshified 2.5D segmentation stacks
+traitlets:
+  - name: tile_server_url
+    type: Unicode
+    default: ""
+    sync: true
+  - name: tiles_json_path
+    type: Unicode
+    default: "tiles.json"
+    sync: true
+  - name: bbox
+    type: List
+    element: Float
+    default: []
+    sync: true
+  - name: color
+    type: Unicode
+    default: "#4aa3ff"
+    sync: true
+  - name: max_concurrent_fetches
+    type: Int
+    default: 4
+    sync: true
+  - name: centroids_xy_b64
+    type: Unicode
+    default: ""
+    sync: true
+  - name: centroids_cell_ids_json
+    type: Unicode
+    default: "[]"
+    sync: true
+  - name: on_demand
+    type: Bool
+    default: false
+    sync: true
+  - name: max_orbit_distance
+    type: Float
+    default: 0.0
+    sync: true

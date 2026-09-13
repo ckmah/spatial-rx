@@ -1,0 +1,18 @@
+{
+  "tile_server_url": "",
+  "tiles_json_path": "tiles.json",
+  "bbox": [
+    -35170.359375,
+    -191.84732055664062,
+    70.0,
+    -33561.60546875,
+    1185.03857421875,
+    152.0
+  ],
+  "color": "#4aa3ff",
+  "max_concurrent_fetches": 4,
+  "centroids_xy_b64": "v8EEx8g8E0M1ygbHHisXQ85pA8cWzbhDPc0Gx0bvr0NLuAfH4EnNQz9jBsdK3AtEJyEHx+zkcURHuAPH/giJREzYBccX9sW/atwIx2Yjf0RWtQfHpBSKwp/6CMfL539D",
+  "centroids_cell_ids_json": "[\"Region_12864\",\"Region_12865\",\"Region_12868\",\"Region_12869\",\"Region_12871\",\"Region_12872\",\"Region_12879\",\"Region_12882\",\"Region_12885\",\"Region_12888\",\"Region_12846\",\"Region_12866\"]",
+  "on_demand": false,
+  "max_orbit_distance": 0.0
+}
