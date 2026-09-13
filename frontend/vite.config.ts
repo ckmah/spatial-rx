@@ -8,7 +8,6 @@ import { defineConfig } from "vite";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(rootDir, "..");
-const devDir = path.resolve(rootDir, "dev");
 const outDir = path.resolve(repoRoot, "spatial_rx/static/bundled");
 
 /** One entry per anywidget that uses shadcn/React. */
@@ -18,17 +17,11 @@ const widgetEntries = {
   polyrender: path.resolve(rootDir, "src/widgets/polyrender/index.tsx"),
 };
 
-const buildWidget = process.env.SPATIAL_RX_BUILD_WIDGET;
-if (!buildWidget || !(buildWidget in widgetEntries)) {
-  throw new Error(
-    "Set SPATIAL_RX_BUILD_WIDGET to one of: " +
-      Object.keys(widgetEntries).join(", ") +
-      " (anywidget needs one fully-inlined .mjs per widget).",
-  );
-}
-const entries = {
-  [buildWidget]: widgetEntries[buildWidget as keyof typeof widgetEntries],
-};
+/** Notebook-free Vite harness roots under frontend/dev/. */
+const harnessRoots = {
+  landmarks: path.resolve(rootDir, "dev"),
+  polyrender: path.resolve(rootDir, "dev/polyrender"),
+} as const;
 
 const sharedResolve = {
   alias: {
@@ -45,7 +38,7 @@ const sharedServer = {
 };
 
 /** After each single-widget build, refresh shared widgets.css (full merge when possible). */
-function mergeWidgetCssPlugin() {
+function mergeWidgetCssPlugin(buildWidget: string) {
   return {
     name: "merge-widget-css",
     closeBundle() {
@@ -71,16 +64,37 @@ function mergeWidgetCssPlugin() {
 
 export default defineConfig(({ command }) => {
   if (command === "serve") {
+    const harness =
+      (process.env.SPATIAL_RX_DEV_WIDGET as keyof typeof harnessRoots | undefined) ||
+      "landmarks";
+    if (!(harness in harnessRoots)) {
+      throw new Error(
+        "Set SPATIAL_RX_DEV_WIDGET to one of: " +
+          Object.keys(harnessRoots).join(", "),
+      );
+    }
     return {
-      root: devDir,
+      root: harnessRoots[harness],
       plugins: [react(), tailwindcss()],
       resolve: sharedResolve,
       server: sharedServer,
     };
   }
 
+  const buildWidget = process.env.SPATIAL_RX_BUILD_WIDGET;
+  if (!buildWidget || !(buildWidget in widgetEntries)) {
+    throw new Error(
+      "Set SPATIAL_RX_BUILD_WIDGET to one of: " +
+        Object.keys(widgetEntries).join(", ") +
+        " (anywidget needs one fully-inlined .mjs per widget).",
+    );
+  }
+  const entries = {
+    [buildWidget]: widgetEntries[buildWidget as keyof typeof widgetEntries],
+  };
+
   return {
-    plugins: [react(), tailwindcss(), mergeWidgetCssPlugin()],
+    plugins: [react(), tailwindcss(), mergeWidgetCssPlugin(buildWidget)],
     resolve: sharedResolve,
     server: sharedServer,
     define: { "process.env.NODE_ENV": JSON.stringify("production") },

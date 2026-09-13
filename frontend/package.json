@@ -5,7 +5,9 @@
   "scripts": {
     "build": "SPATIAL_RX_BUILD_WIDGET=gallery vite build && SPATIAL_RX_BUILD_WIDGET=landmarks vite build && SPATIAL_RX_BUILD_WIDGET=polyrender vite build",
     "dev:landmarks": "vite",
+    "dev:polyrender": "SPATIAL_RX_DEV_WIDGET=polyrender vite",
     "dev:fixture": "uv run --directory .. python frontend/dev/export-fixture.py",
+    "dev:fixture:polyrender": "uv run --directory .. --extra polyrender --extra demo python frontend/dev/polyrender/export-fixture.py",
     "watch": "SPATIAL_RX_BUILD_WIDGET=landmarks vite build --watch",
     "watch:gallery": "SPATIAL_RX_BUILD_WIDGET=gallery vite build --watch",
     "watch:landmarks": "SPATIAL_RX_BUILD_WIDGET=landmarks vite build --watch",
