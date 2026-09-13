@@ -43,7 +43,12 @@ import {
   resolvePointMask,
 } from "./info-stats";
 import { ColorSwatch } from "./primitives";
-import { EMBEDDED_PANEL, FLOAT_PANEL, PANEL_INSET } from "./sections";
+import {
+  EMBEDDED_PANEL,
+  FLOAT_PANEL,
+  FLOAT_PANEL_CLIP,
+  PANEL_INSET,
+} from "./sections";
 
 /** Fixed chart slot so Category / Genes / Embedding swaps do not resize the card. */
 function InfoChartWell({ children }: { children: React.ReactNode }) {
@@ -508,7 +513,7 @@ export function InfoPanel({
     <Badge
       variant="secondary"
       title={chipLabel}
-      className="min-w-0 max-w-full shrink gap-1.5 truncate rounded-md border border-border/60 bg-muted/90 text-sm font-normal text-foreground"
+      className="min-w-0 max-w-full shrink gap-1 truncate rounded-md border border-border/60 bg-muted/90 px-1.5 py-0.5 text-[11px] font-normal text-foreground"
     >
       {!showEmbedding && layerChip.color ? (
         <ColorSwatch
@@ -549,19 +554,21 @@ export function InfoPanel({
 
   return (
     <Card className={FLOAT_PANEL} data-testid="info-panel">
-      <CardHeader className="sr-only">
-        <CardDescription>
-          Selection-linked composition and gene densities
-        </CardDescription>
-      </CardHeader>
-      <CardContent
-        className={cn(
-          "min-h-0 flex-1 overflow-y-auto overscroll-contain",
-          PANEL_INSET,
-        )}
-      >
-        {body}
-      </CardContent>
+      <div className={FLOAT_PANEL_CLIP}>
+        <CardHeader className="sr-only">
+          <CardDescription>
+            Selection-linked composition and gene densities
+          </CardDescription>
+        </CardHeader>
+        <CardContent
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            PANEL_INSET,
+          )}
+        >
+          {body}
+        </CardContent>
+      </div>
     </Card>
   );
 }

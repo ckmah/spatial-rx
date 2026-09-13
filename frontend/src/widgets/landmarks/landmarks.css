@@ -46,7 +46,7 @@
   --lm-float-border: transparent;
   --lm-float-bg: color-mix(in oklab, var(--card) 80%, transparent);
   --lm-float-blur: blur(14px) saturate(1.05);
-  --lm-float-shadow: 0 8px 22px color-mix(in srgb, #000 10%, transparent);
+  --lm-float-shadow: 0 4px 12px color-mix(in srgb, #000 8%, transparent);
 }
 
 .landmarks ::selection {
@@ -98,7 +98,7 @@
     --lm-float-border: transparent;
     --lm-float-shadow:
       0 1px 0 rgb(255 255 255 / 5%) inset,
-      0 10px 26px color-mix(in srgb, #000 38%, transparent);
+      0 5px 14px color-mix(in srgb, #000 28%, transparent);
   }
 }
 
@@ -120,7 +120,7 @@
   --lm-float-border: transparent;
   --lm-float-shadow:
     0 1px 0 rgb(255 255 255 / 5%) inset,
-    0 10px 26px color-mix(in srgb, #000 38%, transparent);
+    0 5px 14px color-mix(in srgb, #000 28%, transparent);
 }
 
 .landmarks.landmarks--light {
@@ -135,7 +135,7 @@
   --lm-neigh-fill: #b3f2e8;
   --lm-float-bg: color-mix(in oklab, var(--card) 82%, transparent);
   --lm-float-border: transparent;
-  --lm-float-shadow: 0 8px 22px color-mix(in srgb, #000 8%, transparent);
+  --lm-float-shadow: 0 4px 12px color-mix(in srgb, #000 7%, transparent);
 }
 
 .landmarks__body {
@@ -431,9 +431,16 @@
 
 .landmarks-float--panel {
   border-radius: var(--lm-float-radius);
-  overflow: hidden;
+  /* Overflow visible so box-shadow is not cropped to a square. */
+  overflow: visible;
   isolation: isolate;
   background: var(--lm-float-bg);
+}
+
+.landmarks-float-clip {
+  border-radius: inherit;
+  overflow: hidden;
+  background: transparent;
 }
 
 .landmarks-mode-toggle [data-slot="toggle-group-item"] {
@@ -498,6 +505,33 @@
 .landmarks-cat-trigger--active:hover {
   background-color: var(--lm-layer-active-hover-bg);
 }
+
+.landmarks-cat-chevron {
+  display: inline-flex;
+  flex: 0 0 var(--lm-layer-icon);
+  align-items: center;
+  justify-content: center;
+  width: var(--lm-trail-hit);
+  height: var(--lm-trail-hit);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--lm-layer-radius);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.landmarks-cat-chevron:hover {
+  background-color: var(--lm-layer-hover-bg);
+  color: var(--foreground);
+}
+
+.landmarks-cat-chevron:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 45%, transparent);
+}
+
 
 .landmarks-layer-label {
   display: flex;
@@ -777,7 +811,7 @@
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .landmarks__chrome-dock .landmarks__explore-panel > [data-slot="card"] {
@@ -785,7 +819,7 @@
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .landmarks__chrome-dock .landmarks__layers-panel {
@@ -793,7 +827,7 @@
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .landmarks__chrome-dock .landmarks__layers-panel > [data-slot="card"] {
@@ -801,7 +835,7 @@
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .landmarks__chrome-dock--right > [data-testid="info-panel"] {
@@ -836,6 +870,15 @@
 .landmarks__chrome-minimap > * {
   pointer-events: auto;
   width: 100%;
+}
+
+.landmarks__chrome-minimap .landmarks-float,
+.landmarks__chrome-minimap [data-testid="minimap-panel"] {
+  border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent);
+}
+
+.landmarks__chrome-minimap canvas {
+  border-radius: calc(var(--lm-float-radius) - 1px);
 }
 
 .landmarks--narrow .landmarks__chrome-minimap {
@@ -957,6 +1000,11 @@
   background: transparent;
 }
 
+/* Right Info+Explore stack uses the same float shell as left Layers. */
+.landmarks__chrome-dock--right > .landmarks__chrome-stack.landmarks-float {
+  min-height: 0;
+}
+
 .landmarks__chrome-stack > [data-testid="info-panel"] {
   flex: 0 0 auto;
   max-height: 40%;
@@ -1007,4 +1055,9 @@
   .landmarks-sliding-tabs__pill {
     transition: none !important;
   }
+}
+
+
+.landmarks-minimap-float {
+  border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent);
 }

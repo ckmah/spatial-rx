@@ -4,7 +4,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
-  CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
   Combobox,
@@ -43,14 +42,15 @@ import { RasterSection } from "./raster-section";
 import {
   EMBEDDED_PANEL,
   FLOAT_PANEL,
+  FLOAT_PANEL_CLIP,
   PANEL_INSET,
-  PILL_TABS_TRIGGER,
+  PILL_TABS_TRIGGER
 } from "./sections";
 import { SoftFloatSlidingTabsList } from "./sliding-tabs";
 import { useWidgetPortalContainer } from "./use-widget-portal";
 
 const COMBO_INPUT =
-  "min-h-8 w-full rounded-[var(--radius)] bg-card/60 text-sm shadow-none";
+  "min-h-7 w-full rounded-[var(--radius)] bg-card/60 text-[11px] shadow-none";
 
 const AVATAR_MAX = 5;
 
@@ -114,13 +114,13 @@ function EmbeddingCombobox({ lm }: { lm: LandmarksModel }) {
           className={COMBO_INPUT}
           aria-label="Embedding key"
         />
-        <ComboboxContent container={portalEl} className="text-sm">
-          <ComboboxEmpty className="text-sm">No embeddings</ComboboxEmpty>
+        <ComboboxContent container={portalEl} className="text-[11px]">
+          <ComboboxEmpty className="text-[11px]">No embeddings</ComboboxEmpty>
           <ComboboxList>
             {(item) => {
               const name = String(item);
               return (
-                <ComboboxItem key={name} value={name} className="py-1 text-sm">
+                <ComboboxItem key={name} value={name} className="py-1 text-[11px]">
                   {name}
                 </ComboboxItem>
               );
@@ -129,6 +129,104 @@ function EmbeddingCombobox({ lm }: { lm: LandmarksModel }) {
         </ComboboxContent>
       </Combobox>
     </div>
+  );
+}
+
+function CategoryCollapsibleRow({
+  col,
+  lm,
+  signal,
+  active_category,
+  selected_kind,
+  selected_index,
+}: {
+  col: CategoryColumn;
+  lm: LandmarksModel;
+  signal: ColorSignal;
+  active_category: string;
+  selected_kind: string;
+  selected_index: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const isShown = signal === "categories" && col.name === active_category;
+
+  const activate = () => {
+    lm.setActiveCategory(col);
+    lm.select("", -1);
+  };
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="group/cat">
+      <div
+        className={cn(
+          "landmarks-cat-trigger text-xs font-medium text-foreground/70",
+          isShown && "landmarks-cat-trigger--active text-foreground",
+        )}
+      >
+        <button
+          type="button"
+          className="landmarks-cat-chevron"
+          aria-label={open ? `Collapse ${col.name}` : `Expand ${col.name}`}
+          aria-expanded={open}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((v) => !v);
+          }}
+        >
+          <ChevronRightIcon
+            className={cn(
+              "landmarks-layer-icon size-[0.875rem] shrink-0 transition-transform",
+              open && "rotate-90",
+            )}
+          />
+        </button>
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-[var(--lm-layer-row-gap,0.375rem)] text-left outline-none"
+          onClick={() => {
+            activate();
+            setOpen((v) => !v);
+          }}
+        >
+          <span className="min-w-0 flex-1 truncate">
+            {col.name}
+            <span
+              className="font-normal text-foreground/55"
+              title="Unique subcategories"
+            >
+              {" "}
+              ({(col.labels || []).length})
+            </span>
+          </span>
+          <SubcategoryAvatars col={col} />
+        </button>
+        <span className="landmarks-trail" aria-hidden>
+          <span className="landmarks-trail-cell" />
+          <span className="landmarks-trail-cell" />
+        </span>
+      </div>
+      <CollapsibleContent className="pl-4">
+        <ItemGroup className="gap-0.5">
+          {(col.labels || []).map((label, i) => (
+            <LayerRow
+              key={`${col.name}-${label}`}
+              active={
+                selected_kind === "type" &&
+                col.name === active_category &&
+                selected_index === i
+              }
+              color={
+                (col.palette || [])[
+                  i % Math.max((col.palette || []).length, 1)
+                ]
+              }
+              label={label}
+              onSelect={() => lm.selectType(col, i)}
+            />
+          ))}
+        </ItemGroup>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -205,63 +303,17 @@ function CategoriesControls({
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-col gap-0.5">
-        {category_columns.map((col: CategoryColumn) => {
-          const isShown =
-            signal === "categories" && col.name === active_category;
-          return (
-            <Collapsible key={col.name} className="group/cat">
-              <CollapsibleTrigger
-                className={cn(
-                  "landmarks-cat-trigger cursor-pointer text-left text-xs font-medium text-foreground/70 outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                  isShown &&
-                    "landmarks-cat-trigger--active text-foreground",
-                )}
-                onClick={() => {
-                  lm.setActiveCategory(col);
-                  lm.select("", -1);
-                }}
-              >
-                <ChevronRightIcon className="landmarks-layer-icon shrink-0 transition-transform group-data-[state=open]/cat:rotate-90" />
-                <span className="min-w-0 flex-1 truncate">
-                  {col.name}
-                  <span
-                    className="font-normal text-foreground/55"
-                    title="Unique subcategories"
-                  >
-                    {" "}
-                    ({(col.labels || []).length})
-                  </span>
-                </span>
-                <SubcategoryAvatars col={col} />
-                <span className="landmarks-trail" aria-hidden>
-                  <span className="landmarks-trail-cell" />
-                  <span className="landmarks-trail-cell" />
-                </span>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="pl-4">
-                <ItemGroup className="gap-0.5">
-                  {(col.labels || []).map((label, i) => (
-                    <LayerRow
-                      key={`${col.name}-${label}`}
-                      active={
-                        selected_kind === "type" &&
-                        col.name === active_category &&
-                        selected_index === i
-                      }
-                      color={
-                        (col.palette || [])[
-                          i % Math.max((col.palette || []).length, 1)
-                        ]
-                      }
-                      label={label}
-                      onSelect={() => lm.selectType(col, i)}
-                    />
-                  ))}
-                </ItemGroup>
-              </CollapsibleContent>
-            </Collapsible>
-          );
-        })}
+        {category_columns.map((col: CategoryColumn) => (
+          <CategoryCollapsibleRow
+            key={col.name}
+            col={col}
+            lm={lm}
+            signal={signal}
+            active_category={active_category}
+            selected_kind={selected_kind}
+            selected_index={selected_index}
+          />
+        ))}
       </div>
     </div>
   );
@@ -371,14 +423,16 @@ export function ExplorePanel({
   return (
     <div className="landmarks__explore-panel">
       <Card className={FLOAT_PANEL} data-testid="explore-panel">
-        <CardContent
-          className={cn(
-            "min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain",
-            PANEL_INSET,
-          )}
-        >
-          {body}
-        </CardContent>
+        <div className={FLOAT_PANEL_CLIP}>
+          <CardContent
+            className={cn(
+              "min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain",
+              PANEL_INSET,
+            )}
+          >
+            {body}
+          </CardContent>
+        </div>
       </Card>
     </div>
   );

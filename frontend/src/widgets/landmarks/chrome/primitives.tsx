@@ -297,7 +297,7 @@ export function LayerRow({
       role="listitem"
       aria-disabled={disabled || undefined}
       className={cn(
-        "landmarks-layer-row text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "landmarks-layer-row text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
         disabled ? "cursor-default opacity-60" : "cursor-pointer",
         active && "landmarks-layer-row--active",
         hidden && "opacity-50",
@@ -325,7 +325,7 @@ export function LayerRow({
           <Input
             aria-label="Rename layer"
             value={draft}
-            className="h-7 text-sm"
+            className="h-5 text-[11px]"
             autoFocus
             onClick={(e) => e.stopPropagation()}
             onChange={(e) => setDraft(e.target.value)}
@@ -349,7 +349,7 @@ export function LayerRow({
         ) : (
           <span
             className={cn(
-              "max-w-full truncate text-sm text-foreground",
+              "max-w-full truncate text-[11px] text-foreground",
               active ? "font-medium" : "font-normal",
             )}
             title={label}

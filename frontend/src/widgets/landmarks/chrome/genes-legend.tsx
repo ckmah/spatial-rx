@@ -231,13 +231,13 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
           <ComboboxChips
             ref={anchor}
             className={cn(
-              "min-h-8 min-w-0 w-full flex-wrap rounded-md bg-muted/80 px-2 py-1 text-sm shadow-none",
+              "min-h-7 min-w-0 w-full flex-wrap rounded-md bg-muted/80 px-1.5 py-0.5 text-[11px] shadow-none",
               selected.length > 0 && "pr-8",
             )}
           >
             <ComboboxValue>
               {selected.map((name, i) => (
-                <ComboboxChip key={name} className="max-w-full gap-1 truncate rounded-md bg-background/80 text-sm">
+                <ComboboxChip key={name} className="max-w-full gap-1 truncate rounded-md bg-background/80 text-[10px]">
                   <ColorSwatch color={GENE_COLORS[i % GENE_COLORS.length]} />
                   {name}
                 </ComboboxChip>
@@ -245,7 +245,7 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
             </ComboboxValue>
             <ComboboxChipsInput
               placeholder={selected.length ? "" : "Select genes"}
-              className="min-w-12 max-w-full text-sm"
+              className="min-w-12 max-w-full text-[11px]"
             />
           </ComboboxChips>
           {selected.length > 0 ? (

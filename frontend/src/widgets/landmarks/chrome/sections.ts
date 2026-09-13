@@ -26,7 +26,12 @@ export const PILL_TABS_TRIGGER =
 export const SEGMENT_TRAY = PILL_TABS_LIST;
 /** @deprecated Use PILL_TABS_TRIGGER. */
 export const SEGMENT_ITEM = PILL_TABS_TRIGGER;
+/** Outer float shell — keep overflow visible so box-shadow is not clipped. */
 export const FLOAT_PANEL =
-  "landmarks-float landmarks-float--panel pointer-events-auto max-h-full gap-0 overflow-hidden p-0";
+  "landmarks-float landmarks-float--panel pointer-events-auto max-h-full gap-0 overflow-visible p-0";
 /** Nested section inside a shared float — no second glass shell. */
-export const EMBEDDED_PANEL = "min-h-0 w-full gap-0 overflow-hidden rounded-none border-0 bg-transparent p-0 shadow-none";
+export const EMBEDDED_PANEL =
+  "min-h-0 w-full gap-0 overflow-hidden rounded-none border-0 bg-transparent p-0 shadow-none";
+/** Inner clip for scrollable float panel bodies (pairs with FLOAT_PANEL). */
+export const FLOAT_PANEL_CLIP =
+  "landmarks-float-clip min-h-0 flex-1 overflow-hidden rounded-[inherit]";

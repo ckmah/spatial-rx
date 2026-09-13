@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { decodeF32Base64 } from "../binary";
 import type { EngineHandle } from "../engine";
 import type { LandmarksModel } from "../use-landmarks-model";
-import { FLOAT_PANEL } from "./sections";
+import { FLOAT_PANEL, FLOAT_PANEL_CLIP } from "./sections";
 
 type WorldBounds = [number, number, number, number];
 
@@ -308,13 +308,15 @@ export function MinimapPanel({
 
   return (
     <Card
-      className={cn(FLOAT_PANEL, "shrink-0 overflow-hidden")}
+      className={cn(FLOAT_PANEL, "landmarks-minimap-float shrink-0")}
       data-testid="minimap-panel"
     >
-      <CardHeader className="sr-only">
-        <CardDescription>Minimap of the tissue scatter</CardDescription>
-      </CardHeader>
-      <CardContent className="p-0">{body}</CardContent>
+      <div className={FLOAT_PANEL_CLIP}>
+        <CardHeader className="sr-only">
+          <CardDescription>Minimap of the tissue scatter</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">{body}</CardContent>
+      </div>
     </Card>
   );
 }

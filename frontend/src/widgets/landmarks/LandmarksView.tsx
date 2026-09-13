@@ -221,14 +221,13 @@ export function LandmarksView({
             onWheel={(e) => e.stopPropagation()}
           >
             <div
-              className={cn(
-                FLOAT_PANEL,
-                "landmarks__chrome-stack flex min-h-0 flex-1 flex-col overflow-hidden",
-              )}
+              className={cn(FLOAT_PANEL, "flex min-h-0 flex-1 flex-col")}
               data-testid="info-explore-stack"
             >
-              <InfoPanel lm={lm} engine={engine} embedded />
-              <ExplorePanel lm={lm} embedded />
+              <div className="landmarks__chrome-stack landmarks-float-clip flex min-h-0 flex-1 flex-col">
+                <InfoPanel lm={lm} engine={engine} embedded />
+                <ExplorePanel lm={lm} embedded />
+              </div>
             </div>
             <LayersPanel lm={lm} />
           </div>
@@ -247,14 +246,13 @@ export function LandmarksView({
               onWheel={(e) => e.stopPropagation()}
             >
               <div
-                className={cn(
-                  FLOAT_PANEL,
-                  "landmarks__chrome-stack flex min-h-0 flex-1 flex-col overflow-hidden",
-                )}
+                className={cn(FLOAT_PANEL, "flex min-h-0 flex-1 flex-col")}
                 data-testid="info-explore-stack"
               >
-                <InfoPanel lm={lm} engine={engine} embedded />
-                <ExplorePanel lm={lm} embedded />
+                <div className="landmarks__chrome-stack landmarks-float-clip flex min-h-0 flex-1 flex-col">
+                  <InfoPanel lm={lm} engine={engine} embedded />
+                  <ExplorePanel lm={lm} embedded />
+                </div>
               </div>
             </div>
             <div
