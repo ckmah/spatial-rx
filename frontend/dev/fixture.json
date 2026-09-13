@@ -220,8 +220,8 @@
   "color_vmin": 0.0,
   "color_vmax": 1.0,
   "render_mode": "raster",
-  "raster_bin_size": 8.0,
-  "raster_window_radius": 16.0,
+  "raster_bin_size": 5.0,
+  "raster_window_radius": 10.0,
   "raster_basis": "genes",
   "raster_embedding_key": "X_pca",
   "raster_embedding_keys": [
