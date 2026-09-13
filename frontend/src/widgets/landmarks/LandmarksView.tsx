@@ -4,14 +4,13 @@ import { useNotebookTheme } from "@/hooks/use-notebook-theme";
 import { cn } from "@/lib/utils";
 
 import {
-  ExplorePanel,
   LayersPanel,
-  InfoPanel,
   MinimapPanel,
   SelectionToolbar,
   Topbar,
   LandmarkCanvasMenu,
   ViewCta,
+  RightChromeStack,
 } from "./chrome";
 import { FLOAT_PANEL } from "./chrome/sections";
 import { mountEngine, type EngineHandle } from "./engine";
@@ -224,10 +223,7 @@ export function LandmarksView({
               className={cn(FLOAT_PANEL, "flex min-h-0 flex-1 flex-col")}
               data-testid="info-explore-stack"
             >
-              <div className="landmarks__chrome-stack landmarks-float-clip flex min-h-0 flex-1 flex-col">
-                <InfoPanel lm={lm} engine={engine} embedded />
-                <ExplorePanel lm={lm} embedded />
-              </div>
+              <RightChromeStack lm={lm} engine={engine} />
             </div>
             <LayersPanel lm={lm} />
           </div>
@@ -249,10 +245,7 @@ export function LandmarksView({
                 className={cn(FLOAT_PANEL, "flex min-h-0 flex-1 flex-col")}
                 data-testid="info-explore-stack"
               >
-                <div className="landmarks__chrome-stack landmarks-float-clip flex min-h-0 flex-1 flex-col">
-                  <InfoPanel lm={lm} engine={engine} embedded />
-                  <ExplorePanel lm={lm} embedded />
-                </div>
+                <RightChromeStack lm={lm} engine={engine} />
               </div>
             </div>
             <div

@@ -48,7 +48,7 @@ import {
 function InfoChartWell({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="landmarks-info-chart flex h-44 w-full shrink-0 items-center justify-center overflow-hidden"
+      className="landmarks-info-chart flex h-44 w-full shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius)]"
       data-testid="info-chart-well"
     >
       {children}
@@ -60,10 +60,13 @@ export function InfoPanel({
   lm,
   engine = null,
   embedded = false,
+  bare = false,
 }: {
   lm: LandmarksModel;
   engine?: EngineHandle | null;
   embedded?: boolean;
+  /** Skip outer inset when nested in RightChromeStack. */
+  bare?: boolean;
 }) {
   const {
     selected_kind,
@@ -303,10 +306,13 @@ export function InfoPanel({
               <CartesianGrid vertical={false} />
               <XAxis
                 dataKey="x"
+                type="number"
+                domain={[0, 1]}
+                ticks={[0, 0.2, 0.4, 0.6, 0.8, 1]}
                 tickLine={false}
                 axisLine={false}
                 tickMargin={6}
-                tickFormatter={(v) => Number(v).toFixed(2)}
+                tickFormatter={(v) => String(v)}
               />
               <YAxis hide />
               <ChartTooltip
@@ -465,6 +471,13 @@ export function InfoPanel({
   );
 
   if (embedded) {
+    if (bare) {
+      return (
+        <div className="flex min-h-0 flex-col" data-testid="info-panel">
+          {body}
+        </div>
+      );
+    }
     return (
       <div
         className={cn(EMBEDDED_PANEL, "flex min-h-0 flex-col")}

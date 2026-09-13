@@ -38,7 +38,6 @@ import {
 import { EmbeddingRgbLegend } from "./embedding-legend";
 import { GenesCombobox } from "./genes-legend";
 import { LayerRow } from "./primitives";
-import { RasterSection } from "./raster-section";
 import {
   EMBEDDED_PANEL,
   FLOAT_PANEL,
@@ -84,7 +83,7 @@ function SubcategoryAvatars({ col }: { col: CategoryColumn }) {
 }
 
 
-function EmbeddingCombobox({ lm }: { lm: LandmarksModel }) {
+export function EmbeddingCombobox({ lm }: { lm: LandmarksModel }) {
   const keys = lm.raster_embedding_keys || [];
   const value = lm.raster_embedding_key || keys[0] || "";
   const [wrapRef, portalEl] = useWidgetPortalContainer();
@@ -230,7 +229,7 @@ function CategoryCollapsibleRow({
   );
 }
 
-function CategoriesControls({
+export function CategoriesControls({
   lm,
   signal,
 }: {
@@ -398,7 +397,6 @@ export function ExplorePanel({
         </div>
       </Tabs>
 
-      <RasterSection lm={lm} />
     </div>
   );
 

@@ -21,7 +21,7 @@ export const META_LINE = "landmarks-meta m-0 truncate text-[11px]";
 export const PILL_TABS_LIST =
   "landmarks-sliding-tabs relative h-8 w-full gap-0.5 rounded-full bg-foreground/[0.12] p-0.5 text-foreground/75 dark:bg-foreground/[0.14]";
 export const PILL_TABS_TRIGGER =
-  "landmarks-sliding-tab relative z-10 h-full flex-1 rounded-full text-[11px] font-normal lowercase tracking-wide text-foreground/70 transition-colors data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-foreground";
+  "landmarks-sliding-tab relative z-10 h-full flex-1 rounded-full text-[11px] font-normal lowercase tracking-wide text-foreground/70 transition-colors data-[state=active]:text-foreground data-[state=active]:shadow-none dark:data-[state=active]:text-background";
 /** @deprecated Use PILL_TABS_LIST. */
 export const SEGMENT_TRAY = PILL_TABS_LIST;
 /** @deprecated Use PILL_TABS_TRIGGER. */
