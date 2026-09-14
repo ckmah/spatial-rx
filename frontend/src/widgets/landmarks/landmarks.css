@@ -532,6 +532,28 @@
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 45%, transparent);
 }
 
+/* Category palette dots — right-aligned in both points + raster rows. */
+.landmarks-cat-avatars {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+  line-height: 0;
+}
+
+/* Points-view subcategory list — no gap under the header or between rows. */
+.landmarks-cat-sublist,
+.landmarks-cat-sublist [data-slot="item-group"] {
+  margin: 0;
+  padding-block: 0;
+  gap: 0;
+}
+
+.landmarks-cat-sublist .landmarks-layer-row {
+  margin: 0;
+}
+
 
 .landmarks-layer-label {
   display: flex;

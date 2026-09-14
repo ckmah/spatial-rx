@@ -59,7 +59,7 @@ function SubcategoryAvatars({ col }: { col: CategoryColumn }) {
   const shown = labels.slice(0, AVATAR_MAX);
   const extra = labels.length - shown.length;
   return (
-    <span className="inline-flex items-center" aria-hidden>
+    <span className="inline-flex shrink-0 items-center justify-end" aria-hidden>
       {shown.map((label, i) => (
         <span
           key={`${col.name}-${label}`}
@@ -69,7 +69,8 @@ function SubcategoryAvatars({ col }: { col: CategoryColumn }) {
             background:
               palette[i % Math.max(palette.length, 1)] ||
               "var(--muted-foreground)",
-            marginLeft: i === 0 ? 0 : -3,
+            // Light stack overlap — keep dots distinct in both views.
+            marginLeft: i === 0 ? 0 : -1,
           }}
         />
       ))}
@@ -197,15 +198,14 @@ function CategoryCollapsibleRow({
               ({(col.labels || []).length})
             </span>
           </span>
-          <SubcategoryAvatars col={col} />
         </button>
-        <span className="landmarks-trail" aria-hidden>
-          <span className="landmarks-trail-cell" />
-          <span className="landmarks-trail-cell" />
+        {/* Right-edge avatars (points view) — flush to the row end. */}
+        <span className="landmarks-cat-avatars">
+          <SubcategoryAvatars col={col} />
         </span>
       </div>
-      <CollapsibleContent className="pl-4">
-        <ItemGroup className="gap-0.5">
+      <CollapsibleContent className="landmarks-cat-sublist overflow-hidden pl-4">
+        <ItemGroup className="gap-0 p-0">
           {(col.labels || []).map((label, i) => (
             <LayerRow
               key={`${col.name}-${label}`}
@@ -262,7 +262,7 @@ export function CategoriesControls({
           lm.setActiveCategory(col);
           lm.select("", -1);
         }}
-        className="flex flex-col gap-0.5"
+        className="flex flex-col gap-0"
         aria-label="Category"
         data-testid="explore-category-radios"
       >
@@ -275,9 +275,10 @@ export function CategoriesControls({
               key={col.name}
               htmlFor={id}
               className={cn(
-                "flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-xs font-medium text-foreground/70",
-                "hover:bg-foreground/[0.05] hover:text-foreground",
-                selected && "bg-foreground/[0.07] text-foreground",
+                // Match points-view category row height (landmarks-cat-trigger).
+                "landmarks-cat-trigger cursor-pointer gap-[var(--lm-layer-row-gap,0.375rem)] text-xs leading-none font-medium text-foreground/70",
+                "hover:text-foreground",
+                selected && "landmarks-cat-trigger--active text-foreground",
               )}
             >
               <RadioGroupItem value={col.name} id={id} />
@@ -291,7 +292,9 @@ export function CategoriesControls({
                   ({unique})
                 </span>
               </span>
-              <SubcategoryAvatars col={col} />
+              <span className="landmarks-cat-avatars">
+                <SubcategoryAvatars col={col} />
+              </span>
             </Label>
           );
         })}
@@ -300,20 +303,18 @@ export function CategoriesControls({
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex flex-col gap-0.5">
-        {category_columns.map((col: CategoryColumn) => (
-          <CategoryCollapsibleRow
-            key={col.name}
-            col={col}
-            lm={lm}
-            signal={signal}
-            active_category={active_category}
-            selected_kind={selected_kind}
-            selected_index={selected_index}
-          />
-        ))}
-      </div>
+    <div className="flex flex-col gap-0">
+      {category_columns.map((col: CategoryColumn) => (
+        <CategoryCollapsibleRow
+          key={col.name}
+          col={col}
+          lm={lm}
+          signal={signal}
+          active_category={active_category}
+          selected_kind={selected_kind}
+          selected_index={selected_index}
+        />
+      ))}
     </div>
   );
 }

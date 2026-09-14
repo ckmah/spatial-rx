@@ -364,9 +364,9 @@ export function LayerRow({
           </span>
         )}
       </div>
-      <div className="landmarks-trail">
-        <span className="landmarks-trail-cell" aria-hidden />
-        {hasMenu ? (
+      {hasMenu ? (
+        <div className="landmarks-trail">
+          <span className="landmarks-trail-cell" aria-hidden />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -423,10 +423,8 @@ export function LayerRow({
               ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : (
-          <span className="landmarks-trail-cell" aria-hidden />
-        )}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
