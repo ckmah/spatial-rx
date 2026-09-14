@@ -11,6 +11,7 @@ export function colorSignal(lm: LandmarksModel): ColorSignal {
     return "categories";
   }
   if (lm.color_by === "embedding") return "embedding";
+  if (lm.color_by === "continuous") return "genes";
   // Prefer genes whenever any are selected — color_by can lag after View flips.
   if ((lm.active_genes?.length || 0) > 0) {
     return "genes";

@@ -1,6 +1,7 @@
 import { GENE_COLORS } from "../helpers";
 import type { CategoryColumn, SelectionItem } from "../helpers";
 import { decodeF32Base64, decodeI32Base64 } from "../binary";
+import { CLOUD_CUBE, isoProject, mixChannelRgb } from "./rgb-cube";
 
 type CompositionSlice = {
   key: string;
@@ -211,8 +212,8 @@ export type EmbeddingCloudPoint = {
   color: string;
 };
 
-/** Sample cells in scope onto the RGB ternary (channels = packed embedding_values). */
-export function embeddingTernaryCloud(opts: {
+/** Sample cells in scope onto the isometric RGB cube (3 independent channels). */
+export function embeddingRgbCloud(opts: {
   n: number;
   mask: Uint8Array;
   embeddingValuesB64: string;
@@ -236,45 +237,11 @@ export function embeddingTernaryCloud(opts: {
     for (let c = 0; c < Math.min(3, nChannels); c++) {
       ch[c] = Math.max(0, Math.min(1, values[c * n + i] || 0));
     }
-    const sum = ch[0] + ch[1] + ch[2];
-    // Importing ternaryFromWeights would create a UI dependency in stats —
-    // compute barycentric position inline (matches genes-ternary vertices).
-    const size = 80;
-    const pad = 12;
-    const side = size - 2 * pad;
-    const height = (Math.sqrt(3) / 2) * side;
-    const topY = (size - height) / 2;
-    const bottomY = topY + height;
-    const left = { x: pad, y: bottomY };
-    const top = { x: size / 2, y: topY };
-    const right = { x: size - pad, y: bottomY };
-    let u = 0;
-    let v = 0;
-    let w = 0;
-    if (sum > 1e-8) {
-      u = ch[0] / sum;
-      v = ch[1] / sum;
-      w = ch[2] / sum;
-    } else {
-      u = v = w = 1 / 3;
-    }
-    const x = left.x * u + top.x * v + right.x * w;
-    const y = left.y * u + top.y * v + right.y * w;
-    // Build additive RGB from channel weights using gene primaries.
-    const parse = (hex: string) => {
-      const h = hex.replace("#", "");
-      const n = Number.parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
-      return [(n >> 16) & 255, (n >> 8) & 255, n & 255] as const;
-    };
-    const c0 = parse(GENE_COLORS[0]);
-    const c1 = parse(GENE_COLORS[1]);
-    const c2 = parse(GENE_COLORS[2]);
-    const rr = Math.min(255, Math.round(c0[0] * ch[0] + c1[0] * ch[1] + c2[0] * ch[2]));
-    const gg = Math.min(255, Math.round(c0[1] * ch[0] + c1[1] * ch[1] + c2[1] * ch[2]));
-    const bb = Math.min(255, Math.round(c0[2] * ch[0] + c1[2] * ch[1] + c2[2] * ch[2]));
+    const { rr, gg, bb, sum } = mixChannelRgb(ch[0], ch[1], ch[2]);
+    const p = isoProject(ch[0], ch[1], ch[2], CLOUD_CUBE);
     out.push({
-      x,
-      y,
+      x: p.x,
+      y: p.y,
       color: sum > 1e-8 ? `rgb(${rr},${gg},${bb})` : "var(--muted-foreground)",
     });
   }

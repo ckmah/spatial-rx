@@ -49,7 +49,7 @@ import { SoftFloatSlidingTabsList } from "./sliding-tabs";
 import { useWidgetPortalContainer } from "./use-widget-portal";
 
 const COMBO_INPUT =
-  "min-h-7 w-full rounded-[var(--radius)] bg-card/60 text-[11px] shadow-none";
+  "h-7 min-h-7 w-full rounded-[var(--radius)] bg-muted/80 shadow-none [&_input]:h-7 [&_input]:min-h-0 [&_input]:text-[11px] [&_input]:md:text-[11px] [&_input]:placeholder:text-[11px]";
 
 const AVATAR_MAX = 5;
 
@@ -185,7 +185,6 @@ function CategoryCollapsibleRow({
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-[var(--lm-layer-row-gap,0.375rem)] text-left outline-none"
           onClick={() => {
             activate();
-            setOpen((v) => !v);
           }}
         >
           <span className="min-w-0 flex-1 truncate">
@@ -275,13 +274,17 @@ export function CategoriesControls({
               key={col.name}
               htmlFor={id}
               className={cn(
-                // Match points-view category row height (landmarks-cat-trigger).
+                // Match selection / landmark LayerRow height (landmarks-cat-trigger).
                 "landmarks-cat-trigger cursor-pointer gap-[var(--lm-layer-row-gap,0.375rem)] text-xs leading-none font-medium text-foreground/70",
                 "hover:text-foreground",
                 selected && "landmarks-cat-trigger--active text-foreground",
               )}
             >
-              <RadioGroupItem value={col.name} id={id} />
+              <RadioGroupItem
+                value={col.name}
+                id={id}
+                className="size-[var(--lm-layer-swatch)] border-foreground/25 shadow-none"
+              />
               <span className="min-w-0 flex-1 truncate">
                 {col.name}
                 <span

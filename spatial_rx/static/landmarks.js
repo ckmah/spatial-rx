@@ -84,13 +84,12 @@ const OTHER_SIZE_SCALE = 0.55;
 const OTHER_ALPHA_SCALE = 0.28;
 const BUFFERABLE = ["line", "spline", "gradient"];
 /**
- * Gene / observation high stop (matches helpers GENE_COLORS[0] / DESIGN gene-magenta).
- * Low stop is the plot background (theme-aware) — same idea as the genes legend
- * ``var(--background) → magenta``, so continuous scales read on dark and light.
+ * Single-gene / observation high stop (DESIGN sequential-high).
+ * Low stop is the plot background (theme-aware).
  */
 const RASTER_SEQ_HIGH = [255, 0, 153];
-/** Additive embedding / multi-gene channels (keep in sync with helpers GENE_COLORS). */
-const RASTER_RGB_CHANNELS = ["#ff0099", "#b8ff00", "#00b7ff"];
+/** Additive embedding / multi-gene channels (keep in sync with helpers GENE_COLORS): magenta / lime / azure. */
+const RASTER_RGB_CHANNELS = ["#ff0099", "#5cbf00", "#0088cc"];
 
 function clamp01(t) {
   return Math.max(0, Math.min(1, Number(t) || 0));
@@ -152,9 +151,13 @@ const RASTER_DENSITY_ALPHA = 0.85;
 const RASTER_DIM_ALPHA = 0.18;
 const RASTER_QUERY_STROKE = "#ffffff";
 const RASTER_HOVER_STROKE = "#e5e5e5";
+/** Probe window disk at cursor / pinned query (world units, radius = window). */
+const PROBE_PINNED_STROKE = "#ffffff";
+const PROBE_HOVER_STROKE = "#d4d4d4";
+const PROBE_PINNED_WIDTH = 2;
+const PROBE_HOVER_WIDTH = 1.5;
 const RASTER_TEXTURE_MAX = 1024;
 const RASTER_LANDMARK_GRAY = "#c4c4c4";
-const RASTER_WINDOW_SEGMENTS = 48;
 
 /** CSS/Penner easeOutQuart for camera transitions. */
 function easeOutQuart(t) {
@@ -329,6 +332,7 @@ export function mountEngine({ model, host }) {
   const MODE_BY_KEY = {
     v: "pointer",
     h: "move",
+    p: "probe",
     l: "lasso",
     r: "rectangle",
     o: "ellipse",
@@ -373,6 +377,8 @@ export function mountEngine({ model, host }) {
   let hoverListeners = [];
   let landmarkMenuListeners = [];
   let layerRaf = 0;
+  /** Last non-probe deck layers we published (never read deck.props.layers). */
+  let probeBaseLayers = [];
   let fittedOnce = false;
   let fitZoom = null;
   let pointsCache = { key: "", data: [] };
@@ -458,9 +464,14 @@ export function mountEngine({ model, host }) {
     return probeModeOn() && isRasterMode() && hasRasterFeatures();
   }
 
-  /** Points probe: windowed point-feature cosine (no bin cache). */
+  /** Points probe: similarity field while scrubbing / pinned. */
   function pointSimilarityOn() {
     return probeModeOn() && !isRasterMode();
+  }
+
+  /** Prefer bin-backed query+scores (raster cost) when packed features exist. */
+  function binBackedPointsProbeOn() {
+    return pointSimilarityOn() && hasRasterFeatures();
   }
 
   function refreshRasterArrays() {
@@ -499,11 +510,48 @@ export function mountEngine({ model, host }) {
       const flat = (cols[i] | 0) + nCols * (rows[i] | 0);
       if (flat >= 0 && flat < flatToCompact.length) flatToCompact[flat] = i;
     }
-    rasterCache = { key, rows, cols, counts, features, flatToCompact, nBins: n, dim };
+    rasterCache = {
+      key,
+      rows,
+      cols,
+      counts,
+      features,
+      flatToCompact,
+      nBins: n,
+      dim,
+      normed: null,
+    };
     rasterScores = null;
     rasterScoreKey = "";
     rasterImageCache = { key: "", image: null, bounds: null };
     return rasterCache;
+  }
+
+  /** Row-wise L2-normalized bin features (full dim); built once per raster cache. */
+  function normalizedRasterFeatures(cache) {
+    if (cache.normed) return cache.normed;
+    const n = cache.nBins | 0;
+    const dim = cache.dim | 0;
+    const feats = cache.features;
+    if (!n || !dim || !feats || feats.length < n * dim) {
+      cache.normed = null;
+      return null;
+    }
+    const normed = new Float32Array(n * dim);
+    for (let i = 0; i < n; i++) {
+      let rn = 0;
+      const off = i * dim;
+      for (let d = 0; d < dim; d++) {
+        const v = feats[off + d] || 0;
+        normed[off + d] = v;
+        rn += v * v;
+      }
+      rn = Math.sqrt(rn) || 1;
+      const inv = 1 / rn;
+      for (let d = 0; d < dim; d++) normed[off + d] *= inv;
+    }
+    cache.normed = normed;
+    return normed;
   }
 
   function lerpHex(a, b, t) {
@@ -528,29 +576,43 @@ export function mountEngine({ model, host }) {
     const dimMask = embeddingDimMask(dim);
     const key = `${cache.key}:${queryIdx}:${dimMask.join(",")}`;
     if (rasterScoreKey === key && rasterScores) return rasterScores;
-    // Features are raw means; L2-normalize selected dims for cosine.
-    const q = new Float32Array(dimMask.length);
-    let qn = 0;
-    const qOff = queryIdx * dim;
-    for (let k = 0; k < dimMask.length; k++) {
-      const v = feats[qOff + dimMask[k]] || 0;
-      q[k] = v;
-      qn += v * v;
-    }
-    qn = Math.sqrt(qn) || 1;
-    for (let k = 0; k < q.length; k++) q[k] /= qn;
     const scores = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      let dot = 0;
-      let rn = 0;
-      const off = i * dim;
-      for (let k = 0; k < dimMask.length; k++) {
-        const v = feats[off + dimMask[k]] || 0;
-        rn += v * v;
-        dot += v * q[k];
+    const fullMask = dimMask.length === dim;
+    if (fullMask) {
+      // Pre-normalized rows → cosine is a dot product.
+      const normed = normalizedRasterFeatures(cache);
+      if (!normed) return null;
+      const qOff = queryIdx * dim;
+      for (let i = 0; i < n; i++) {
+        let dot = 0;
+        const off = i * dim;
+        for (let d = 0; d < dim; d++) dot += normed[off + d] * normed[qOff + d];
+        scores[i] = dot;
       }
-      rn = Math.sqrt(rn) || 1;
-      scores[i] = dot / rn;
+    } else {
+      // Embedding dim subset: normalize on the masked coords only.
+      const q = new Float32Array(dimMask.length);
+      let qn = 0;
+      const qOff = queryIdx * dim;
+      for (let k = 0; k < dimMask.length; k++) {
+        const v = feats[qOff + dimMask[k]] || 0;
+        q[k] = v;
+        qn += v * v;
+      }
+      qn = Math.sqrt(qn) || 1;
+      for (let k = 0; k < q.length; k++) q[k] /= qn;
+      for (let i = 0; i < n; i++) {
+        let dot = 0;
+        let rn = 0;
+        const off = i * dim;
+        for (let k = 0; k < dimMask.length; k++) {
+          const v = feats[off + dimMask[k]] || 0;
+          rn += v * v;
+          dot += v * q[k];
+        }
+        rn = Math.sqrt(rn) || 1;
+        scores[i] = dot / rn;
+      }
     }
     rasterScores = scores;
     rasterScoreKey = key;
@@ -613,6 +675,14 @@ export function mountEngine({ model, host }) {
     const feats = cache.features;
     const n = cache.nBins | 0;
     const low = observationLowRgb();
+    // Genes at rest (none selected): match points continuous → neutral grey.
+    if (basis === "genes") {
+      const active = model.get("active_genes") || [];
+      if (!active.length) {
+        const grey = hexToRgbaBytes("#6b7280", 1);
+        return [grey[0], grey[1], grey[2]];
+      }
+    }
     if (!dim || !feats || feats.length < n * dim) {
       return low;
     }
@@ -668,7 +738,7 @@ export function mountEngine({ model, host }) {
     if (basis === "genes") {
       // Selected active genes only (feature cols match active_genes order).
       // 1 gene: theme background → magenta (points continuous). Multi: additive
-      // magenta/lime/azure over background (points ``blendGeneColors``).
+      // Magenta / lime / azure over background (points ``blendGeneColors``).
       if (dim === 1) {
         const st = colStats[0] || { lo: 0, span: 1 };
         const t = clamp01((feats[off] - st.lo) / st.span);
@@ -773,19 +843,68 @@ export function mountEngine({ model, host }) {
     return best;
   }
 
+  function binCenterDist2(compactIdx, x, y) {
+    const cache = refreshRasterArrays();
+    if (compactIdx < 0 || compactIdx >= (cache.nBins | 0)) return Infinity;
+    const size = Number(model.get("raster_bin_size")) || 0;
+    if (!(size > 0)) return Infinity;
+    const ox = Number(model.get("raster_origin_x")) || 0;
+    const oy = Number(model.get("raster_origin_y")) || 0;
+    const cx = ox + ((cache.cols[compactIdx] | 0) + 0.5) * size;
+    const cy = oy + ((cache.rows[compactIdx] | 0) + 0.5) * size;
+    const dx = cx - x;
+    const dy = cy - y;
+    return dx * dx + dy * dy;
+  }
+
+  /**
+   * Sticky nearest-bin pick — hysteresis stops Voronoi-edge flicker when the
+   * cursor straddles two bin centers and similarity would otherwise thrash.
+   */
+  function stickyHoverBin(x, y) {
+    const next = nearestNonemptyBinWithinRadius(x, y);
+    // Keep last query if this sample is empty (picking reset / off-tissue).
+    // Resting color only returns on real leave / pin / mode change.
+    if (next < 0) return hoverBinIndex;
+    if (hoverBinIndex < 0 || hoverBinIndex === next) return next;
+    const size = Number(model.get("raster_bin_size")) || 0;
+    const R = probeWindowRadius();
+    const hyst = Math.max(size * 0.35, R * 0.12, 1e-6);
+    const dCur = binCenterDist2(hoverBinIndex, x, y);
+    const R2 = R * R;
+    // Current query left the window — accept the new nearest.
+    if (!(dCur <= R2)) return next;
+    const dNext = binCenterDist2(next, x, y);
+    // Switch only when next is closer by a clear margin.
+    if (Math.sqrt(dNext) + hyst < Math.sqrt(dCur)) return next;
+    return hoverBinIndex;
+  }
+
 
   function worldFromDeckInfo(info) {
+    // Deck fires onHover with x/y = -1 on pointerleave / picking reset.
+    // Unprojecting that snaps the query off-canvas and drops to rest color.
+    const sx = info?.x;
+    const sy = info?.y;
+    if (sx != null && sy != null && (sx < 0 || sy < 0)) return null;
+    if (webglCanvas) {
+      const w = webglCanvas.clientWidth || 0;
+      const h = webglCanvas.clientHeight || 0;
+      if (w > 0 && h > 0 && sx != null && sy != null && (sx > w || sy > h)) {
+        return null;
+      }
+    }
     if (info?.coordinate && Number.isFinite(info.coordinate[0])) {
       return [info.coordinate[0], info.coordinate[1]];
     }
-    if (info?.x == null || info?.y == null || !deckgl) return null;
+    if (sx == null || sy == null || !deckgl) return null;
     try {
       const vp = deckgl.isInitialized
         ? deckgl.getViewports()?.[0]
         : deckgl.getViewports?.()?.[0];
       if (!vp?.unproject) return null;
       // Match eventPoint(): deck OrthographicView unproject without topLeft.
-      const p = vp.unproject([info.x, info.y]);
+      const p = vp.unproject([sx, sy]);
       if (!p || !Number.isFinite(p[0])) return null;
       return [p[0], p[1]];
     } catch {
@@ -797,8 +916,9 @@ export function mountEngine({ model, host }) {
     const r = Number(model.get("raster_window_radius"));
     if (Number.isFinite(r) && r > 0) return r;
     const bin = Number(model.get("raster_bin_size"));
-    if (Number.isFinite(bin) && bin > 0) return bin * 2;
-    return 16;
+    // Match spatial_rx.raster.default_window_radius: 3 x bin, else 24 µm.
+    if (Number.isFinite(bin) && bin > 0) return bin * 3;
+    return 24;
   }
 
   let pointFeatCache = { key: "", features: null, dim: 0, n: 0 };
@@ -809,6 +929,10 @@ export function mountEngine({ model, host }) {
   let pinnedProbeWorld = null; // {x,y} | null
   let probeScrubSeq = 0;
   let pointDiskScoreCache = { key: "", scores: null };
+  /** Spatial hash for fallback disk means when bin features are missing. */
+  let pointSpatialIndex = { key: "", cellSize: 0, ox: 0, oy: 0, cells: null };
+  /** Row-L2-normalized point features for fallback cosine. */
+  let pointNormCache = { key: "", features: null, dim: 0, n: 0 };
 
   /** Per-cell observation matrix for the active raster_basis / color signal. */
   function rawPointFeatureMatrix(n) {
@@ -983,44 +1107,152 @@ export function mountEngine({ model, host }) {
     return null;
   }
 
-  /** Mean of raw point features inside disk (x,y,R). Null if empty. */
+  /** Quantize world coords to ~R/2 grid (fallback probe cache key). */
+  function quantizeProbeWorld(x, y) {
+    const R = probeWindowRadius();
+    const q = Math.max(R * 0.5, 1e-6);
+    return {
+      x: Math.round(x / q) * q,
+      y: Math.round(y / q) * q,
+    };
+  }
+
+  /** Cell → point indices for disk membership (cell size ≈ R). */
+  function pointSpatialCells(cellSize) {
+    const pts = getPointsData();
+    const key = `${pointsCache.key}:${pts.length}:${cellSize}`;
+    if (
+      pointSpatialIndex.key === key &&
+      pointSpatialIndex.cells &&
+      pointSpatialIndex.cellSize === cellSize
+    ) {
+      return pointSpatialIndex;
+    }
+    const cells = new Map();
+    let ox = 0;
+    let oy = 0;
+    if (pts.length) {
+      let minX = Infinity;
+      let minY = Infinity;
+      for (let i = 0; i < pts.length; i++) {
+        if (pts[i].x < minX) minX = pts[i].x;
+        if (pts[i].y < minY) minY = pts[i].y;
+      }
+      ox = minX;
+      oy = minY;
+      const inv = 1 / cellSize;
+      for (let i = 0; i < pts.length; i++) {
+        const c = Math.floor((pts[i].x - ox) * inv);
+        const r = Math.floor((pts[i].y - oy) * inv);
+        const ck = `${c},${r}`;
+        let bucket = cells.get(ck);
+        if (!bucket) {
+          bucket = [];
+          cells.set(ck, bucket);
+        }
+        bucket.push(i);
+      }
+    }
+    pointSpatialIndex = { key, cellSize, ox, oy, cells };
+    return pointSpatialIndex;
+  }
+
+  /** Raw point feature rows, L2-normalized once per feature key. */
+  function normalizedPointFeatureMatrix(n) {
+    const raw = rawPointFeatureMatrix(n);
+    if (!raw.features || !raw.dim) {
+      pointNormCache = { key: "", features: null, dim: 0, n };
+      return pointNormCache;
+    }
+    const key = [
+      pointsCache.key,
+      n,
+      raw.dim,
+      model.get("raster_basis") || "",
+      model.get("color_by") || "",
+      (model.get("active_genes") || []).join(","),
+      model.get("raster_embedding_key") || "",
+      model.get("active_category") || "",
+      geneValues ? geneValues.length : 0,
+      embeddingValues ? embeddingValues.length : 0,
+      categoryCodes ? categoryCodes.length : 0,
+    ].join("|");
+    if (pointNormCache.key === key && pointNormCache.features) return pointNormCache;
+    const dim = raw.dim;
+    const src = raw.features;
+    const out = new Float32Array(n * dim);
+    for (let i = 0; i < n; i++) {
+      let rn = 0;
+      const off = i * dim;
+      for (let d = 0; d < dim; d++) {
+        const v = src[off + d] || 0;
+        out[off + d] = v;
+        rn += v * v;
+      }
+      rn = Math.sqrt(rn) || 1;
+      const inv = 1 / rn;
+      for (let d = 0; d < dim; d++) out[off + d] *= inv;
+    }
+    pointNormCache = { key, features: out, dim, n };
+    pointDiskScoreCache = { key: "", scores: null };
+    return pointNormCache;
+  }
+
+  /**
+   * Mean of raw point features inside disk (x,y,R), using a spatial hash.
+   * Fallback when packed bin features are unavailable.
+   */
   function meanRawFeaturesInDisk(x, y) {
     const pts = getPointsData();
     const n = pts.length;
     const raw = rawPointFeatureMatrix(n);
     if (!raw.features || !raw.dim) return null;
     const R = probeWindowRadius();
+    if (!(R > 0) || !n) return null;
     const R2 = R * R;
     const dim = raw.dim;
     const src = raw.features;
     const acc = new Float32Array(dim);
     let count = 0;
-    for (let i = 0; i < n; i++) {
-      const dx = pts[i].x - x;
-      const dy = pts[i].y - y;
-      if (dx * dx + dy * dy > R2) continue;
-      const off = i * dim;
-      for (let d = 0; d < dim; d++) acc[d] += src[off + d] || 0;
-      count += 1;
+    const cellSize = R;
+    const index = pointSpatialCells(cellSize);
+    const inv = 1 / cellSize;
+    const c0 = Math.floor((x - index.ox) * inv);
+    const r0 = Math.floor((y - index.oy) * inv);
+    const span = Math.ceil(R / cellSize) + 1;
+    for (let dc = -span; dc <= span; dc++) {
+      for (let dr = -span; dr <= span; dr++) {
+        const bucket = index.cells.get(`${c0 + dc},${r0 + dr}`);
+        if (!bucket) continue;
+        for (let b = 0; b < bucket.length; b++) {
+          const i = bucket[b];
+          const dx = pts[i].x - x;
+          const dy = pts[i].y - y;
+          if (dx * dx + dy * dy > R2) continue;
+          const off = i * dim;
+          for (let d = 0; d < dim; d++) acc[d] += src[off + d] || 0;
+          count += 1;
+        }
+      }
     }
     if (!count) return null;
-    const inv = 1 / count;
-    for (let d = 0; d < dim; d++) acc[d] *= inv;
+    const invCount = 1 / count;
+    for (let d = 0; d < dim; d++) acc[d] *= invCount;
     return { vector: acc, dim, count };
   }
 
-  /** Cosine of each point's raw features to a query vector. */
-  function cosineScoresForFeatureVector(qVec, dim) {
+  /** Cosine of each L2-normalized point to a query vector (fallback path). */
+  function cosineScoresForFeatureVector(qVec, dim, qx, qy) {
     const pts = getPointsData();
     const n = pts.length;
-    const raw = rawPointFeatureMatrix(n);
-    if (!raw.features || raw.dim !== dim || !qVec) return null;
+    const norm = normalizedPointFeatureMatrix(n);
+    if (!norm.features || norm.dim !== dim || !qVec) return null;
     const key = [
-      pointsCache.key,
+      norm.key,
       n,
       dim,
-      probeWindowRadius(),
-      probeScrubSeq,
+      qx,
+      qy,
       qVec[0],
       qVec[Math.min(dim - 1, 1)] || 0,
       qVec[dim - 1] || 0,
@@ -1036,29 +1268,45 @@ export function mountEngine({ model, host }) {
       qn += v * v;
     }
     qn = Math.sqrt(qn) || 1;
-    for (let d = 0; d < dim; d++) q[d] /= qn;
-    const src = raw.features;
+    const invQ = 1 / qn;
+    for (let d = 0; d < dim; d++) q[d] *= invQ;
+    const src = norm.features;
     const scores = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       let dot = 0;
-      let rn = 0;
       const off = i * dim;
-      for (let d = 0; d < dim; d++) {
-        const v = src[off + d] || 0;
-        rn += v * v;
-        dot += v * q[d];
-      }
-      rn = Math.sqrt(rn) || 1;
-      scores[i] = dot / rn;
+      for (let d = 0; d < dim; d++) dot += src[off + d] * q[d];
+      scores[i] = dot;
     }
     pointDiskScoreCache = { key, scores };
     return scores;
   }
 
-  function scheduleProbeRedraw() {
+  function isProbeWindowLayer(layer) {
+    return String(layer?.id || "").startsWith("probe-window-");
+  }
+
+  function publishDeckLayers(layers) {
+    const list = (layers || []).filter(Boolean);
+    probeBaseLayers = list.filter((layer) => !isProbeWindowLayer(layer));
+    applyDeckProps({ layers: list });
+  }
+
+  function scheduleProbeRedraw(opts = {}) {
+    const circleOnly = !!opts.circleOnly && probeBaseLayers.length > 0;
     if (hoverRaf) cancelAnimationFrame(hoverRaf);
     hoverRaf = requestAnimationFrame(() => {
       hoverRaf = 0;
+      // Move the window circle without rebuilding scatter/raster. Must reuse
+      // *our* last published base layers — deck.props.layers is the constructor
+      // stack and was snapping colors back to rest/pin when the pointer stopped.
+      if (circleOnly && deckgl?.isInitialized) {
+        publishDeckLayers([
+          ...probeBaseLayers,
+          ...buildProbeOutlineLayers(),
+        ]);
+        return;
+      }
       setDeckLayers();
     });
   }
@@ -1066,50 +1314,65 @@ export function mountEngine({ model, host }) {
   function scrubProbeAtWorld(x, y) {
     if (!probeModeOn()) return false;
     let changed = false;
+    let scoresChanged = false;
     if (isRasterMode()) {
       if (!hasRasterFeatures()) return false;
-      // Nearest nonempty bin center within R — idle when none.
-      const bin = nearestNonemptyBinWithinRadius(x, y);
+      // Sticky nearest bin — hysteresis avoids Voronoi-edge score thrash.
+      const bin = stickyHoverBin(x, y);
       if (bin !== hoverBinIndex) {
         hoverBinIndex = bin;
         changed = true;
+        scoresChanged = true;
       }
       if (hoverPointIndex >= 0) {
         hoverPointIndex = -1;
         changed = true;
       }
-      if (hoverProbeWorld) {
-        hoverProbeWorld = null;
+    } else if (binBackedPointsProbeOn()) {
+      // Points: same sticky bin query as raster; circle still follows cursor.
+      const bin = stickyHoverBin(x, y);
+      if (bin !== hoverBinIndex) {
+        hoverBinIndex = bin;
+        changed = true;
+        scoresChanged = true;
+      }
+      if (hoverPointIndex >= 0) {
+        hoverPointIndex = -1;
         changed = true;
       }
     } else {
-      // Points: query = mean raw features in disk (mouse, R); empty → idle.
-      const mean = meanRawFeaturesInDisk(x, y);
-      if (mean) {
-        if (
-          !hoverProbeWorld ||
-          hoverProbeWorld.x !== x ||
-          hoverProbeWorld.y !== y
-        ) {
-          hoverProbeWorld = { x, y };
-          probeScrubSeq = (probeScrubSeq + 1) | 0;
-          changed = true;
-        }
-      } else if (hoverProbeWorld) {
-        hoverProbeWorld = null;
-        probeScrubSeq = (probeScrubSeq + 1) | 0;
+      // Fallback: no packed bins — quantized disk query on points.
+      if (hoverBinIndex >= 0) {
+        hoverBinIndex = -1;
         changed = true;
+        scoresChanged = true;
       }
       if (hoverPointIndex >= 0) {
         hoverPointIndex = -1;
         changed = true;
       }
-      if (hoverBinIndex >= 0) {
-        hoverBinIndex = -1;
-        changed = true;
+      const q = quantizeProbeWorld(x, y);
+      if (
+        !hoverProbeWorld ||
+        quantizeProbeWorld(hoverProbeWorld.x, hoverProbeWorld.y).x !== q.x ||
+        quantizeProbeWorld(hoverProbeWorld.x, hoverProbeWorld.y).y !== q.y
+      ) {
+        scoresChanged = true;
       }
     }
-    if (changed) scheduleProbeRedraw();
+    // Cursor-aligned window disk (both views): radius = raster_window_radius.
+    if (
+      !hoverProbeWorld ||
+      hoverProbeWorld.x !== x ||
+      hoverProbeWorld.y !== y
+    ) {
+      hoverProbeWorld = { x, y };
+      if (scoresChanged) probeScrubSeq = (probeScrubSeq + 1) | 0;
+      changed = true;
+    }
+    if (changed) {
+      scheduleProbeRedraw({ circleOnly: !scoresChanged });
+    }
     return true;
   }
 
@@ -1152,12 +1415,27 @@ export function mountEngine({ model, host }) {
   }
 
   function similarityRgbaForPoint(i, opacity) {
+    // Bin-backed points probe: query = nearest nonempty bin within R; color by
+    // that bin's cosine field mapped through each point's home bin.
+    if (binBackedPointsProbeOn()) {
+      const queryIdx = activeQueryBin();
+      if (queryIdx < 0) return null;
+      const scores = cosineScoresForQuery(queryIdx);
+      if (!scores) return null;
+      const bins = pointBinIndices();
+      const bin = bins[i] | 0;
+      if (bin < 0 || bin >= scores.length) return null;
+      const [r, g, b] = sampleRasterGray(scores[bin]);
+      return [r, g, b, Math.round(Math.max(0, Math.min(1, opacity)) * 255)];
+    }
+    // Fallback points probe (no packed bins): quantized disk mean + point cosine.
     if (pointSimilarityOn()) {
       const world = activeProbeWorld();
       if (!world) return null;
-      const mean = meanRawFeaturesInDisk(world.x, world.y);
+      const q = quantizeProbeWorld(world.x, world.y);
+      const mean = meanRawFeaturesInDisk(q.x, q.y);
       if (!mean) return null;
-      const scores = cosineScoresForFeatureVector(mean.vector, mean.dim);
+      const scores = cosineScoresForFeatureVector(mean.vector, mean.dim, q.x, q.y);
       if (!scores || i < 0 || i >= scores.length) return null;
       const [r, g, b] = sampleRasterGray(scores[i]);
       return [r, g, b, Math.round(Math.max(0, Math.min(1, opacity)) * 255)];
@@ -1215,7 +1493,6 @@ export function mountEngine({ model, host }) {
       queryIdx,
       scores ? rasterScoreKey : "observation",
       threshold,
-      hoverBinIndex,
       model.get("raster_query_bin"),
       basis,
       dimsKey,
@@ -1297,7 +1574,7 @@ export function mountEngine({ model, host }) {
     return rasterImageCache;
   }
 
-  function binWindowCircle(compactIdx) {
+  function binWindowCenter(compactIdx) {
     const cache = refreshRasterArrays();
     if (compactIdx < 0 || compactIdx >= (cache.nBins | 0)) return null;
     const size = Number(model.get("raster_bin_size")) || 0;
@@ -1306,17 +1583,10 @@ export function mountEngine({ model, host }) {
     const oy = Number(model.get("raster_origin_y")) || 0;
     const col = cache.cols[compactIdx] | 0;
     const row = cache.rows[compactIdx] | 0;
-    const cx = ox + (col + 0.5) * size;
-    const cy = oy + (row + 0.5) * size;
-    // Prefer synced window radius (default 20 µm); fall back to 2× bin size.
-    let r = Number(model.get("raster_window_radius")) || 0;
-    if (!(r > 0)) r = size * 2;
-    const path = [];
-    for (let i = 0; i <= RASTER_WINDOW_SEGMENTS; i++) {
-      const a = (i / RASTER_WINDOW_SEGMENTS) * Math.PI * 2;
-      path.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
-    }
-    return path;
+    return {
+      x: ox + (col + 0.5) * size,
+      y: oy + (row + 0.5) * size,
+    };
   }
 
   function buildRasterLayers() {
@@ -1364,7 +1634,7 @@ export function mountEngine({ model, host }) {
   }
 
   /** Additive channels (keep in sync with helpers GENE_COLORS): magenta / lime / azure. */
-  const GENE_COLORS = ["#ff0099", "#b8ff00", "#00b7ff"];
+  const GENE_COLORS = ["#ff0099", "#5cbf00", "#0088cc"];
 
   function geneMeta(geneName) {
     const genes = model.get("gene_columns") || [];
@@ -1631,8 +1901,6 @@ export function mountEngine({ model, host }) {
     }
     const mode = model.get("color_by") || "categorical";
     const title = model.get("legend_title") || "";
-    const palette = model.get("point_palette") || [];
-    const activeGenes = model.get("active_genes") || [];
 
     legend.innerHTML = "";
     if (title) {
@@ -1643,33 +1911,8 @@ export function mountEngine({ model, host }) {
     }
 
     // Gene / embedding legends render in Explore chrome under the combobox.
-    if (mode === "embedding") {
+    if (mode === "embedding" || mode === "continuous") {
       legend.hidden = true;
-      return;
-    }
-    if (mode === "continuous" && activeGenes.length > 0) {
-      legend.hidden = true;
-      return;
-    }
-
-    if (mode === "continuous" && palette.length > 1) {
-      const bar = document.createElement("div");
-      bar.className = "landmarks__legend-bar";
-      bar.style.background = `linear-gradient(to top, ${palette[0]}, ${palette[Math.floor(palette.length / 2)]}, ${palette[palette.length - 1]})`;
-      const scale = document.createElement("div");
-      scale.className = "landmarks__legend-scale";
-      const vmax = document.createElement("span");
-      vmax.textContent = formatLegendValue(model.get("color_vmax"));
-      const vmin = document.createElement("span");
-      vmin.textContent = formatLegendValue(model.get("color_vmin"));
-      scale.appendChild(vmax);
-      scale.appendChild(vmin);
-      const row = document.createElement("div");
-      row.className = "landmarks__legend-continuous";
-      row.appendChild(bar);
-      row.appendChild(scale);
-      legend.appendChild(row);
-      legend.hidden = false;
       return;
     }
 
@@ -1744,19 +1987,8 @@ export function mountEngine({ model, host }) {
           blendGeneColors(d.i, opacity) ||
           hexToRgbaBytes("#6b7280", opacity * 0.35);
       } else {
-        const palette = model.get("point_palette") || [FALLBACK_POINT];
-        if (palette.length > 1) {
-          const t = Math.max(0, Math.min(1, d.valueA));
-          const idx = t * (palette.length - 1);
-          const lo = Math.floor(idx);
-          const hi = Math.min(palette.length - 1, lo + 1);
-          const frac = idx - lo;
-          const c0 = hexToRgbaBytes(palette[lo], opacity);
-          const c1 = hexToRgbaBytes(palette[hi], opacity);
-          rgba = c0.map((v, i) => Math.round(v + (c1[i] - v) * frac));
-        } else {
-          rgba = hexToRgbaBytes(palette[0], opacity);
-        }
+        // Genes mode at rest (none selected): uniform neutral grey.
+        rgba = hexToRgbaBytes("#6b7280", opacity);
       }
     } else {
       const cols = model.get("category_columns") || [];
@@ -1917,9 +2149,10 @@ export function mountEngine({ model, host }) {
       hoverBinIndex,
       hoverPointIndex,
       pinnedPointIndex,
-      hoverProbeWorld,
-      pinnedProbeWorld,
+      // Circle follows cursor separately; point colors only change when the
+      // quantized / bin query changes (probeScrubSeq) or pin moves.
       probeScrubSeq,
+      pinnedProbeWorld,
       currentMode,
       ...roleTrigger,
     ];
@@ -2565,9 +2798,66 @@ export function mountEngine({ model, host }) {
 
 
   function buildProbeOutlineLayers() {
-    // Prefer no probe disk outline: a moving circle at the cursor (or a circle
-    // at the query feature) reads as snap/flash. Similarity legend is enough.
-    return [];
+    if (!deckModules || !probeModeOn()) return [];
+    const { ScatterplotLayer } = deckModules;
+    const R = probeWindowRadius();
+    const disks = [];
+
+    const pinnedBin = model.get("raster_query_bin");
+    if (isRasterMode() && pinnedBin != null && (pinnedBin | 0) >= 0) {
+      const c = binWindowCenter(pinnedBin | 0);
+      if (c) disks.push({ position: [c.x, c.y, 0], pinned: true, key: `bin${pinnedBin}` });
+    } else if (!isRasterMode() && pinnedProbeWorld) {
+      disks.push({
+        position: [pinnedProbeWorld.x, pinnedProbeWorld.y, 0],
+        pinned: true,
+        key: `pin${pinnedProbeWorld.x},${pinnedProbeWorld.y}`,
+      });
+    }
+
+    if (hoverProbeWorld) {
+      const hx = hoverProbeWorld.x;
+      const hy = hoverProbeWorld.y;
+      const onPinnedPoints =
+        !isRasterMode() &&
+        pinnedProbeWorld &&
+        pinnedProbeWorld.x === hx &&
+        pinnedProbeWorld.y === hy;
+      if (!onPinnedPoints) {
+        disks.push({ position: [hx, hy, 0], pinned: false, key: "hover" });
+      }
+    }
+
+    if (!disks.length) return [];
+    return disks.map((disk) =>
+      new ScatterplotLayer({
+        id: disk.pinned ? "probe-window-pinned" : "probe-window-hover",
+        data: [disk],
+        getPosition: (d) => d.position,
+        getRadius: R,
+        radiusUnits: "common",
+        stroked: true,
+        filled: true,
+        getFillColor: [0, 0, 0, 0],
+        getLineColor: hexToRgbaBytes(
+          disk.pinned ? PROBE_PINNED_STROKE : PROBE_HOVER_STROKE,
+          disk.pinned ? 0.95 : 0.72,
+        ),
+        getLineWidth: disk.pinned ? PROBE_PINNED_WIDTH : PROBE_HOVER_WIDTH,
+        lineWidthUnits: "pixels",
+        pickable: false,
+        parameters: OVERLAY_GL,
+        updateTriggers: {
+          getPosition: [
+            hoverProbeWorld,
+            pinnedProbeWorld,
+            model.get("raster_query_bin"),
+            probeScrubSeq,
+          ],
+          getRadius: [model.get("raster_window_radius"), model.get("raster_bin_size")],
+        },
+      }),
+    );
   }
 
   function buildDeckLayers() {
@@ -2748,7 +3038,7 @@ export function mountEngine({ model, host }) {
     if (layerRaf) return;
     layerRaf = requestAnimationFrame(() => {
       layerRaf = 0;
-      applyDeckProps({ layers: buildDeckLayers() });
+      publishDeckLayers(buildDeckLayers());
     });
   }
 
@@ -2843,8 +3133,23 @@ export function mountEngine({ model, host }) {
                 hoverBinIndex = -1;
                 setDeckLayers();
               }
+            } else if (hasRasterFeatures()) {
+              // Points bin-backed pin: same query bin as raster probe.
+              const bin = nearestNonemptyBinWithinRadius(world[0], world[1]);
+              if (bin >= 0) {
+                model.set("raster_query_bin", bin);
+                model.save_changes();
+                pinnedProbeWorld = { x: world[0], y: world[1] };
+                hoverProbeWorld = null;
+                hoverBinIndex = -1;
+                pinnedPointIndex = -1;
+                hoverPointIndex = -1;
+                probeScrubSeq = (probeScrubSeq + 1) | 0;
+                setDeckLayers();
+              }
             } else {
-              const mean = meanRawFeaturesInDisk(world[0], world[1]);
+              const q = quantizeProbeWorld(world[0], world[1]);
+              const mean = meanRawFeaturesInDisk(q.x, q.y);
               if (mean) {
                 pinnedProbeWorld = { x: world[0], y: world[1] };
                 hoverProbeWorld = null;
@@ -2873,12 +3178,11 @@ export function mountEngine({ model, host }) {
             const world = worldFromDeckInfo(info);
             if (world) {
               scrubProbeAtWorld(world[0], world[1]);
-              webglCanvas.style.cursor = "crosshair";
-            } else {
-              clearProbeHover();
-              webglCanvas.style.cursor = defaultCursor();
             }
-          } else if (currentMode === "pointer") {
+            webglCanvas.style.cursor = "crosshair";
+            return;
+          }
+          if (currentMode === "pointer") {
             const hit = resolveHoverTarget(info);
             if (hoverBinIndex >= 0) {
               hoverBinIndex = -1;
@@ -2930,7 +3234,7 @@ export function mountEngine({ model, host }) {
           requestAnimationFrame(() => {
             syncCanvasBuffer();
             fitDeckToBounds();
-            applyDeckProps({ layers: buildDeckLayers() });
+            publishDeckLayers(buildDeckLayers());
             if (typeof deckgl.redraw === "function") deckgl.redraw(true);
           });
         },
@@ -3824,8 +4128,23 @@ export function mountEngine({ model, host }) {
     }
   }
 
-  function handleMouseLeave() {
-    if (probeModeOn()) clearProbeHover();
+  function handleMouseLeave(event) {
+    // Deck picking-canvas swaps fire mouseleave while the pointer is still
+    // on the plot. Only drop hover when the pointer is actually outside.
+    if (probeModeOn()) {
+      // Synthetic picking-canvas leaves have relatedTarget=null and often
+      // clientX/Y of 0,0 — those must not drop the hover field. Only clear
+      // when the pointer actually entered another widget node.
+      const into = event?.relatedTarget;
+      const stillOnPlot =
+        !into ||
+        (into instanceof Node &&
+          (host.contains(into) ||
+            main.contains(into) ||
+            plotStack.contains(into) ||
+            container.contains(into)));
+      if (!stillOnPlot) clearProbeHover();
+    }
     if (isDragging) { isDragging = false; dragStart = null; }
     if (vertexDragIndex >= 0 || vertexDragLandmarkIndex >= 0) {
       vertexDragIndex = -1;
@@ -3965,12 +4284,13 @@ export function mountEngine({ model, host }) {
     return false;
   }
 
+  let pointerInWidget = false;
+
   function handleKeyDown(event) {
     if (isTypingTarget(event.target)) return;
-    // Only when the event is inside this widget (canvas or chrome).
-    if (!(event.target instanceof Node) || !container.contains(event.target)) {
-      return;
-    }
+    const inside =
+      event.target instanceof Node && container.contains(event.target);
+    if (!inside && !pointerInWidget) return;
 
     const mod = event.metaKey || event.ctrlKey;
     const key = event.key;
@@ -4129,8 +4449,36 @@ export function mountEngine({ model, host }) {
   webglCanvas.addEventListener("mouseup", handleMouseUp, { signal });
   webglCanvas.addEventListener("mouseleave", handleMouseLeave, { signal });
   webglCanvas.addEventListener("dblclick", handleDblClick, { signal });
+  webglCanvas.addEventListener(
+    "pointerdown",
+    () => {
+      pointerInWidget = true;
+      try {
+        webglCanvas.focus({ preventScroll: true });
+      } catch {
+        webglCanvas.focus();
+      }
+    },
+    { signal },
+  );
+  container.addEventListener(
+    "pointerdown",
+    () => {
+      pointerInWidget = true;
+    },
+    { signal },
+  );
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (!(e.target instanceof Node) || !container.contains(e.target)) {
+        pointerInWidget = false;
+      }
+    },
+    { signal },
+  );
   // Widget-scoped shortcuts (modes, zoom, copy/paste/delete). Skip when typing in chrome.
-  container.addEventListener("keydown", handleKeyDown, { signal });
+  document.addEventListener("keydown", handleKeyDown, { signal });
   webglCanvas.addEventListener("contextmenu", handleContextMenu, {
     capture: true,
     signal,

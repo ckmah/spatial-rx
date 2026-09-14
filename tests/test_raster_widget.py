@@ -83,11 +83,11 @@ def test_raster_default_bin_and_window_microns():
     )
     w = LandmarksWidget(adata, color="cell_class", genes=["g1"])
     assert w.raster_bin_size == pytest.approx(8.0)
-    assert w.raster_window_radius == pytest.approx(16.0)
+    assert w.raster_window_radius == pytest.approx(24.0)
     w.active_genes = ["g1"]
     w.set_render_mode("raster")
     assert w.raster_status == "ready"
-    assert w.raster_window_radius == pytest.approx(16.0)
+    assert w.raster_window_radius == pytest.approx(24.0)
 
 
 def test_raster_discovers_embedding_keys():

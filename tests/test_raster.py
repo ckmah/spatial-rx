@@ -93,8 +93,8 @@ def test_default_bin_size_fixed_microns():
     assert default_bin_size(None) == pytest.approx(8.0)
     from spatial_rx.raster import default_window_radius
 
-    assert default_window_radius(8.0) == pytest.approx(16.0)
-    assert default_window_radius(None) == pytest.approx(16.0)
+    assert default_window_radius(8.0) == pytest.approx(24.0)
+    assert default_window_radius(None) == pytest.approx(24.0)
 
 
 def test_aggregate_mean_window_radius_extremes():

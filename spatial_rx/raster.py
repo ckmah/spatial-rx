@@ -2,7 +2,7 @@
 
 Aggregation is **windowed**: each bin's feature vector is the mean of cell
 features whose positions fall within ``window_radius`` of the bin center
-(default = ``DEFAULT_WINDOW_RADIUS`` = 16 world units / µm). That softens hard
+(default = ``DEFAULT_WINDOW_RADIUS`` = 24 world units / µm). That softens hard
 Voronoi boundaries and reads as higher effective resolution when bins are small.
 
 deck.gl GPU aggregation layers (``GridLayer`` / ``HeatmapLayer``) collapse to
@@ -20,9 +20,9 @@ from typing import Any
 import numpy as np
 
 # Fixed physical defaults (world units; µm when spatial coords are µm).
-# Window stays 2× bin edge so aggregation softens at the same relative scale.
+# Window stays 3× bin edge so aggregation softens at the same relative scale.
 DEFAULT_BIN_SIZE = 8.0
-DEFAULT_WINDOW_RADIUS = 16.0
+DEFAULT_WINDOW_RADIUS = 24.0
 
 
 def _encode_i32(arr: np.ndarray) -> str:
@@ -104,11 +104,11 @@ def default_bin_size(
 def default_window_radius(bin_size: float | None = None) -> float:
     """Default aggregation window radius in world units.
 
-    Twice the bin edge when ``bin_size`` is given (keeps the soft window
-    proportional); otherwise ``DEFAULT_WINDOW_RADIUS`` (16 µm).
+    Three times the bin edge when ``bin_size`` is given (keeps the soft window
+    proportional); otherwise ``DEFAULT_WINDOW_RADIUS`` (24 µm).
     """
     if bin_size is not None and float(bin_size) > 0 and np.isfinite(float(bin_size)):
-        return float(bin_size) * 2.0
+        return float(bin_size) * 3.0
     return float(DEFAULT_WINDOW_RADIUS)
 
 

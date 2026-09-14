@@ -2,6 +2,7 @@
 export const KEYBOARD_SHORTCUTS: { action: string; keys: string }[] = [
   { action: "Pointer", keys: "V" },
   { action: "Move", keys: "H" },
+  { action: "Probe", keys: "P" },
   { action: "Lasso", keys: "L" },
   { action: "Square", keys: "R" },
   { action: "Circle", keys: "O" },
@@ -29,7 +30,7 @@ export const KEYBOARD_SHORTCUTS: { action: string; keys: string }[] = [
 export const MODE_SHORTCUTS: Record<string, string> = {
   pointer: "V",
   move: "H",
-  probe: "Q",
+  probe: "P",
   lasso: "L",
   rectangle: "R",
   ellipse: "O",
@@ -51,8 +52,8 @@ export const LANDMARK_COLORS = [
 ];
 /** Quiet Framer-neutral selection strokes (active selection uses stronger chrome). */
 export const SELECTION_COLORS = ["#a3a3a3", "#8a8a8a", "#737373", "#c4c4c4"];
-/** Additive channels for multi-gene blend (selection order): magenta / lime / azure. */
-export const GENE_COLORS = ["#ff0099", "#b8ff00", "#00b7ff"];
+/** Additive channels for multi-gene / embed blend (selection order): magenta / lime / azure. */
+export const GENE_COLORS = ["#ff0099", "#5cbf00", "#0088cc"];
 export const MAX_ACTIVE_GENES = GENE_COLORS.length;
 /** Scatter fallback when no palette is set (landmark cyan — never Tailwind blue). */
 export const FALLBACK_POINT_COLOR = LANDMARK_COLORS[0];

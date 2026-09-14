@@ -33,10 +33,12 @@ import type { LandmarksModel } from "../use-landmarks-model";
 import { colorSignal } from "./coloring";
 import {
   compositionSlices,
-  embeddingTernaryCloud,
+  embeddingRgbCloud,
   geneDensities,
   resolvePointMask,
 } from "./info-stats";
+import { CLOUD_CUBE, cubeCornerLabel } from "./rgb-cube";
+import { RgbCubeLegend } from "./rgb-cube-legend";
 import {
   EMBEDDED_PANEL,
   FLOAT_PANEL,
@@ -45,13 +47,24 @@ import {
 } from "./sections";
 
 /** Fixed chart slot so Category / Genes / Embedding swaps do not resize the card. */
-function InfoChartWell({ children }: { children: React.ReactNode }) {
+function InfoChartWell({
+  children,
+  legend,
+}: {
+  children: React.ReactNode;
+  legend?: React.ReactNode;
+}) {
   return (
     <div
-      className="landmarks-info-chart flex h-44 w-full shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius)]"
+      className="landmarks-info-chart relative flex h-44 w-full shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius)]"
       data-testid="info-chart-well"
     >
       {children}
+      {legend ? (
+        <div className="pointer-events-none absolute top-0.5 right-0.5">
+          {legend}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -249,7 +262,7 @@ export function InfoPanel({
   const embeddingCloud = useMemo(() => {
     if (!showEmbedding) return [];
     const labels = lm.embedding_channel_labels || [];
-    return embeddingTernaryCloud({
+    return embeddingRgbCloud({
       n,
       mask: focusMask,
       embeddingValuesB64: lm.embedding_values || "",
@@ -271,7 +284,7 @@ export function InfoPanel({
         embeddingCloud.length ? (
           <div className="flex h-full min-h-0 w-full flex-1 items-center justify-center">
             <svg
-              viewBox="0 0 80 80"
+              viewBox={`0 0 ${CLOUD_CUBE.vbW} ${CLOUD_CUBE.vbH}`}
               className="h-full max-h-52 w-full max-w-[13rem]"
               role="img"
               aria-label={`${embKey} RGB cloud in current scope`}
@@ -466,7 +479,21 @@ export function InfoPanel({
 
   const body = (
     <div className="flex min-h-0 flex-1 flex-col gap-2 pb-1.5">
-      <InfoChartWell>{charts}</InfoChartWell>
+      <InfoChartWell
+        legend={
+          showGenes && genes.length >= 3 ? (
+            <RgbCubeLegend labels={genes.slice(0, 3)} />
+          ) : showEmbedding && embLabels.length >= 3 ? (
+            <RgbCubeLegend
+              labels={embLabels
+                .slice(0, 3)
+                .map((label, i) => cubeCornerLabel(label, i))}
+            />
+          ) : null
+        }
+      >
+        {charts}
+      </InfoChartWell>
     </div>
   );
 

@@ -1,4 +1,3 @@
-import { useId, useMemo } from "react";
 import { Switch } from "@/components/ui/switch";
 import {
   Combobox,
@@ -18,16 +17,7 @@ import { cn } from "@/lib/utils";
 import { GENE_COLORS, MAX_ACTIVE_GENES, blendHex, formatLegendValue } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
 import { ColorSwatch } from "./primitives";
-import {
-  geneDisplayBounds,
-  buildTernaryFillUrl,
-  TERNARY_SIZE,
-  TERNARY_PATH,
-  TERNARY_DOT_LEFT,
-  TERNARY_DOT_TOP,
-  TERNARY_DOT_RIGHT,
-  TERNARY_VERTEX_R,
-} from "./genes-ternary";
+import { geneDisplayBounds } from "./genes-ternary";
 import { useWidgetPortalContainer } from "./use-widget-portal";
 
 function GenesHorizontalBar({
@@ -71,68 +61,12 @@ function GenesHorizontalBar({
   );
 }
 
-function GenesTernaryLegend() {
-  const clipId = useId();
-  const fillUrl = useMemo(() => buildTernaryFillUrl(), []);
-
-  return (
-    <div className="flex justify-center py-0.5">
-      <svg
-        viewBox={`0 0 ${TERNARY_SIZE} ${TERNARY_SIZE}`}
-        className="size-16"
-        aria-hidden
-      >
-        <defs>
-          <clipPath id={clipId}>
-            <path d={TERNARY_PATH} />
-          </clipPath>
-        </defs>
-        {fillUrl ? (
-          <image
-            href={fillUrl}
-            width={TERNARY_SIZE}
-            height={TERNARY_SIZE}
-            clipPath={`url(#${clipId})`}
-            preserveAspectRatio="none"
-          />
-        ) : null}
-        <path
-          d={TERNARY_PATH}
-          fill="none"
-          className="stroke-border"
-          strokeWidth={1}
-        />
-        <circle
-          cx={TERNARY_DOT_LEFT.x}
-          cy={TERNARY_DOT_LEFT.y}
-          r={TERNARY_VERTEX_R}
-          fill={GENE_COLORS[0]}
-        />
-        <circle
-          cx={TERNARY_DOT_TOP.x}
-          cy={TERNARY_DOT_TOP.y}
-          r={TERNARY_VERTEX_R}
-          fill={GENE_COLORS[1]}
-        />
-        <circle
-          cx={TERNARY_DOT_RIGHT.x}
-          cy={TERNARY_DOT_RIGHT.y}
-          r={TERNARY_VERTEX_R}
-          fill={GENE_COLORS[2]}
-        />
-      </svg>
-    </div>
-  );
-}
-
 function GenesLegend({ lm }: { lm: LandmarksModel }) {
   const { active_genes, gene_columns, color_by, gene_log1p, gene_scale_mode } = lm;
   const selected = active_genes || [];
   if (color_by !== "continuous" || !selected.length) return null;
-
-  if (selected.length >= 3) {
-    return <GenesTernaryLegend />;
-  }
+  // 3-channel RGB cube lives on the info plot, not under the combobox.
+  if (selected.length >= 3) return null;
 
   const colors = selected.map((_, i) => GENE_COLORS[i % GENE_COLORS.length]);
   let lo = 0;
