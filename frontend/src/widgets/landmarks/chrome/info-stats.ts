@@ -3,20 +3,20 @@ import type { CategoryColumn, SelectionItem } from "../helpers";
 import { decodeF32Base64, decodeI32Base64 } from "../binary";
 import { CLOUD_CUBE, isoProject, mixChannelRgb } from "./rgb-cube";
 
-type CompositionSlice = {
+export type CompositionSlice = {
   key: string;
   label: string;
   value: number;
   fill: string;
 };
 
-type DensitySeries = {
+export type DensitySeries = {
   key: string;
   label: string;
   color: string;
 };
 
-type DensityRow = {
+export type DensityRow = {
   x: number;
 } & Record<string, number>;
 
@@ -142,7 +142,7 @@ export function compositionSlices(opts: {
     .filter((s: CompositionSlice) => s.value > 0);
 }
 
-/** Smooth density curves for active genes (Gaussian KDE on [0,1] or log1p space). */
+/** Smooth density curves for active genes (Gaussian KDE on observed sample range). */
 export function geneDensities(opts: {
   n: number;
   mask: Uint8Array;
@@ -150,7 +150,7 @@ export function geneDensities(opts: {
   activeGenes: string[];
   geneLog1p: boolean;
   bins?: number;
-}): { series: DensitySeries[]; rows: DensityRow[] } {
+}): { series: DensitySeries[]; rows: DensityRow[]; xMin: number; xMax: number } {
   const {
     n,
     mask,
@@ -165,11 +165,13 @@ export function geneDensities(opts: {
     color: GENE_COLORS[i % GENE_COLORS.length],
   }));
   if (!series.length || !geneValuesB64 || n <= 0) {
-    return { series, rows: [] };
+    return { series, rows: [], xMin: 0, xMax: 1 };
   }
 
   const values = decodeF32Base64(geneValuesB64);
   const samples: number[][] = series.map(() => []);
+  let obsLo = Infinity;
+  let obsHi = -Infinity;
   for (let g = 0; g < series.length; g++) {
     for (let i = 0; i < n; i++) {
       if (!mask[i]) continue;
@@ -177,14 +179,23 @@ export function geneDensities(opts: {
       if (!Number.isFinite(v)) continue;
       if (geneLog1p) v = Math.log1p(v);
       samples[g].push(v);
+      if (v < obsLo) obsLo = v;
+      if (v > obsHi) obsHi = v;
     }
   }
 
-  const xMax = geneLog1p ? Math.log1p(1) : 1;
-  const bandwidth = Math.max(xMax / 24, 1e-3);
+  if (!(obsHi > obsLo) || !Number.isFinite(obsLo) || !Number.isFinite(obsHi)) {
+    obsLo = 0;
+    obsHi = geneLog1p ? Math.log1p(1) : 1;
+  }
+  const pad = (obsHi - obsLo) * 0.04 || 1e-3;
+  const xMin = obsLo - pad;
+  const xMax = obsHi + pad;
+  const span = xMax - xMin;
+  const bandwidth = Math.max(span / 24, 1e-3);
   const rows: DensityRow[] = [];
   for (let b = 0; b < bins; b++) {
-    const x = (b / (bins - 1)) * xMax;
+    const x = xMin + (b / (bins - 1)) * span;
     const row: DensityRow = { x };
     for (let g = 0; g < series.length; g++) {
       const pts = samples[g];
@@ -203,24 +214,43 @@ export function geneDensities(opts: {
     }
     rows.push(row);
   }
-  return { series, rows };
+  return { series, rows, xMin, xMax };
 }
 
 export type EmbeddingCloudPoint = {
   x: number;
   y: number;
   color: string;
+  /** True when in focus, or when nothing is focused (uniform style). */
+  selected: boolean;
 };
 
-/** Sample cells in scope onto the isometric RGB cube (3 independent channels). */
+/** Match landmarks.js point-role emphasis while a type/selection is focused. */
+export const CLOUD_SELECTED_SIZE_SCALE = 1.28;
+export const CLOUD_OTHER_SIZE_SCALE = 0.55;
+export const CLOUD_OTHER_ALPHA_SCALE = 0.28;
+
+/** Sample cells onto the isometric RGB cube (3 independent channels). */
 export function embeddingRgbCloud(opts: {
   n: number;
+  /** Universe to sample from (usually all cells). */
   mask: Uint8Array;
+  /** When hasFocus, points with focusMask[i]=1 are emphasized. */
+  focusMask?: Uint8Array;
+  hasFocus?: boolean;
   embeddingValuesB64: string;
   nChannels: number;
   maxPoints?: number;
 }): EmbeddingCloudPoint[] {
-  const { n, mask, embeddingValuesB64, nChannels, maxPoints = 400 } = opts;
+  const {
+    n,
+    mask,
+    focusMask,
+    hasFocus = false,
+    embeddingValuesB64,
+    nChannels,
+    maxPoints = 400,
+  } = opts;
   if (!embeddingValuesB64 || n <= 0 || nChannels <= 0) return [];
   const values = decodeF32Base64(embeddingValuesB64);
   if (values.length < n * nChannels) return [];
@@ -239,11 +269,15 @@ export function embeddingRgbCloud(opts: {
     }
     const { rr, gg, bb, sum } = mixChannelRgb(ch[0], ch[1], ch[2]);
     const p = isoProject(ch[0], ch[1], ch[2], CLOUD_CUBE);
+    const selected = !hasFocus || !!(focusMask && focusMask[i]);
     out.push({
       x: p.x,
       y: p.y,
       color: sum > 1e-8 ? `rgb(${rr},${gg},${bb})` : "var(--muted-foreground)",
+      selected,
     });
   }
+  // Unselected under selected so emphasis reads on top.
+  if (hasFocus) out.sort((a, b) => Number(a.selected) - Number(b.selected));
   return out;
 }

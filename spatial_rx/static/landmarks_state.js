@@ -40,14 +40,9 @@ export function setActiveGenes(model, names) {
   }
   model.set("active_genes", next);
   if (!next.length) {
-    const cols = model.get("category_columns") || [];
-    const active = model.get("active_category") || "";
-    const col = cols.find((c) => c.name === active) || cols[0];
-    if (col) {
-      applyActiveCategory(model, col);
-      return;
-    }
-    model.set("color_by", "categorical");
+    // Stay in the genes observation family — empty selection, not categories.
+    model.set("color_by", "continuous");
+    model.set("raster_basis", "genes");
     model.set("legend_title", "");
     model.save_changes();
     return;
@@ -84,17 +79,18 @@ export function setRenderMode(model, mode) {
   const next = mode === "raster" ? "raster" : "points";
   const genes = model.get("active_genes") || [];
   const basis = model.get("raster_basis");
+  const colorBy = model.get("color_by");
   const embKey = model.get("raster_embedding_key");
+  const geneIntent =
+    genes.length > 0 || basis === "genes" || colorBy === "continuous";
+  const embedIntent =
+    (basis === "embedding" || colorBy === "embedding") && !!embKey;
   if (next === "raster") {
-    // Keep the active observation when flipping geometry: genes win when set,
-    // otherwise preserve embedding if that was the signal, else composition.
-    if (genes.length) {
+    // Keep the active observation when flipping geometry, including empty genes.
+    if (geneIntent) {
       model.set("raster_basis", "genes");
       model.set("color_by", "continuous");
-    } else if (
-      (basis === "embedding" || model.get("color_by") === "embedding") &&
-      embKey
-    ) {
+    } else if (embedIntent) {
       model.set("raster_basis", "embedding");
       model.set("color_by", "embedding");
     } else {
@@ -103,9 +99,9 @@ export function setRenderMode(model, mode) {
     }
   } else {
     // Points: keep the same observation family that raster was showing.
-    if (genes.length || basis === "genes") {
+    if (geneIntent) {
       model.set("color_by", "continuous");
-    } else if (basis === "embedding" || model.get("color_by") === "embedding") {
+    } else if (basis === "embedding" || colorBy === "embedding") {
       model.set("color_by", "embedding");
     } else {
       model.set("color_by", "categorical");

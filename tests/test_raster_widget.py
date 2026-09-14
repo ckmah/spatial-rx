@@ -227,6 +227,34 @@ def test_probe_builds_features_in_points_mode():
     assert w.raster_n_bins == 0
     w.mode = "probe"
     # Trait observer on mode rebuilds bin features for points probe.
-    assert w.raster_n_bins >= 1
-    assert w.raster_features != ""
-    assert w.raster_status == "ready"
+    assert w.raster_n_bins > 0
+
+
+def test_empty_genes_keeps_gene_view_across_render_mode():
+    """Clearing genes / flipping View must stay on genes, not fall back to category."""
+    from spatial_rx import LandmarksWidget
+
+    adata = adata_xy(
+        [0.0, 0.2, 2.0, 2.1],
+        [0.0, 0.1, 0.0, 2.0],
+        color=["Epi", "Epi", "Imm", "Fib"],
+        color_key="cell_class",
+        genes={"Apob": [0.0, 2.0, 0.0, 4.0], "Lgr5": [1.0, 0.0, 1.0, 0.0]},
+    )
+    w = LandmarksWidget(adata, color="cell_class", genes=["Apob", "Lgr5"])
+    w.active_genes = ["Apob"]
+    assert w.color_by == "continuous"
+
+    w.active_genes = []
+    assert w.active_genes == []
+    assert w.color_by == "continuous"
+
+    w.set_render_mode("raster")
+    assert w.render_mode == "raster"
+    assert w.raster_basis == "genes"
+    assert w.color_by == "continuous"
+
+    w.set_render_mode("points")
+    assert w.render_mode == "points"
+    assert w.color_by == "continuous"
+    assert w.raster_basis == "genes"

@@ -774,18 +774,18 @@ class LandmarksWidget(AnyWidget):
         if m not in ("points", "raster"):
             raise ValueError("render_mode must be 'points' or 'raster'")
         genes = list(self.active_genes or [])
+        basis = str(self.raster_basis or "composition")
+        color_by = str(self.color_by or "")
+        gene_intent = bool(genes) or basis == "genes" or color_by == "continuous"
+        embed_intent = (
+            basis == "embedding" or color_by == "embedding"
+        ) and bool(self.raster_embedding_key)
         if m == "raster":
-            # Keep the active observation when flipping geometry.
-            if genes:
+            # Keep the active observation when flipping geometry (incl. empty genes).
+            if gene_intent:
                 self.raster_basis = "genes"
                 self.color_by = "continuous"
-            elif (
-                (
-                    self.raster_basis == "embedding"
-                    or str(self.color_by or "") == "embedding"
-                )
-                and self.raster_embedding_key
-            ):
+            elif embed_intent:
                 self.raster_basis = "embedding"
                 self.color_by = "embedding"
             else:
@@ -793,12 +793,9 @@ class LandmarksWidget(AnyWidget):
                 self.color_by = "categorical"
         else:
             # Points: keep the same observation family that raster was showing.
-            if genes or self.raster_basis == "genes":
+            if gene_intent:
                 self.color_by = "continuous"
-            elif (
-                self.raster_basis == "embedding"
-                or str(self.color_by or "") == "embedding"
-            ):
+            elif basis == "embedding" or color_by == "embedding":
                 self.color_by = "embedding"
             else:
                 self.color_by = "categorical"

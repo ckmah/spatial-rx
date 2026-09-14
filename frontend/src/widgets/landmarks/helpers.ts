@@ -23,7 +23,7 @@ export const KEYBOARD_SHORTCUTS: { action: string; keys: string }[] = [
     keys: "⌫ / Delete",
   },
   { action: "Finish draft", keys: "Enter" },
-  { action: "Cancel draft / deselect", keys: "Esc" },
+  { action: "Cancel draft / deselect / clear probe", keys: "Esc" },
 ];
 
 /** Mode id → tooltip shortcut glyph. */
@@ -55,6 +55,9 @@ export const SELECTION_COLORS = ["#a3a3a3", "#8a8a8a", "#737373", "#c4c4c4"];
 /** Additive channels for multi-gene / embed blend (selection order): magenta / lime / azure. */
 export const GENE_COLORS = ["#ff0099", "#5cbf00", "#0088cc"];
 export const MAX_ACTIVE_GENES = GENE_COLORS.length;
+/** Probe similarity legend — Crameri lajolla (matches engine LAJOLLA_LUT). */
+export const SIMILARITY_LEGEND_CSS =
+  "linear-gradient(to right, #191900 0%, #372411 12%, #67342a 25%, #a64644 38%, #d9604e 50%, #e58751 62%, #ecac54 75%, #f7d971 88%, #fffecb 100%)";
 /** Scatter fallback when no palette is set (landmark cyan — never Tailwind blue). */
 export const FALLBACK_POINT_COLOR = LANDMARK_COLORS[0];
 export type GeneScaleMode = "independent" | "shared";

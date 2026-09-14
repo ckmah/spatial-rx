@@ -35,14 +35,29 @@ export const LEGEND_CUBE: IsoOpts & { vbW: number; vbH: number } = {
   vbH: 54,
 };
 
-/** Embedding cloud uses the same projection, larger, filling the chart well. */
+/** Embedding cloud — tight viewBox around the isometric hull (little chrome padding). */
 export const CLOUD_CUBE: IsoOpts & { vbW: number; vbH: number } = {
-  s: 30,
-  ox: 40,
-  oy: 44,
-  vbW: 80,
+  s: 38,
+  ox: 35,
+  oy: 40,
+  vbW: 70,
   vbH: 80,
 };
+
+/**
+ * Cloud dot radius in viewBox units. Scales with 1/√n like an overplot-aware
+ * scatter (minimap keeps dots tiny relative to the map; denser clouds shrink).
+ */
+export function embeddingCloudPointRadius(
+  nPoints: number,
+  vbSpan = CLOUD_CUBE.vbW,
+): number {
+  // ~0.75 CSS-px on a ~180px minimap ≈ 0.4% of span.
+  const base = Math.max(0.5, vbSpan * 0.0085);
+  if (nPoints <= 1) return base * 2.4;
+  const densityScale = Math.sqrt(48 / Math.max(nPoints, 12));
+  return Math.max(0.4, Math.min(1.25, base * 2.1 * densityScale));
+}
 
 /** Bare dim index from labels like "X_pca_0" → "0". */
 export function cubeCornerLabel(raw: string, index: number) {

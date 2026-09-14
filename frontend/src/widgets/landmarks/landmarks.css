@@ -61,7 +61,10 @@
   --ease-out: ease-out;
   --ease-linear: linear;
   --scale-small: 0.98;
+  --blur-small: 2px;
   --lm-tab-pill-dur: var(--duration-fast);
+  /* Points↔raster / color-mode canvas pulse (2× --duration-fast). */
+  --lm-view-swap-dur: 500ms;
 }
 
 .landmarks ::selection {
@@ -236,6 +239,38 @@
   outline: none;
   z-index: 1;
   background: var(--lm-bg);
+}
+
+/* Points ↔ raster / color-mode continuity — blur via overlay, not the
+   WebGL canvas (filtering the canvas itself blacks out in many browsers). */
+@keyframes landmarks-view-blur-veil {
+  0%,
+  100% {
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
+  }
+  40% {
+    backdrop-filter: blur(var(--blur-small, 2px));
+    -webkit-backdrop-filter: blur(var(--blur-small, 2px));
+  }
+}
+.landmarks__plot--view-swap {
+  position: relative;
+}
+.landmarks__plot--view-swap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  /* Transparent — blur only, no dimming wash. */
+  background: transparent;
+  animation: landmarks-view-blur-veil var(--lm-view-swap-dur) var(--ease-smooth-out) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .landmarks__plot--view-swap::after {
+    animation: none;
+  }
 }
 
 .landmarks__error {
@@ -1130,6 +1165,34 @@
 
 .landmarks-minimap-float {
   border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent);
+}
+
+/* View CTA — icon swap + brief press pop. */
+.landmarks-view-cta__icon {
+  transition:
+    opacity var(--lm-view-swap-dur) var(--ease-in-out),
+    filter var(--lm-view-swap-dur) var(--ease-in-out),
+    transform var(--lm-view-swap-dur) var(--ease-in-out);
+}
+.landmarks-view-cta__icon--in {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+.landmarks-view-cta__icon--out {
+  opacity: 0;
+  filter: blur(var(--blur-small));
+  transform: scale(0.86);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .landmarks-view-cta__icon {
+    transition: none;
+    filter: none;
+  }
+  .landmarks-view-cta__icon--out {
+    transform: none;
+  }
 }
 
 /* View CTA click delight — brief overshoot pop (impeccable delight). */

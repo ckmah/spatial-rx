@@ -104,15 +104,50 @@ function lerpRgb(low, high, t) {
   ];
 }
 
-/** Similarity diverging palette centered at 0.5: blue → light → magenta. */
-const RASTER_SIM_LOW = [59, 130, 246]; // #3b82f6
-const RASTER_SIM_MID = [232, 232, 232]; // #e8e8e8
-const RASTER_SIM_HIGH = [255, 0, 153]; // #ff0099
+/** Similarity colormap: Fabio Crameri lajolla (sequential, 0→1). */
+const LAJOLLA_LUT = [
+  [25, 25, 0],
+  [32, 28, 4],
+  [39, 30, 8],
+  [48, 33, 13],
+  [57, 36, 18],
+  [67, 40, 23],
+  [78, 44, 29],
+  [92, 48, 36],
+  [106, 53, 44],
+  [121, 58, 51],
+  [137, 63, 58],
+  [154, 67, 64],
+  [173, 71, 70],
+  [188, 76, 73],
+  [202, 81, 75],
+  [213, 90, 77],
+  [220, 101, 78],
+  [224, 112, 79],
+  [226, 122, 80],
+  [228, 131, 81],
+  [230, 142, 81],
+  [232, 151, 82],
+  [234, 161, 83],
+  [236, 170, 84],
+  [238, 180, 85],
+  [241, 192, 88],
+  [243, 203, 96],
+  [246, 215, 111],
+  [249, 227, 132],
+  [252, 239, 159],
+  [254, 247, 182],
+  [255, 254, 203],
+];
 
-function sampleRasterGray(t) {
+function sampleSimilarityColor(t) {
   const u = clamp01(t);
-  if (u <= 0.5) return lerpRgb(RASTER_SIM_LOW, RASTER_SIM_MID, u / 0.5);
-  return lerpRgb(RASTER_SIM_MID, RASTER_SIM_HIGH, (u - 0.5) / 0.5);
+  const n = LAJOLLA_LUT.length;
+  if (n <= 1) return LAJOLLA_LUT[0] || [0, 0, 0];
+  const x = u * (n - 1);
+  const i0 = Math.min(n - 2, Math.max(0, Math.floor(x)));
+  const f = x - i0;
+  return lerpRgb(LAJOLLA_LUT[i0], LAJOLLA_LUT[i0 + 1], f);
 }
 
 /** Parse ``rgb()`` / ``rgba()`` / ``#hex`` to ``[r,g,b]``; fallback black. */
@@ -928,7 +963,12 @@ export function mountEngine({ model, host }) {
   let pointScoreCache = { key: "", scores: null };
   let pinnedPointIndex = -1;
   /** Cursor-aligned probe disk (points): hover overrides pin while scrubbing. */
-  let hoverProbeWorld = null; // {x,y} | null
+  let hoverProbeWorld = null; // {x,y} | null — raw cursor (scores / sticky)
+  let probeDisplayWorld = null; // {x,y} | null — smoothed circle draw
+  let probeSmoothRaf = 0;
+  /** Esc clears pin/hover; stay on observation colors until the pointer moves. */
+  let probeScrubPaused = false;
+  let probePauseWorld = null; // {x,y} | null — park point after Esc
   let pinnedProbeWorld = null; // {x,y} | null
   let probeScrubSeq = 0;
   let pointDiskScoreCache = { key: "", scores: null };
@@ -1285,8 +1325,106 @@ export function mountEngine({ model, host }) {
     return scores;
   }
 
+  function prefersReducedMotion() {
+    try {
+      return !!window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    } catch {
+      return false;
+    }
+  }
+
+  function stopProbeSmooth() {
+    if (probeSmoothRaf) {
+      cancelAnimationFrame(probeSmoothRaf);
+      probeSmoothRaf = 0;
+    }
+  }
+
+  /** World position for the floating probe window stroke. */
+  function probeCircleWorld() {
+    return probeDisplayWorld || hoverProbeWorld;
+  }
+
+  function tickProbeSmooth() {
+    probeSmoothRaf = 0;
+    if (!hoverProbeWorld) {
+      probeDisplayWorld = null;
+      return;
+    }
+    if (prefersReducedMotion() || !probeDisplayWorld) {
+      probeDisplayWorld = { x: hoverProbeWorld.x, y: hoverProbeWorld.y };
+      publishProbeCircleOnly();
+      return;
+    }
+    // Exponential chase — circle glides; scores still use raw hoverProbeWorld.
+    const a = 0.32;
+    const dx = hoverProbeWorld.x - probeDisplayWorld.x;
+    const dy = hoverProbeWorld.y - probeDisplayWorld.y;
+    probeDisplayWorld = {
+      x: probeDisplayWorld.x + dx * a,
+      y: probeDisplayWorld.y + dy * a,
+    };
+    publishProbeCircleOnly();
+    const R = probeWindowRadius();
+    const eps2 = Math.max((R * 0.003) ** 2, 1e-10);
+    if (dx * dx + dy * dy > eps2) {
+      probeSmoothRaf = requestAnimationFrame(tickProbeSmooth);
+    } else {
+      probeDisplayWorld = { x: hoverProbeWorld.x, y: hoverProbeWorld.y };
+      publishProbeCircleOnly();
+    }
+  }
+
+  function startProbeSmooth() {
+    if (probeSmoothRaf) return;
+    probeSmoothRaf = requestAnimationFrame(tickProbeSmooth);
+  }
+
+  function publishProbeCircleOnly() {
+    // Own path — must not cancel scheduleProbeRedraw's hoverRaf (score rebuilds).
+    if (!deckgl?.isInitialized || !probeBaseLayers.length) return;
+    publishDeckLayers([
+      ...probeBaseLayers,
+      ...buildProbeOutlineLayers(),
+    ]);
+  }
+
   function isProbeWindowLayer(layer) {
     return String(layer?.id || "").startsWith("probe-window-");
+  }
+
+  function pulseViewTransition() {
+    if (!plotStack || prefersReducedMotion()) return;
+    plotStack.classList.remove("landmarks__plot--view-swap");
+    // Force restart if the user toggles again mid-animation.
+    void plotStack.offsetWidth;
+    plotStack.classList.add("landmarks__plot--view-swap");
+    const done = () => {
+      plotStack.classList.remove("landmarks__plot--view-swap");
+      plotStack.removeEventListener("animationend", done);
+    };
+    plotStack.addEventListener("animationend", done);
+  }
+
+  /** Set when a view/color swap should blur — fired only after layers are ready. */
+  let pendingViewPulse = false;
+
+  /**
+   * Start the continuity blur only once the canvas shows the destination mode.
+   * Points → raster waits for a drawable bitmap so the pulse isn't mid-glitch.
+   */
+  function maybePulsePendingViewTransition() {
+    if (!pendingViewPulse) return;
+    if (prefersReducedMotion()) {
+      pendingViewPulse = false;
+      return;
+    }
+    if (isRasterMode() && !rasterBitmapReady()) return;
+    pendingViewPulse = false;
+    // Next frame: deck has painted the new layers, then blur settles over them.
+    requestAnimationFrame(() => {
+      pulseViewTransition();
+    });
   }
 
   function publishDeckLayers(layers) {
@@ -1316,6 +1454,18 @@ export function mountEngine({ model, host }) {
 
   function scrubProbeAtWorld(x, y) {
     if (!probeModeOn()) return false;
+    // Esc reset: hold observation colors until the cursor actually moves.
+    if (probeScrubPaused) {
+      if (!probePauseWorld) {
+        probePauseWorld = { x, y };
+        return true;
+      }
+      if (probePauseWorld.x === x && probePauseWorld.y === y) {
+        return true;
+      }
+      probeScrubPaused = false;
+      probePauseWorld = null;
+    }
     // Same world coords → no sticky/score/circle work (mousemove + rAF churn).
     if (
       hoverProbeWorld &&
@@ -1380,9 +1530,16 @@ export function mountEngine({ model, host }) {
       hoverProbeWorld = { x, y };
       if (scoresChanged) probeScrubSeq = (probeScrubSeq + 1) | 0;
       changed = true;
+      if (prefersReducedMotion() || !probeDisplayWorld) {
+        probeDisplayWorld = { x, y };
+      }
+    }
+    if (scoresChanged) {
+      // Full rebuild for similarity field; circle keeps gliding separately.
+      scheduleProbeRedraw({ circleOnly: false });
     }
     if (changed) {
-      scheduleProbeRedraw({ circleOnly: !scoresChanged });
+      startProbeSmooth();
     }
     return true;
   }
@@ -1397,8 +1554,10 @@ export function mountEngine({ model, host }) {
       hoverPointIndex = -1;
       changed = true;
     }
-    if (hoverProbeWorld) {
+    if (hoverProbeWorld || probeDisplayWorld) {
       hoverProbeWorld = null;
+      probeDisplayWorld = null;
+      stopProbeSmooth();
       changed = true;
     }
     if (changed) setDeckLayers();
@@ -1436,7 +1595,7 @@ export function mountEngine({ model, host }) {
       const bins = pointBinIndices();
       const bin = bins[i] | 0;
       if (bin < 0 || bin >= scores.length) return null;
-      const [r, g, b] = sampleRasterGray(scores[bin]);
+      const [r, g, b] = sampleSimilarityColor(scores[bin]);
       return [r, g, b, Math.round(Math.max(0, Math.min(1, opacity)) * 255)];
     }
     // Fallback points probe (no packed bins): quantized disk mean + point cosine.
@@ -1448,7 +1607,7 @@ export function mountEngine({ model, host }) {
       if (!mean) return null;
       const scores = cosineScoresForFeatureVector(mean.vector, mean.dim, q.x, q.y);
       if (!scores || i < 0 || i >= scores.length) return null;
-      const [r, g, b] = sampleRasterGray(scores[i]);
+      const [r, g, b] = sampleSimilarityColor(scores[i]);
       return [r, g, b, Math.round(Math.max(0, Math.min(1, opacity)) * 255)];
     }
     if (!rasterSimilarityOn()) return null;
@@ -1459,7 +1618,7 @@ export function mountEngine({ model, host }) {
     const bins = pointBinIndices();
     const bin = bins[i] | 0;
     if (bin < 0 || bin >= scores.length) return null;
-    const [r, g, b] = sampleRasterGray(scores[bin]);
+    const [r, g, b] = sampleSimilarityColor(scores[bin]);
     return [r, g, b, Math.round(Math.max(0, Math.min(1, opacity)) * 255)];
   }
 
@@ -1554,7 +1713,7 @@ export function mountEngine({ model, host }) {
       if (scores) {
         const t = Math.max(0, Math.min(1, scores[i]));
         if (t < threshold) alpha = RASTER_DIM_ALPHA;
-        [r, g, b] = sampleRasterGray(t);
+        [r, g, b] = sampleSimilarityColor(t);
       } else {
         [r, g, b] = observationColorForBin(i, cache, colStats);
       }
@@ -1626,6 +1785,14 @@ export function mountEngine({ model, host }) {
         },
       }),
     ];
+  }
+
+  /** True once raster mode has a drawable bitmap (not computing / empty). */
+  function rasterBitmapReady() {
+    if (!isRasterMode()) return false;
+    if ((model.get("raster_status") || "") === "computing") return false;
+    if (!hasRasterFeatures()) return false;
+    return !!buildRasterTexture()?.image;
   }
 
   function activeCategoryIndex() {
@@ -1878,6 +2045,8 @@ export function mountEngine({ model, host }) {
       hoverPointIndex = -1;
       pinnedPointIndex = -1;
       hoverProbeWorld = null;
+      probeDisplayWorld = null;
+      stopProbeSmooth();
       pinnedProbeWorld = null;
     }
     webglCanvas.style.cursor = defaultCursor();
@@ -2128,7 +2297,9 @@ export function mountEngine({ model, host }) {
 
   function buildPointsLayer() {
     if (!deckModules) return [];
-    if (isRasterMode()) return [];
+    // Hold points until the raster bitmap is ready — avoids a blank clear frame
+    // while Python rebuilds bins / texture on points → raster.
+    if (rasterBitmapReady()) return [];
     const { ScatterplotLayer } = deckModules;
     const data = getPointsData();
     if (!data.length) return [];
@@ -2826,14 +2997,15 @@ export function mountEngine({ model, host }) {
       });
     }
 
-    if (hoverProbeWorld) {
-      const hx = hoverProbeWorld.x;
-      const hy = hoverProbeWorld.y;
+    if (hoverProbeWorld || probeDisplayWorld) {
+      const circle = probeCircleWorld();
+      const hx = circle.x;
+      const hy = circle.y;
       const onPinnedPoints =
         !isRasterMode() &&
         pinnedProbeWorld &&
-        pinnedProbeWorld.x === hx &&
-        pinnedProbeWorld.y === hy;
+        pinnedProbeWorld.x === hoverProbeWorld?.x &&
+        pinnedProbeWorld.y === hoverProbeWorld?.y;
       if (!onPinnedPoints) {
         disks.push({ position: [hx, hy, 0], pinned: false, key: "hover" });
       }
@@ -2861,6 +3033,7 @@ export function mountEngine({ model, host }) {
         updateTriggers: {
           getPosition: [
             hoverProbeWorld,
+            probeDisplayWorld,
             pinnedProbeWorld,
             model.get("raster_query_bin"),
             probeScrubSeq,
@@ -3063,6 +3236,7 @@ export function mountEngine({ model, host }) {
     layerRaf = requestAnimationFrame(() => {
       layerRaf = 0;
       publishDeckLayers(buildDeckLayers());
+      maybePulsePendingViewTransition();
     });
   }
 
@@ -3168,6 +3342,8 @@ export function mountEngine({ model, host }) {
                 model.save_changes();
                 pinnedProbeWorld = { x: world[0], y: world[1] };
                 hoverProbeWorld = null;
+                probeDisplayWorld = null;
+                stopProbeSmooth();
                 hoverBinIndex = -1;
                 pinnedPointIndex = -1;
                 hoverPointIndex = -1;
@@ -3180,6 +3356,8 @@ export function mountEngine({ model, host }) {
               if (mean) {
                 pinnedProbeWorld = { x: world[0], y: world[1] };
                 hoverProbeWorld = null;
+                probeDisplayWorld = null;
+                stopProbeSmooth();
                 pinnedPointIndex = -1;
                 hoverPointIndex = -1;
                 probeScrubSeq = (probeScrubSeq + 1) | 0;
@@ -4191,16 +4369,38 @@ export function mountEngine({ model, host }) {
     finishVertexDraft();
   }
 
-  function isTypingTarget(target) {
-    if (!target || !(target instanceof Element)) return false;
-    const tag = target.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-    if (target.isContentEditable) return true;
-    return Boolean(
-      target.closest(
-        'input, textarea, select, [contenteditable="true"], [role="textbox"], [role="combobox"], [role="searchbox"]',
-      ),
-    );
+  function isTypingTarget(event) {
+    const path =
+      typeof event.composedPath === "function" ? event.composedPath() : null;
+    const nodes = path && path.length ? path : [event.target];
+    for (const node of nodes) {
+      if (!node || !(node instanceof Element)) continue;
+      const tag = node.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+      if (node.isContentEditable) return true;
+      if (
+        node.closest?.(
+          'input, textarea, select, [contenteditable="true"], [role="textbox"], [role="combobox"], [role="searchbox"]',
+        )
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** True if the event originated under this widget (works across shadow DOM). */
+  function eventInWidget(event) {
+    const path =
+      typeof event.composedPath === "function" ? event.composedPath() : null;
+    if (path && path.length) {
+      for (let i = 0; i < path.length; i++) {
+        if (path[i] === container || path[i] === webglCanvas) return true;
+      }
+      return false;
+    }
+    const t = event.target;
+    return t instanceof Node && (container.contains(t) || webglCanvas.contains(t));
   }
 
   function cloneJson(value) {
@@ -4312,10 +4512,8 @@ export function mountEngine({ model, host }) {
   let pointerInWidget = false;
 
   function handleKeyDown(event) {
-    if (isTypingTarget(event.target)) return;
-    const inside =
-      event.target instanceof Node && container.contains(event.target);
-    if (!inside && !pointerInWidget) return;
+    if (isTypingTarget(event)) return;
+    if (!eventInWidget(event) && !pointerInWidget) return;
 
     const mod = event.metaKey || event.ctrlKey;
     const key = event.key;
@@ -4323,14 +4521,18 @@ export function mountEngine({ model, host }) {
 
     if (key === "Enter") {
       event.preventDefault();
+      event.stopPropagation();
       finishVertexDraft();
       return;
     }
     if (key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       resetDraft();
       setSelected("", -1);
-      if ((model.get("raster_query_bin") ?? -1) >= 0) {
+      // Reset similarity to observation colors (pin + hover scrub).
+      const hadQuery = (model.get("raster_query_bin") ?? -1) >= 0;
+      if (hadQuery) {
         model.set("raster_query_bin", -1);
         model.save_changes();
       }
@@ -4338,7 +4540,11 @@ export function mountEngine({ model, host }) {
       hoverPointIndex = -1;
       pinnedPointIndex = -1;
       hoverProbeWorld = null;
+      probeDisplayWorld = null;
+      stopProbeSmooth();
       pinnedProbeWorld = null;
+      probeScrubPaused = probeModeOn();
+      probePauseWorld = null;
       probeScrubSeq = (probeScrubSeq + 1) | 0;
       setDeckLayers();
       return;
@@ -4346,7 +4552,10 @@ export function mountEngine({ model, host }) {
 
     if (mod && !event.altKey) {
       if (lower === "c") {
-        if (copySelectedToClipboard()) event.preventDefault();
+        if (copySelectedToClipboard()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
         return;
       }
       if (lower === "x") {
@@ -4354,16 +4563,23 @@ export function mountEngine({ model, host }) {
         if (!copySelectedToClipboard()) return;
         deleteSelectedOrDraftVertex();
         event.preventDefault();
+        event.stopPropagation();
         return;
       }
       if (lower === "v") {
-        if (pasteFromClipboard()) event.preventDefault();
+        if (pasteFromClipboard()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
         return;
       }
     }
 
     if (key === "Backspace" || key === "Delete") {
-      if (deleteSelectedOrDraftVertex()) event.preventDefault();
+      if (deleteSelectedOrDraftVertex()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       return;
     }
 
@@ -4371,26 +4587,33 @@ export function mountEngine({ model, host }) {
     if (event.altKey || event.metaKey || event.ctrlKey) return;
 
     if (lower in MODE_BY_KEY) {
-      if (switchMode(MODE_BY_KEY[lower])) event.preventDefault();
+      if (switchMode(MODE_BY_KEY[lower])) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       return;
     }
     if (key === "=" || key === "+") {
       event.preventDefault();
+      event.stopPropagation();
       zoomBy(1);
       return;
     }
     if (key === "-" || key === "_") {
       event.preventDefault();
+      event.stopPropagation();
       zoomBy(-1);
       return;
     }
     if (key === "0") {
       event.preventDefault();
+      event.stopPropagation();
       resetZoom();
       return;
     }
     if (lower === "f") {
       event.preventDefault();
+      event.stopPropagation();
       container.dispatchEvent(new CustomEvent("landmarks-toggle-fullscreen"));
     }
   }
@@ -4446,6 +4669,22 @@ export function mountEngine({ model, host }) {
   );
 
   function handleContextMenu(event) {
+    // Only the WebGL canvas — chrome right-clicks (e.g. lasso shape menu) own themselves.
+    const path =
+      typeof event.composedPath === "function" ? event.composedPath() : null;
+    let onCanvas = false;
+    if (path && path.length) {
+      for (let i = 0; i < path.length; i++) {
+        if (path[i] === webglCanvas) {
+          onCanvas = true;
+          break;
+        }
+      }
+    } else {
+      onCanvas =
+        event.target instanceof Node && webglCanvas.contains(event.target);
+    }
+    if (!onCanvas) return;
     event.preventDefault();
     event.stopPropagation();
     if (currentMode !== "pointer") return;
@@ -4493,18 +4732,20 @@ export function mountEngine({ model, host }) {
     },
     { signal },
   );
+  // Document listeners see retargeted shadow hosts — use composedPath.
   document.addEventListener(
     "pointerdown",
     (e) => {
-      if (!(e.target instanceof Node) || !container.contains(e.target)) {
-        pointerInWidget = false;
-      }
+      pointerInWidget = eventInWidget(e);
     },
     { signal },
   );
-  // Widget-scoped shortcuts (modes, zoom, copy/paste/delete). Skip when typing in chrome.
-  document.addEventListener("keydown", handleKeyDown, { signal });
-  webglCanvas.addEventListener("contextmenu", handleContextMenu, {
+  // Capture so we win against notebook hosts that also bind shortcuts.
+  document.addEventListener("keydown", handleKeyDown, {
+    capture: true,
+    signal,
+  });
+  document.addEventListener("contextmenu", handleContextMenu, {
     capture: true,
     signal,
   });
@@ -4552,6 +4793,7 @@ export function mountEngine({ model, host }) {
   });
   ["point_palette", "point_size", "color_by", "legend_labels", "legend_title", "color_vmin", "color_vmax"].forEach((k) => {
     onChange(k, () => {
+      if (k === "color_by") pendingViewPulse = true;
       if (deckgl) setDeckLayers();
       updatePointLegend();
     });
@@ -4636,6 +4878,9 @@ export function mountEngine({ model, host }) {
       }
       if (k === "render_mode" && !isRasterMode()) {
         hoverBinIndex = -1;
+      }
+      if (k === "render_mode" || k === "raster_basis") {
+        pendingViewPulse = true;
       }
       if (deckgl) setDeckLayers();
       updatePointLegend();

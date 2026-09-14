@@ -18,9 +18,11 @@ import { GENE_COLORS, MAX_ACTIVE_GENES, blendHex, formatLegendValue } from "../h
 import type { LandmarksModel } from "../use-landmarks-model";
 import { ColorSwatch } from "./primitives";
 import { geneDisplayBounds } from "./genes-ternary";
+import { RgbCubeLegend } from "./rgb-cube-legend";
 import {
   CHANNEL_BAR,
   CHANNEL_LABEL,
+  FIELD_CAPTION,
   LEGEND_MUTED,
   MUTED_CONTROL,
   STACK_GAP_SM,
@@ -66,8 +68,23 @@ function GenesLegend({ lm }: { lm: LandmarksModel }) {
   const { active_genes, gene_columns, color_by, gene_log1p, gene_scale_mode } = lm;
   const selected = active_genes || [];
   if (color_by !== "continuous" || !selected.length) return null;
-  // 3-channel RGB cube lives on the info plot, not under the combobox.
-  if (selected.length >= 3) return null;
+
+  // 3-channel RGB cube under the gene input (names already on chips).
+  if (selected.length >= 3) {
+    return (
+      <div
+        className="flex min-w-0 items-center justify-between gap-3 px-0.5 py-1"
+        data-testid="genes-channel-legend"
+      >
+        <p className={cn(FIELD_CAPTION, "shrink-0")}>Legend</p>
+        <RgbCubeLegend
+          labels={selected.slice(0, 3)}
+          showLabels={false}
+          className="h-12 w-[4.75rem] shrink-0"
+        />
+      </div>
+    );
+  }
 
   const colors = selected.map((_, i) => GENE_COLORS[i % GENE_COLORS.length]);
   let lo = 0;

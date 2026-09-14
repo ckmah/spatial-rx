@@ -16,14 +16,16 @@ function shortLabel(s: string) {
 
 /**
  * Small isometric channel cube (magenta / lime / azure axes). Faces use the
- * same additive mix as the canvas; corners labeled by gene / dim.
+ * same additive mix as the canvas; corners optionally labeled by gene / dim.
  */
 export function RgbCubeLegend({
   labels,
   className,
+  showLabels = true,
 }: {
   labels: string[];
   className?: string;
+  showLabels?: boolean;
 }) {
   const o = LEGEND_CUBE;
   const fillUrl = useMemo(() => buildIsoCubeFillUrl(o), []);
@@ -50,33 +52,37 @@ export function RgbCubeLegend({
           preserveAspectRatio="none"
         />
       ) : null}
-      {/* Channel0 down-left, channel1 down-right, channel2 up. */}
-      <text
-        x={c.c0.x - 5}
-        y={c.c0.y + 4}
-        textAnchor="end"
-        className="fill-foreground"
-        style={{ fontSize: 8, fontWeight: 600 }}
-      >
-        {text[0]}
-      </text>
-      <text
-        x={c.c1.x + 5}
-        y={c.c1.y + 4}
-        className="fill-foreground"
-        style={{ fontSize: 8, fontWeight: 600 }}
-      >
-        {text[1]}
-      </text>
-      <text
-        x={c.c2.x}
-        y={c.c2.y - 5}
-        textAnchor="middle"
-        className="fill-foreground"
-        style={{ fontSize: 8, fontWeight: 600 }}
-      >
-        {text[2]}
-      </text>
+      {showLabels ? (
+        <>
+          {/* Channel0 down-left, channel1 down-right, channel2 up. */}
+          <text
+            x={c.c0.x - 5}
+            y={c.c0.y + 4}
+            textAnchor="end"
+            className="fill-foreground"
+            style={{ fontSize: 8, fontWeight: 600 }}
+          >
+            {text[0]}
+          </text>
+          <text
+            x={c.c1.x + 5}
+            y={c.c1.y + 4}
+            className="fill-foreground"
+            style={{ fontSize: 8, fontWeight: 600 }}
+          >
+            {text[1]}
+          </text>
+          <text
+            x={c.c2.x}
+            y={c.c2.y - 5}
+            textAnchor="middle"
+            className="fill-foreground"
+            style={{ fontSize: 8, fontWeight: 600 }}
+          >
+            {text[2]}
+          </text>
+        </>
+      ) : null}
     </svg>
   );
 }

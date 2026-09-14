@@ -47,6 +47,7 @@ export function LandmarksView({
   const lm = useLandmarksModel(model);
   const plotHostRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const [rootEl, setRootEl] = useState<HTMLElement | null>(null);
   const engineRef = useRef<EngineHandle | null>(null);
   const [engine, setEngine] = useState<EngineHandle | null>(null);
   const [shellHeight, setShellHeight] = useState(defaultHeight);
@@ -151,7 +152,10 @@ export function LandmarksView({
 
   return (
     <div
-      ref={rootRef}
+      ref={(node) => {
+        rootRef.current = node;
+        setRootEl((prev) => (prev === node ? prev : node));
+      }}
       className={cn(
         "spatial-rx-widget landmarks relative min-w-0 w-full",
         dark && "dark landmarks--dark",
@@ -257,7 +261,7 @@ export function LandmarksView({
             </div>
           </>
         )}
-        <LandmarkCanvasMenu lm={lm} engine={engine} />
+        <LandmarkCanvasMenu lm={lm} engine={engine} rootEl={rootEl} />
       </div>
     </div>
   );

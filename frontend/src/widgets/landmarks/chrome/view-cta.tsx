@@ -10,16 +10,15 @@ import { ChromeTooltip } from "./primitives";
 
 /**
  * Soft Float View CTA — top-right icon. Hover highlights; click toggles
- * Points ↔ Raster with a short press-pop. Tooltip is always "points/raster".
+ * Points ↔ Raster with an icon crossfade + canvas view-swap pulse.
+ * Tooltip is always "points/raster".
  */
 export function ViewCta({ lm }: { lm: LandmarksModel }) {
   const rasterOn = (lm.render_mode || "points") === "raster";
-  const Icon = rasterOn ? Grid2x2 : CircleDot;
   const [popNonce, setPopNonce] = useState(0);
 
   const onToggle = () => {
     lm.setRenderMode(rasterOn ? "points" : "raster");
-    // Bump nonce so the pop animation restarts on every click.
     setPopNonce((n) => n + 1);
   };
 
@@ -48,14 +47,29 @@ export function ViewCta({ lm }: { lm: LandmarksModel }) {
             <span
               key={popNonce || "idle"}
               className={cn(
-                "inline-flex",
+                "landmarks-view-cta__swap relative inline-flex size-4",
                 popNonce > 0 && "landmarks-view-cta--pop",
               )}
             >
-              <Icon
+              <CircleDot
+                aria-hidden
+                data-testid="view-cta-icon-points"
+                className={cn(
+                  "landmarks-view-cta__icon absolute inset-0 size-4",
+                  rasterOn
+                    ? "landmarks-view-cta__icon--out"
+                    : "landmarks-view-cta__icon--in",
+                )}
+              />
+              <Grid2x2
                 aria-hidden
                 data-testid="view-cta-icon"
-                className="size-4"
+                className={cn(
+                  "landmarks-view-cta__icon absolute inset-0 size-4",
+                  rasterOn
+                    ? "landmarks-view-cta__icon--in"
+                    : "landmarks-view-cta__icon--out",
+                )}
               />
             </span>
           </Button>

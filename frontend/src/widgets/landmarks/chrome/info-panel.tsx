@@ -4,11 +4,6 @@ import {
   PieChart,
   Cell,
   Sector,
-  Area,
-  AreaChart,
-  CartesianGrid,
-  XAxis,
-  YAxis,
   Label,
 } from "recharts";
 
@@ -28,6 +23,7 @@ import { FieldDescription } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 
 import { decodeI32Base64 } from "../binary";
+import { formatLegendValue } from "../helpers";
 import type { EngineHandle } from "../engine";
 import type { LandmarksModel } from "../use-landmarks-model";
 import { colorSignal } from "./coloring";
@@ -36,11 +32,17 @@ import {
   embeddingRgbCloud,
   geneDensities,
   resolvePointMask,
+  CLOUD_OTHER_ALPHA_SCALE,
+  CLOUD_OTHER_SIZE_SCALE,
+  CLOUD_SELECTED_SIZE_SCALE,
+  type DensityRow,
+  type DensitySeries,
 } from "./info-stats";
-import { CLOUD_CUBE, cubeCornerLabel } from "./rgb-cube";
+import { CLOUD_CUBE, cubeCornerLabel, embeddingCloudPointRadius } from "./rgb-cube";
 import { RgbCubeLegend } from "./rgb-cube-legend";
 import {
   EMBEDDED_PANEL,
+  FIELD_CAPTION,
   FLOAT_PANEL,
   FLOAT_PANEL_CLIP,
   PANEL_INSET,
@@ -48,25 +50,113 @@ import {
 } from "./sections";
 
 /** Fixed chart slot so Category / Genes / Embedding swaps do not resize the card. */
-function InfoChartWell({
-  children,
-  legend,
-}: {
-  children: React.ReactNode;
-  legend?: React.ReactNode;
-}) {
+function InfoChartWell({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="landmarks-info-chart relative flex h-44 w-full shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius)]"
+      className="landmarks-info-chart relative flex h-44 w-full shrink-0 items-stretch justify-stretch overflow-hidden rounded-[var(--radius)]"
       data-testid="info-chart-well"
     >
       {children}
-      {legend ? (
-        <div className="pointer-events-none absolute top-0.5 right-0.5">
-          {legend}
-        </div>
-      ) : null}
     </div>
+  );
+}
+
+/** Channel cube on its own Soft Float row: Legend …… [cube]. */
+function ChannelCubeLegendRow({ labels }: { labels: string[] }) {
+  if (labels.length < 3) return null;
+  return (
+    <div
+      className="flex min-w-0 items-center justify-between gap-2"
+      data-testid="info-channel-legend"
+    >
+      <p className={cn(FIELD_CAPTION, "shrink-0")}>Legend</p>
+      <RgbCubeLegend labels={labels.slice(0, 3)} className="h-12 w-[4.75rem]" />
+    </div>
+  );
+}
+
+/** Minimal ridgeline: one density ridge per selected gene (no y labels). */
+function GeneRidgelines({
+  series,
+  rows,
+  xMin,
+  xMax,
+}: {
+  series: DensitySeries[];
+  rows: DensityRow[];
+  xMin: number;
+  xMax: number;
+}) {
+  const n = series.length;
+  if (!n || !rows.length) return null;
+
+  const plotW = 240;
+  const axisH = 18;
+  const plotH = 156;
+  const rowH = plotH / n;
+  const padX = 6;
+  const width = plotW + padX * 2;
+  const height = plotH + axisH;
+  const span = xMax - xMin || 1;
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="h-full w-full"
+      preserveAspectRatio="xMidYMid meet"
+      role="img"
+      aria-label="Gene expression densities"
+      data-testid="gene-ridgelines"
+    >
+      {series.map((s, gi) => {
+        const vals = rows.map((r) => Number(r[s.key]) || 0);
+        const peak = Math.max(...vals, 1e-12);
+        const baseline = (gi + 1) * rowH - 2;
+        const amp = rowH * 0.78;
+        let d = `M ${padX} ${baseline}`;
+        for (let bi = 0; bi < rows.length; bi++) {
+          const x = padX + (bi / Math.max(rows.length - 1, 1)) * plotW;
+          const y = baseline - (vals[bi] / peak) * amp;
+          d += ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
+        }
+        d += ` L ${padX + plotW} ${baseline} Z`;
+        return (
+          <path
+            key={s.key}
+            d={d}
+            fill={s.color}
+            fillOpacity={0.28}
+            stroke={s.color}
+            strokeWidth={1.15}
+            strokeLinejoin="round"
+          />
+        );
+      })}
+      <line
+        x1={padX}
+        y1={plotH}
+        x2={padX + plotW}
+        y2={plotH}
+        className="stroke-foreground/25"
+        strokeWidth={1}
+      />
+      {[0, 0.5, 1].map((t) => {
+        const x = padX + t * plotW;
+        const value = xMin + t * span;
+        return (
+          <text
+            key={t}
+            x={x}
+            y={height - 2}
+            textAnchor={t === 0 ? "start" : t === 1 ? "end" : "middle"}
+            className="fill-foreground/70"
+            style={{ fontSize: 10, fontWeight: 500 }}
+          >
+            {formatLegendValue(value)}
+          </text>
+        );
+      })}
+    </svg>
   );
 }
 
@@ -220,7 +310,7 @@ export function InfoPanel({
             activeGenes: genes,
             geneLog1p: !!gene_log1p && !gene_expression_logged,
           })
-        : { series: [], rows: [] },
+        : { series: [], rows: [], xMin: 0, xMax: 1 },
     [
       showGenes,
       n,
@@ -247,14 +337,6 @@ export function InfoPanel({
     return cfg;
   }, [composition]);
 
-  const densityConfig = useMemo(() => {
-    const cfg: ChartConfig = {};
-    for (const s of densities.series) {
-      cfg[s.key] = { label: s.label, color: s.color };
-    }
-    return cfg;
-  }, [densities.series]);
-
   const pieTotal = useMemo(
     () => composition.reduce((acc, s) => acc + s.value, 0),
     [composition],
@@ -263,9 +345,16 @@ export function InfoPanel({
   const embeddingCloud = useMemo(() => {
     if (!showEmbedding) return [];
     const labels = lm.embedding_channel_labels || [];
+    const hasFocus =
+      selected_kind === "type" || selected_kind === "selection";
+    // Always sample the full cohort; emphasize focus via size/opacity.
+    const allMask = new Uint8Array(n);
+    allMask.fill(1);
     return embeddingRgbCloud({
       n,
-      mask: focusMask,
+      mask: allMask,
+      focusMask,
+      hasFocus,
       embeddingValuesB64: lm.embedding_values || "",
       nChannels: labels.length,
     });
@@ -273,6 +362,7 @@ export function InfoPanel({
     showEmbedding,
     n,
     focusMask,
+    selected_kind,
     lm.embedding_values,
     lm.embedding_channel_labels,
   ]);
@@ -283,79 +373,70 @@ export function InfoPanel({
 
   const charts = showEmbedding ? (
         embeddingCloud.length ? (
-          <div className="flex h-full min-h-0 w-full flex-1 items-center justify-center">
-            <svg
-              viewBox={`0 0 ${CLOUD_CUBE.vbW} ${CLOUD_CUBE.vbH}`}
-              className="h-full max-h-52 w-full max-w-[13rem]"
-              role="img"
-              aria-label={`${embKey} RGB cloud in current scope`}
-            >
-              {embeddingCloud.map((p, i) => (
-                <circle
-                  key={i}
-                  cx={p.x}
-                  cy={p.y}
-                  r={1.4}
-                  fill={p.color}
-                  fillOpacity={0.85}
-                />
-              ))}
-            </svg>
-          </div>
+          <svg
+            viewBox={`0 0 ${CLOUD_CUBE.vbW} ${CLOUD_CUBE.vbH}`}
+            className="h-full w-full"
+            preserveAspectRatio="xMidYMid meet"
+            role="img"
+            aria-label={`${embKey} RGB cloud in current scope`}
+          >
+            {(() => {
+              const baseR = embeddingCloudPointRadius(embeddingCloud.length);
+              const emphasize =
+                selected_kind === "type" || selected_kind === "selection";
+              return embeddingCloud.map((p, i) => {
+                const scale = !emphasize
+                  ? 1
+                  : p.selected
+                    ? CLOUD_SELECTED_SIZE_SCALE
+                    : CLOUD_OTHER_SIZE_SCALE;
+                const opacity = !emphasize
+                  ? 0.85
+                  : p.selected
+                    ? 0.95
+                    : 0.85 * CLOUD_OTHER_ALPHA_SCALE;
+                return (
+                  <circle
+                    key={i}
+                    cx={p.x}
+                    cy={p.y}
+                    r={baseR * scale}
+                    fill={p.color}
+                    fillOpacity={opacity}
+                  />
+                );
+              });
+            })()}
+          </svg>
         ) : (
-          <FieldDescription className="m-0 max-w-[16rem] text-center">
-            {embLabels.length
-              ? "No cells in this scope for the embedding cloud."
-              : "Pick an embedding in Explore to color points and see the RGB mix."}
-          </FieldDescription>
+          <div className="flex h-full w-full items-center justify-center px-2">
+            <FieldDescription className="m-0 max-w-[16rem] text-center">
+              {embLabels.length
+                ? "No cells in this scope for the embedding cloud."
+                : "Pick an embedding in Explore to color points and see the RGB mix."}
+            </FieldDescription>
+          </div>
         )
       ) : showGenes ? (
         densities.rows.length && densities.series.length ? (
-          <ChartContainer
-            config={densityConfig}
-            className="h-full max-h-44 w-full aspect-auto"
-            initialDimension={{ width: 240, height: 176 }}
-          >
-            <AreaChart data={densities.rows} margin={{ left: 4, right: 4, top: 8 }}>
-              <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey="x"
-                type="number"
-                domain={[0, 1]}
-                ticks={[0, 0.2, 0.4, 0.6, 0.8, 1]}
-                tickLine={false}
-                axisLine={false}
-                tickMargin={6}
-                tickFormatter={(v) => String(v)}
-              />
-              <YAxis hide />
-              <ChartTooltip
-                cursor={false}
-                content={<ChartTooltipContent indicator="line" />}
-              />
-              {densities.series.map((s) => (
-                <Area
-                  key={s.key}
-                  dataKey={s.key}
-                  type="monotone"
-                  fill={`var(--color-${s.key})`}
-                  fillOpacity={0.18}
-                  stroke={`var(--color-${s.key})`}
-                  strokeWidth={1.5}
-                  isAnimationActive={false}
-                />
-              ))}
-            </AreaChart>
-          </ChartContainer>
+          <GeneRidgelines
+            series={densities.series}
+            rows={densities.rows}
+            xMin={densities.xMin}
+            xMax={densities.xMax}
+          />
         ) : (
-          <FieldDescription className="m-0 text-center">
-            {genes.length
-              ? "No expression in this scope."
-              : "Pick genes in Explore to see densities."}
-          </FieldDescription>
+          <div className="flex h-full w-full items-center justify-center px-2">
+            <FieldDescription className="m-0 text-center">
+              {genes.length
+                ? "No expression in this scope."
+                : "Pick genes in Explore to see densities."}
+            </FieldDescription>
+          </div>
         )
       ) : composition.length ? (
-        <div className="relative aspect-square h-full max-h-44 w-auto max-w-full">
+        <div className="flex h-full w-full items-center justify-center">
+          <div className="relative aspect-square h-full max-h-44 w-auto max-w-full">
           <ChartContainer
             config={pieConfig}
             className="aspect-square h-full w-full [&_.recharts-responsive-container]:!aspect-square"
@@ -469,6 +550,7 @@ export function InfoPanel({
               </Pie>
             </PieChart>
           </ChartContainer>
+          </div>
         </div>
       ) : (
         <FieldDescription className="m-0 text-center">
@@ -478,23 +560,16 @@ export function InfoPanel({
         </FieldDescription>
       );
 
+  // Gene RGB cube lives under the gene input; only embedding cube stays here.
+  const cubeLabels =
+    showEmbedding && embLabels.length >= 3
+      ? embLabels.slice(0, 3).map((label, i) => cubeCornerLabel(label, i))
+      : [];
+
   const body = (
     <div className="flex min-h-0 flex-1 flex-col gap-2 pb-1.5">
-      <InfoChartWell
-        legend={
-          showGenes && genes.length >= 3 ? (
-            <RgbCubeLegend labels={genes.slice(0, 3)} />
-          ) : showEmbedding && embLabels.length >= 3 ? (
-            <RgbCubeLegend
-              labels={embLabels
-                .slice(0, 3)
-                .map((label, i) => cubeCornerLabel(label, i))}
-            />
-          ) : null
-        }
-      >
-        {charts}
-      </InfoChartWell>
+      <InfoChartWell>{charts}</InfoChartWell>
+      <ChannelCubeLegendRow labels={cubeLabels} />
     </div>
   );
 
