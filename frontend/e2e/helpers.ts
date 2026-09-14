@@ -1,0 +1,82 @@
+import { expect, test, type Locator, type Page } from "@playwright/test";
+
+/** Linux CI + local Linux compare snapshots; Mac soft-skips unless forced. */
+export function screenshotsEnabled(): boolean {
+  if (process.env.E2E_SCREENSHOTS === "0") return false;
+  if (process.env.E2E_SCREENSHOTS === "1") return true;
+  if (process.env.CI) return true;
+  return process.platform === "linux";
+}
+
+export async function waitForEngine(page: Page) {
+  await page.locator(".landmarks").first().waitFor({ state: "visible" });
+  await page.locator("canvas.landmarks__webgl").first().waitFor({ state: "visible" });
+  await page.waitForFunction(() => {
+    const eng = (window as any).__landmarksEngine;
+    const vs = eng?.getViewState?.();
+    return Boolean(vs && Number.isFinite(vs.zoom));
+  });
+  // Let deck.gl finish a couple frames after first paint.
+  await page.waitForTimeout(400);
+}
+
+export async function getZoom(page: Page) {
+  return page.evaluate(
+    () => (window as any).__landmarksEngine.getViewState().zoom as number,
+  );
+}
+
+export async function getModel(page: Page, key: string) {
+  return page.evaluate((k) => (window as any).__landmarksModel.get(k), key);
+}
+
+export async function setModel(page: Page, patch: Record<string, unknown>) {
+  await page.evaluate((p) => {
+    const model = (window as any).__landmarksModel;
+    for (const [k, v] of Object.entries(p)) model.set(k, v);
+    model.save_changes();
+  }, patch);
+}
+
+export async function stabilizeUi(page: Page) {
+  await page.addStyleTag({
+    content: `
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+        caret-color: transparent !important;
+      }
+    `,
+  });
+}
+
+/** Visual assert — keep call sites to 2–3 biggest state changes per widget. */
+export async function shot(page: Page, name: string, target?: Locator) {
+  if (!screenshotsEnabled()) {
+    test.info().annotations.push({
+      type: "note",
+      description: `Skipped screenshot "${name}" (set E2E_SCREENSHOTS=1 or run on Linux/CI)`,
+    });
+    return;
+  }
+  const locator = target ?? page.locator(".landmarks").first();
+  await expect(locator).toHaveScreenshot(`${name}.png`, {
+    animations: "disabled",
+  });
+}
+
+export async function canvasBox(page: Page) {
+  const canvas = page.locator("canvas.landmarks__webgl").first();
+  const box = await canvas.boundingBox();
+  expect(box).toBeTruthy();
+  return box!;
+}
+
+export async function bootLandmarksHarness(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("spatial-rx-harness-theme", "dark");
+  });
+  await page.goto("/", { waitUntil: "networkidle" });
+  await waitForEngine(page);
+  await stabilizeUi(page);
+}

@@ -26,8 +26,8 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:5173",
     headless: true,
     trace: "on-first-retry",
-    // Short per-test videos for demos / CI review (alongside HTML report).
-    video: "on",
+    // Videos only on failure — keeps CI artifacts small.
+    video: "retain-on-failure",
     viewport: { width: 1280, height: 900 },
     deviceScaleFactor: 1,
     launchOptions: { args: ["--disable-lcd-text", "--font-render-hinting=none"] },
