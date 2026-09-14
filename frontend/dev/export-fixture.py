@@ -307,9 +307,11 @@ def main() -> None:
     adata.obsm["X_umap"] = umap
 
     widget = LandmarksWidget(adata, color="celltype", genes=GENES)
+    # Preload genes + embeddings for chrome, but start in neutral widget defaults:
+    # points view, categorical color, probe off, no pinned query bin.
     widget.active_genes = ["Lgr5", "Cd3e", "Col1a1"]
-    widget.color_by = "continuous"
-    widget.set_render_mode("raster")
+    widget.color_by = "categorical"
+    widget.set_render_mode("points")
     widget.selections = [
         {
             "id": "lasso-mucosa",
@@ -359,8 +361,11 @@ def main() -> None:
         # Ensure embedding RGB pack for harness Color → embed.
         if hasattr(widget, "_pack_embedding_values"):
             widget._pack_embedding_values()
-    if widget.raster_n_bins > 8:
-        widget.raster_query_bin = int(widget.raster_n_bins // 4)
+    # Keep gene-basis features packed so Probe → raster works when enabled,
+    # but leave similarity/query off for a clean harness boot.
+    widget.raster_basis = "genes"
+    widget.raster_similarity_enabled = False
+    widget.raster_query_bin = -1
 
     out = Path(__file__).with_name("fixture.json")
     payload = {key: getattr(widget, key) for key in FIXTURE_KEYS}
