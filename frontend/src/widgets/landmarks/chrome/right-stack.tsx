@@ -22,7 +22,7 @@ import {
 import { GenesCombobox } from "./genes-legend";
 import { InfoPanel } from "./info-panel";
 import { RasterSection } from "./raster-section";
-import { EMBEDDED_PANEL, PANEL_INSET, PILL_TABS_TRIGGER } from "./sections";
+import { EMBEDDED_PANEL, PANEL_INSET, PILL_TABS_TRIGGER, STACK_GAP_SM } from "./sections";
 import { SoftFloatSlidingTabsList } from "./sliding-tabs";
 
 /**
@@ -114,7 +114,7 @@ export function RightChromeStack({
                 )}
               </TabsContent>
               <TabsContent value="embedding" className="m-0">
-                <div className="flex flex-col gap-1.5">
+                <div className={STACK_GAP_SM}>
                   <EmbeddingCombobox lm={lm} />
                   <EmbeddingRgbLegend lm={lm} />
                 </div>

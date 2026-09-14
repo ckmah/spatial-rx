@@ -15,12 +15,12 @@ import { ChromeTooltip } from "./primitives";
 export function ViewCta({ lm }: { lm: LandmarksModel }) {
   const rasterOn = (lm.render_mode || "points") === "raster";
   const Icon = rasterOn ? Grid2x2 : CircleDot;
-  const [popping, setPopping] = useState(false);
+  const [popNonce, setPopNonce] = useState(0);
 
   const onToggle = () => {
     lm.setRenderMode(rasterOn ? "points" : "raster");
-    setPopping(true);
-    window.setTimeout(() => setPopping(false), 320);
+    // Bump nonce so the pop animation restarts on every click.
+    setPopNonce((n) => n + 1);
   };
 
   return (
@@ -41,21 +41,23 @@ export function ViewCta({ lm }: { lm: LandmarksModel }) {
             className={cn(
               "landmarks-view-cta rounded-full text-foreground/70",
               "hover:bg-foreground/10 hover:text-foreground",
-              "active:scale-[0.88]",
-              "transition-transform duration-150 ease-out",
-              "motion-reduce:transition-none motion-reduce:active:scale-100",
-              popping && "landmarks-view-cta--pop",
+              "active:scale-[0.92]",
+              "motion-reduce:active:scale-100",
             )}
           >
-            <Icon
-              aria-hidden
-              data-testid="view-cta-icon"
+            <span
+              key={popNonce || "idle"}
               className={cn(
-                "size-4 transition-transform duration-200 ease-out",
-                "motion-reduce:transition-none",
-                popping && "scale-110",
+                "inline-flex",
+                popNonce > 0 && "landmarks-view-cta--pop",
               )}
-            />
+            >
+              <Icon
+                aria-hidden
+                data-testid="view-cta-icon"
+                className="size-4"
+              />
+            </span>
           </Button>
         </ChromeTooltip>
       </div>

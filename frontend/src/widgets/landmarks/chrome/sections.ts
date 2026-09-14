@@ -7,6 +7,10 @@ export type PanelSectionId =
 
 /** Horizontal + vertical inset on float panel bodies. */
 export const PANEL_INSET = "px-2.5 py-1.5";
+/** Scrollable float panel body (pair with PANEL_INSET). */
+export const PANEL_SCROLL = "min-h-0 flex-1 overflow-y-auto overscroll-contain";
+/** Tight Soft Float control stack. */
+export const STACK_GAP_SM = "flex flex-col gap-1.5";
 /** Static section heading (non-collapsible). */
 export const SECTION_LABEL = "landmarks-section-label px-0 py-1";
 /** Field / control captions — foreground-based so glass stays readable. */
@@ -14,6 +18,18 @@ export const FIELD_CAPTION =
   "landmarks-field-caption m-0 text-[11px] font-medium";
 /** Secondary meta line under controls. */
 export const META_LINE = "landmarks-meta m-0 truncate text-[11px]";
+/** Legend / helper microtext on Soft Float glass. */
+export const LEGEND_MUTED = "text-[10px] text-foreground/65";
+/** Channel legend label row (genes / embed 1–2 channel bars). */
+export const CHANNEL_LABEL =
+  "inline-flex min-w-0 items-center gap-1 truncate text-foreground";
+/** Rounded channel / scale bar track. */
+export const CHANNEL_BAR = "h-2.5 w-full rounded-full";
+/** Shared muted Soft Float control surface density. */
+export const MUTED_CONTROL = "min-h-7 bg-muted/80 text-[11px] shadow-none";
+/** Embedding / single-value combobox input (InputGroup). */
+export const COMBO_INPUT =
+  `h-7 w-full rounded-[var(--radius)] ${MUTED_CONTROL} [&_input]:h-7 [&_input]:min-h-0 [&_input]:text-[11px] [&_input]:md:text-[11px] [&_input]:placeholder:text-[11px]`;
 /**
  * Soft Float sliding pill Tabs — rounded track + sliding active pill
  * (transitions.dev tabs-sliding). Pair with SoftFloatSlidingTabs.

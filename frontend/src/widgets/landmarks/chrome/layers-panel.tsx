@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { LANDMARK_COLORS, SELECTION_COLORS } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
 import { LayerRow } from "./primitives";
-import { FLOAT_PANEL, FLOAT_PANEL_CLIP, PANEL_INSET, SECTION_LABEL } from "./sections";
+import { FLOAT_PANEL, FLOAT_PANEL_CLIP, PANEL_INSET, PANEL_SCROLL, SECTION_LABEL } from "./sections";
 
 /** Left dock: selections + landmarks only. */
 export function LayersPanel({ lm }: { lm: LandmarksModel }) {
@@ -28,7 +28,7 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
         <div className={FLOAT_PANEL_CLIP}>
         <CardContent
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            PANEL_SCROLL,
             PANEL_INSET,
           )}
         >

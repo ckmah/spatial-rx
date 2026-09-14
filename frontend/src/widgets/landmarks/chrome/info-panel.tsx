@@ -44,6 +44,7 @@ import {
   FLOAT_PANEL,
   FLOAT_PANEL_CLIP,
   PANEL_INSET,
+  PANEL_SCROLL,
 } from "./sections";
 
 /** Fixed chart slot so Category / Genes / Embedding swaps do not resize the card. */
@@ -512,7 +513,7 @@ export function InfoPanel({
       >
         <div
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            PANEL_SCROLL,
             PANEL_INSET,
           )}
         >
@@ -532,7 +533,7 @@ export function InfoPanel({
         </CardHeader>
         <CardContent
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            PANEL_SCROLL,
             PANEL_INSET,
           )}
         >

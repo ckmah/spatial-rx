@@ -47,6 +47,21 @@
   --lm-float-bg: color-mix(in oklab, var(--card) 80%, transparent);
   --lm-float-blur: blur(14px) saturate(1.05);
   --lm-float-shadow: 0 4px 12px color-mix(in srgb, #000 8%, transparent);
+
+  /* transitions.dev motion tokens — scoped to widget (Soft Float Operate) */
+  --duration-stagger: 40ms;
+  --duration-micro: 80ms;
+  --duration-quick: 150ms;
+  --duration-fast: 250ms;
+  --duration-medium: 350ms;
+  --duration-slow: 400ms;
+  --duration-very-slow: 500ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: ease-in-out;
+  --ease-out: ease-out;
+  --ease-linear: linear;
+  --scale-small: 0.98;
+  --lm-tab-pill-dur: var(--duration-fast);
 }
 
 .landmarks ::selection {
@@ -381,7 +396,7 @@
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--lm-bg) 80%, transparent),
     0 1px 4px rgba(0, 0, 0, 0.12);
-  transition: opacity 0.15s ease;
+  transition: opacity var(--duration-quick) var(--ease-out);
 }
 
 .landmarks__resize:hover::after,
@@ -485,7 +500,7 @@
   overflow: hidden;
   border-radius: var(--lm-layer-radius);
   background-color: transparent;
-  transition: background-color 180ms ease;
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
 
 /* Shared hover / active washes — same radius as the row geometry. */
@@ -719,7 +734,9 @@
   background: color-mix(in oklab, var(--foreground) 55%, var(--muted-foreground));
   /* Compose onto Radix centering — never replace -50% or tracking breaks. */
   transform: var(--radix-slider-thumb-transform, translateX(-50%)) translateX(-2px);
-  transition: opacity 140ms ease, background-color 140ms ease;
+  transition:
+    opacity var(--duration-quick) var(--ease-out),
+    background-color var(--duration-quick) var(--ease-out);
 }
 
 .landmarks--dark .landmarks-slider-control [data-slot="slider-thumb"] {
@@ -980,19 +997,36 @@
     0 0 0 1px color-mix(in oklab, var(--lm-tooltip-text) 8%, transparent),
     0 4px 14px color-mix(in srgb, #000 18%, transparent);
   transform-origin: var(--radix-tooltip-content-transform-origin);
+  /* Keyframes (not transition): Radix mounts already open, so transitions never fire. */
   opacity: 0;
-  scale: 0.98;
-  transition:
-    opacity 50ms ease-out,
-    scale 50ms ease-out;
+  scale: var(--scale-small);
+}
+@keyframes landmarks-tooltip-in {
+  from {
+    opacity: 0;
+    scale: var(--scale-small);
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes landmarks-tooltip-out {
+  from {
+    opacity: 1;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: var(--scale-small);
+  }
 }
 .landmarks-tooltip[data-state="delayed-open"],
 .landmarks-tooltip[data-state="instant-open"] {
-  opacity: 1;
-  scale: 1;
-  transition:
-    opacity 150ms ease-out,
-    scale 150ms ease-out;
+  animation: landmarks-tooltip-in var(--duration-quick) var(--ease-out) both;
+}
+.landmarks-tooltip[data-state="closed"] {
+  animation: landmarks-tooltip-out var(--duration-micro) var(--ease-out) both;
 }
 .landmarks-tooltip-shortcut {
   color: color-mix(in oklab, var(--lm-tooltip-text) 65%, transparent);
@@ -1003,8 +1037,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .landmarks-tooltip {
-    transition: none !important;
+  .landmarks-tooltip,
+  .landmarks-tooltip[data-state="delayed-open"],
+  .landmarks-tooltip[data-state="instant-open"],
+  .landmarks-tooltip[data-state="closed"] {
+    animation: none !important;
+    opacity: 1;
     scale: 1;
   }
 }
@@ -1070,9 +1108,9 @@
   background: var(--lm-layer-active-bg, color-mix(in srgb, var(--accent) 55%, transparent));
   box-shadow: none;
   transition:
-    transform var(--lm-tab-pill-dur, 250ms) cubic-bezier(0.22, 1, 0.36, 1),
-    width var(--lm-tab-pill-dur, 250ms) cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 120ms ease;
+    transform var(--lm-tab-pill-dur) var(--ease-smooth-out),
+    width var(--lm-tab-pill-dur) var(--ease-smooth-out),
+    opacity var(--duration-quick) var(--ease-out);
   will-change: transform, width;
   pointer-events: none;
 }
@@ -1101,7 +1139,7 @@
   100% { transform: scale(1); }
 }
 .landmarks-view-cta--pop {
-  animation: landmarks-view-cta-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: landmarks-view-cta-pop var(--duration-medium) var(--ease-smooth-out);
 }
 @media (prefers-reduced-motion: reduce) {
   .landmarks-view-cta--pop {

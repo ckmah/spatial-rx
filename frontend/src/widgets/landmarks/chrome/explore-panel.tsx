@@ -43,13 +43,13 @@ import {
   FLOAT_PANEL,
   FLOAT_PANEL_CLIP,
   PANEL_INSET,
-  PILL_TABS_TRIGGER
+  PANEL_SCROLL,
+  PILL_TABS_TRIGGER,
+  COMBO_INPUT,
+  STACK_GAP_SM,
 } from "./sections";
 import { SoftFloatSlidingTabsList } from "./sliding-tabs";
 import { useWidgetPortalContainer } from "./use-widget-portal";
-
-const COMBO_INPUT =
-  "h-7 min-h-7 w-full rounded-[var(--radius)] bg-muted/80 shadow-none [&_input]:h-7 [&_input]:min-h-0 [&_input]:text-[11px] [&_input]:md:text-[11px] [&_input]:placeholder:text-[11px]";
 
 const AVATAR_MAX = 5;
 
@@ -99,7 +99,7 @@ export function EmbeddingCombobox({ lm }: { lm: LandmarksModel }) {
   }
 
   return (
-    <div ref={wrapRef} className="flex flex-col gap-1.5">
+    <div ref={wrapRef} className={STACK_GAP_SM}>
       <Combobox
         items={keys}
         value={value || null}
@@ -358,7 +358,7 @@ export function ExplorePanel({
       <Tabs
         value={colorBy}
         onValueChange={onColorBy}
-        className="flex flex-col gap-1.5"
+        className={STACK_GAP_SM}
         data-testid="explore-color-by"
       >
         <SoftFloatSlidingTabsList value={colorBy} aria-label="Color">
@@ -393,7 +393,7 @@ export function ExplorePanel({
             )}
           </TabsContent>
           <TabsContent value="embedding" className="m-0">
-            <div className="flex flex-col gap-1.5">
+            <div className={STACK_GAP_SM}>
               <EmbeddingCombobox lm={lm} />
               <EmbeddingRgbLegend lm={lm} />
             </div>
@@ -411,10 +411,11 @@ export function ExplorePanel({
         data-testid="explore-panel"
       >
         <div
-          className={cn(
-            "min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain",
-            PANEL_INSET,
-          )}
+          className={            cn(
+              PANEL_SCROLL,
+              "min-w-0 overflow-x-hidden",
+              PANEL_INSET,
+            )}
         >
           {body}
         </div>
@@ -427,8 +428,9 @@ export function ExplorePanel({
       <Card className={FLOAT_PANEL} data-testid="explore-panel">
         <div className={FLOAT_PANEL_CLIP}>
           <CardContent
-            className={cn(
-              "min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain",
+            className={            cn(
+              PANEL_SCROLL,
+              "min-w-0 overflow-x-hidden",
               PANEL_INSET,
             )}
           >

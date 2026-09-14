@@ -1,9 +1,10 @@
+import { GENE_COLORS } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
-import { META_LINE } from "./sections";
+import { META_LINE, STACK_GAP_SM } from "./sections";
 
 /** Diverging similarity legend mid-stop at 0.5 (matches engine). */
 const SIMILARITY_LEGEND =
-  "linear-gradient(to right, #3b82f6 0%, #e8e8e8 50%, #ff0099 100%)";
+  `linear-gradient(to right, #3b82f6 0%, #e8e8e8 50%, ${GENE_COLORS[0]} 100%)`;
 
 /**
  * Probe-mode similarity chrome (points + raster). View (Points/Raster) lives in
@@ -25,7 +26,7 @@ export function RasterSection({ lm }: { lm: LandmarksModel }) {
 
   return (
     <div
-      className="flex flex-col gap-1.5"
+      className={STACK_GAP_SM}
       data-testid="raster-section"
       data-testid-legend="raster-legend"
     >

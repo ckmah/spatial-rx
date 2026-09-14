@@ -18,6 +18,13 @@ import { GENE_COLORS, MAX_ACTIVE_GENES, blendHex, formatLegendValue } from "../h
 import type { LandmarksModel } from "../use-landmarks-model";
 import { ColorSwatch } from "./primitives";
 import { geneDisplayBounds } from "./genes-ternary";
+import {
+  CHANNEL_BAR,
+  CHANNEL_LABEL,
+  LEGEND_MUTED,
+  MUTED_CONTROL,
+  STACK_GAP_SM,
+} from "./sections";
 import { useWidgetPortalContainer } from "./use-widget-portal";
 
 function GenesHorizontalBar({
@@ -38,22 +45,16 @@ function GenesHorizontalBar({
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex min-w-0 items-center justify-between gap-1 text-[10px] text-foreground/65">
+      <div className={cn("flex min-w-0 items-center justify-between gap-1", LEGEND_MUTED)}>
         {labels.map((label, i) => (
-          <span
-            key={`${label}-${i}`}
-            className="inline-flex min-w-0 items-center gap-1 truncate text-foreground"
-          >
+          <span key={`${label}-${i}`} className={CHANNEL_LABEL}>
             <ColorSwatch color={colors[i]} />
             <span className="truncate">{label}</span>
           </span>
         ))}
       </div>
-      <div
-        className="h-2.5 w-full rounded-full"
-        style={{ background: gradient }}
-      />
-      <div className="flex justify-between text-[10px] text-foreground/65 tabular-nums">
+      <div className={CHANNEL_BAR} style={{ background: gradient }} />
+      <div className={cn("flex justify-between tabular-nums", LEGEND_MUTED)}>
         <span>{formatLegendValue(lo)}</span>
         <span>{formatLegendValue(hi)}</span>
       </div>
@@ -151,7 +152,7 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
   const anchor = useComboboxAnchor();
 
   return (
-    <div ref={wrapRef} className="flex min-w-0 flex-col gap-1.5 overflow-x-hidden">
+    <div ref={wrapRef} className={cn(STACK_GAP_SM, "min-w-0 overflow-x-hidden")}>
       <Combobox
         items={names}
         multiple
@@ -165,7 +166,8 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
           <ComboboxChips
             ref={anchor}
             className={cn(
-              "min-h-7 min-w-0 w-full flex-wrap rounded-md bg-muted/80 px-1.5 py-0.5 text-[11px] shadow-none",
+              MUTED_CONTROL,
+              "min-w-0 w-full flex-wrap rounded-md px-1.5 py-0.5",
               selected.length > 0 && "pr-8",
             )}
           >

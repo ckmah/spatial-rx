@@ -234,6 +234,9 @@ export function mountEngine({ model, host }) {
   // Re-clear the deck when those classes change on the container.
   let rasterImageCache = { key: "", image: null, bounds: null };
   let applyPlotBackground = () => { };
+  /** Cached CSS bg + deck clearColor — invalidated on theme class changes. */
+  let cachedPlotBackground = null;
+  let cachedPlotClearColor = null;
   const themeObserver = new MutationObserver(() => {
     applyPlotBackground();
     // Observation sequential low-stop tracks plot background — rebuild texture.
@@ -1313,6 +1316,14 @@ export function mountEngine({ model, host }) {
 
   function scrubProbeAtWorld(x, y) {
     if (!probeModeOn()) return false;
+    // Same world coords → no sticky/score/circle work (mousemove + rAF churn).
+    if (
+      hoverProbeWorld &&
+      hoverProbeWorld.x === x &&
+      hoverProbeWorld.y === y
+    ) {
+      return true;
+    }
     let changed = false;
     let scoresChanged = false;
     if (isRasterMode()) {
@@ -2998,26 +3009,37 @@ export function mountEngine({ model, host }) {
   };
 
   function resolvePlotBackground() {
+    if (cachedPlotBackground != null) return cachedPlotBackground;
     // Prefer a resolved used color (custom props may still be `var(...)`).
     for (const el of [body, container, plotStack]) {
       if (!el) continue;
       const used = getComputedStyle(el).backgroundColor;
       if (used && used !== "rgba(0, 0, 0, 0)" && used !== "transparent") {
+        cachedPlotBackground = used;
         return used;
       }
     }
     const token = getComputedStyle(container).getPropertyValue("--background").trim();
-    if (token && !token.startsWith("var(")) return token;
-    return container.classList.contains("landmarks--dark") ? "#000000" : "#ffffff";
+    if (token && !token.startsWith("var(")) {
+      cachedPlotBackground = token;
+      return token;
+    }
+    cachedPlotBackground = container.classList.contains("landmarks--dark")
+      ? "#000000"
+      : "#ffffff";
+    return cachedPlotBackground;
   }
 
   applyPlotBackground = () => {
+    cachedPlotBackground = null;
+    cachedPlotClearColor = null;
     const bg = resolvePlotBackground();
+    cachedPlotClearColor = cssColorToClear(bg);
     plotStack.style.background = bg;
     webglCanvas.style.background = bg;
     if (!deckgl) return;
     deckgl.setProps({
-      parameters: { clearColor: cssColorToClear(bg),  },
+      parameters: { clearColor: cachedPlotClearColor,  },
       ...(currentViewState ? { viewState: currentViewState } : {}),
     });
     if (typeof deckgl.redraw === "function") deckgl.redraw(true);
@@ -3025,9 +3047,11 @@ export function mountEngine({ model, host }) {
 
   function applyDeckProps(props) {
     if (!deckgl) return;
-    const bg = resolvePlotBackground();
+    if (cachedPlotClearColor == null) {
+      cachedPlotClearColor = cssColorToClear(resolvePlotBackground());
+    }
     deckgl.setProps({
-      parameters: { clearColor: cssColorToClear(bg),  },
+      parameters: { clearColor: cachedPlotClearColor,  },
       ...props,
       ...(currentViewState ? { viewState: currentViewState } : {}),
     });
@@ -3069,6 +3093,9 @@ export function mountEngine({ model, host }) {
       currentViewState = vs;
       fitZoom = vs.zoom;
       const bg = resolvePlotBackground();
+      if (cachedPlotClearColor == null) {
+        cachedPlotClearColor = cssColorToClear(bg);
+      }
       zoomWidget = new ZoomWidgetCtor({
         id: "landmarks-zoom",
         style: HIDDEN_WIDGET_STYLE,
@@ -3089,7 +3116,7 @@ export function mountEngine({ model, host }) {
         controller: controllerProps(),
         initialViewState: vs,
         widgets: [zoomWidget, resetWidget],
-        parameters: { clearColor: cssColorToClear(bg) },
+        parameters: { clearColor: cachedPlotClearColor },
         layers,
         pickingRadius: 8,
         getTooltip: deckTooltip,
@@ -3175,10 +3202,8 @@ export function mountEngine({ model, host }) {
         },
         onHover: (info) => {
           if (probeModeOn()) {
-            const world = worldFromDeckInfo(info);
-            if (world) {
-              scrubProbeAtWorld(world[0], world[1]);
-            }
+            // Probe scrub owns world coords via mousemove (eventPoint) —
+            // Deck onHover would double-run stickyHoverBin / score rebuilds.
             webglCanvas.style.cursor = "crosshair";
             return;
           }

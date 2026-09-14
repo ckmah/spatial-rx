@@ -23,6 +23,8 @@ export function SoftFloatSlidingTabsList({
   ...props
 }: ComponentProps<typeof TabsList> & { value: string }) {
   const listRef = useRef<HTMLDivElement>(null);
+  const hasMountedRef = useRef(false);
+  const prevValueRef = useRef(value);
   const [pill, setPill] = useState({ left: 0, width: 0, ready: false });
 
   const measure = useCallback((animate: boolean) => {
@@ -49,7 +51,15 @@ export function SoftFloatSlidingTabsList({
   }, []);
 
   useLayoutEffect(() => {
-    measure(false);
+    const valueChanged = prevValueRef.current !== value;
+    prevValueRef.current = value;
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      measure(false);
+      return;
+    }
+    // Slide only when the active tab changes; snap on resize/children churn.
+    measure(valueChanged);
   }, [value, measure, children]);
 
   useLayoutEffect(() => {
