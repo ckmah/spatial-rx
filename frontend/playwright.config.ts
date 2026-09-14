@@ -26,8 +26,8 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:5173",
     headless: true,
     trace: "on-first-retry",
-    // Videos only on failure — keeps CI artifacts small.
-    video: "retain-on-failure",
+    // Videos only on CI failure — avoids requiring ffmpeg locally.
+    video: process.env.CI ? "retain-on-failure" : "off",
     viewport: { width: 1280, height: 900 },
     deviceScaleFactor: 1,
     launchOptions: { args: ["--disable-lcd-text", "--font-render-hinting=none"] },

@@ -92,9 +92,7 @@ export function RightChromeStack({
             {detail}
           </span>
 
-          <div data-testid="info-panel">
-            <InfoPanel lm={lm} engine={engine} embedded bare />
-          </div>
+          <InfoPanel lm={lm} engine={engine} embedded bare />
 
           <RasterSection lm={lm} />
 

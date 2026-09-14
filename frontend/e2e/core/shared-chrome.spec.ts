@@ -24,6 +24,7 @@ test.describe("shared Soft Float chrome", () => {
     // Shared primitives used across Soft Float docks.
     await expect(page.getByTestId("explore-color-by")).toBeVisible();
     await expect(page.getByTestId("info-panel")).toBeVisible();
+    await expect(page.getByTestId("info-chart-well")).toBeVisible();
 
     // One rest-state capture for shared chrome regressions.
     await shot(page, "shared-chrome-rest", widget);

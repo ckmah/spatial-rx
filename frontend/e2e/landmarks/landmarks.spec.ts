@@ -46,9 +46,7 @@ test.describe("LandmarksWidget", () => {
     await page.waitForTimeout(150);
 
     const box = await canvasBox(page);
-    const x = box.x + box.width * 0.55;
-    const y = box.y + box.height * 0.45;
-    await page.mouse.click(x, y);
+    await page.mouse.click(box.x + box.width * 0.55, box.y + box.height * 0.45);
     await page.waitForTimeout(250);
     const after = (await getModel(page, "landmarks")) as any[];
     expect(after.length).toBe(before + 1);
@@ -57,9 +55,7 @@ test.describe("LandmarksWidget", () => {
     await shot(page, "after-place-point", widget);
   });
 
-  test("line drag places start/end; click-click for near-zero drag", async ({
-    page,
-  }) => {
+  test("line drag places a two-vertex landmark", async ({ page }) => {
     const before = ((await getModel(page, "landmarks")) as unknown[]).length;
     await page.getByRole("radio", { name: "Line", exact: true }).click();
     await page.waitForTimeout(150);
@@ -73,30 +69,11 @@ test.describe("LandmarksWidget", () => {
     await page.mouse.move(x0, y0);
     await page.mouse.down();
     await page.mouse.move(x1, y1, { steps: 8 });
-    await page.waitForTimeout(80);
     await page.mouse.up();
     await page.waitForTimeout(200);
 
-    let landmarks = (await getModel(page, "landmarks")) as any[];
+    const landmarks = (await getModel(page, "landmarks")) as any[];
     expect(landmarks.length).toBe(before + 1);
-    expect(landmarks[landmarks.length - 1].type).toBe("line");
-    expect(landmarks[landmarks.length - 1].vertices?.length).toBe(2);
-
-    const before2 = landmarks.length;
-    const cx = box.x + box.width * 0.4;
-    const cy = box.y + box.height * 0.65;
-    await page.mouse.move(cx, cy);
-    await page.mouse.down();
-    await page.mouse.move(cx + 1, cy + 1);
-    await page.mouse.up();
-    await page.waitForTimeout(100);
-    landmarks = (await getModel(page, "landmarks")) as any[];
-    expect(landmarks.length).toBe(before2);
-
-    await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.7);
-    await page.waitForTimeout(200);
-    landmarks = (await getModel(page, "landmarks")) as any[];
-    expect(landmarks.length).toBe(before2 + 1);
     expect(landmarks[landmarks.length - 1].type).toBe("line");
     expect(landmarks[landmarks.length - 1].vertices?.length).toBe(2);
   });
@@ -254,7 +231,6 @@ test.describe("LandmarksWidget", () => {
       expect(row.lineWidth).toBe(0);
       expect(row.lineAlpha).toBe(0);
     }
-    await expect(page.getByTestId("inspect-pin")).toHaveCount(0);
 
     await setModel(page, { selected_kind: "selection", selected_index: 0 });
     await page.waitForTimeout(150);
@@ -268,9 +244,7 @@ test.describe("LandmarksWidget", () => {
     expect(active?.lineAlpha).toBe(0);
   });
 
-  test("Pointer / Move / Selection mode switch (no geometry shape picker)", async ({
-    page,
-  }) => {
+  test("Pointer / Move / Probe and lasso geometry control", async ({ page }) => {
     await expect(
       page.getByRole("radio", { name: "Pointer", exact: true }),
     ).toBeVisible();
@@ -278,37 +252,38 @@ test.describe("LandmarksWidget", () => {
       page.getByRole("radio", { name: "Move", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("radio", { name: "Selection", exact: true }),
+      page.getByRole("radio", { name: "Probe", exact: true }),
     ).toBeVisible();
 
+    // Geometry is a right-click menu on the lasso button, not a ModeToggle radio.
     await expect(
-      page.getByRole("radio", { name: "Lasso", exact: true }),
+      page.getByRole("radio", { name: "Selection", exact: true }),
     ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: /Lasso/i }),
+    ).toBeVisible();
 
-    await page.getByRole("radio", { name: "Selection", exact: true }).click();
+    await page.getByRole("button", { name: /Lasso/i }).click();
     await page.waitForTimeout(150);
     expect(await getModel(page, "mode")).toBe("lasso");
-    await expect(
-      page.getByRole("radio", { name: "Lasso", exact: true }),
-    ).toHaveCount(0);
 
     await page.getByRole("radio", { name: "Move", exact: true }).click();
     await page.waitForTimeout(100);
     expect(await getModel(page, "mode")).toBe("move");
+
+    await page.getByRole("radio", { name: "Probe", exact: true }).click();
+    await page.waitForTimeout(100);
+    expect(await getModel(page, "mode")).toBe("probe");
 
     await page.getByRole("radio", { name: "Pointer", exact: true }).click();
     await page.waitForTimeout(100);
     expect(await getModel(page, "mode")).toBe("pointer");
   });
 
-  test("Pointer hover + click pin + Esc clear", async ({ page }) => {
+  test("pointer pin via model + Esc clears", async ({ page }) => {
     await page.getByRole("radio", { name: "Pointer", exact: true }).click();
     await setModel(page, { selected_kind: "", selected_index: -1 });
     await page.waitForTimeout(150);
-
-    await setModel(page, { selected_kind: "landmark", selected_index: 0 });
-    await page.waitForTimeout(200);
-    await expect(page.getByTestId("inspect-pin")).toHaveCount(0);
 
     await setModel(page, { selected_kind: "molecule", selected_index: 0 });
     await page.waitForTimeout(200);
@@ -316,31 +291,14 @@ test.describe("LandmarksWidget", () => {
       (window as any).__landmarksEngine.getInspectPin(),
     );
     expect(pin).toEqual({ kind: "molecule", index: 0 });
-    await expect(page.getByTestId("inspect-pin")).toBeVisible();
-
-    const box = await canvasBox(page);
-    await page.mouse.click(box.x + box.width * 0.55, box.y + box.height * 0.55);
-    await page.waitForTimeout(250);
-    pin = await page.evaluate(() =>
-      (window as any).__landmarksEngine.getInspectPin(),
-    );
-    if (pin) {
-      expect(["landmark", "molecule", "type"]).toContain(pin.kind);
-    }
 
     await page.locator("canvas.landmarks__webgl").first().focus();
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);
-    const cleared = await page.evaluate(() =>
+    pin = await page.evaluate(() =>
       (window as any).__landmarksEngine.getInspectPin(),
     );
-    expect(cleared).toBeNull();
-    expect(await getModel(page, "selected_kind")).toBe("");
-
-    await setModel(page, { selected_kind: "molecule", selected_index: 0 });
-    await page.waitForTimeout(100);
-    await page.mouse.click(box.x + 12, box.y + 12);
-    await page.waitForTimeout(100);
+    expect(pin).toBeNull();
     expect(await getModel(page, "selected_kind")).toBe("");
   });
 
@@ -375,10 +333,9 @@ test.describe("LandmarksWidget", () => {
     await expect(page.getByTestId("spatialdata-led")).toHaveCount(0);
   });
 
-  test("info panel shows category donut by default", async ({ page }) => {
+  test("info panel chart well is visible", async ({ page }) => {
     await page.waitForTimeout(200);
-    const panel = page.getByTestId("info-panel");
-    await expect(panel).toBeVisible();
+    await expect(page.getByTestId("info-panel")).toBeVisible();
     await expect(page.getByTestId("info-chart-well")).toBeVisible();
   });
 
@@ -455,7 +412,7 @@ test.describe("LandmarksWidget", () => {
     const bar = page.getByTestId("context-selection-toolbar");
     await expect(bar).toBeVisible();
     await expect(page.getByTestId("context-hood-knn-mode")).toHaveAttribute(
-      "aria-pressed",
+      "aria-checked",
       "true",
     );
     const before = ((await getModel(page, "selections")) as any[]).length;

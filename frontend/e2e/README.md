@@ -29,6 +29,8 @@ Keep **2–3 visual anchors per widget** for the biggest state changes. Everythi
 |------|--------|
 | `shared-chrome-rest` | Shared toolbar / docks / shadcn controls |
 
+Obsolete Soft Float assertions removed: Selection ModeToggle radio, Inspect pin chip, near-zero line click-click path.
+
 Canonical platform: **Linux Chromium** (GitHub Actions). macOS soft-skips screenshots unless `E2E_SCREENSHOTS=1`.
 
 ## Run locally
