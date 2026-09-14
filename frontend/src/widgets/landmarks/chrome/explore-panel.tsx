@@ -175,8 +175,8 @@ function CategoryCollapsibleRow({
         >
           <ChevronRightIcon
             className={cn(
-              "landmarks-layer-icon size-[0.875rem] shrink-0 transition-transform",
-              open && "rotate-90",
+              "landmarks-layer-icon landmarks-cat-chevron-icon size-[0.875rem] shrink-0",
+              open && "landmarks-cat-chevron-icon--open",
             )}
           />
         </button>
@@ -204,25 +204,27 @@ function CategoryCollapsibleRow({
         </span>
       </div>
       <CollapsibleContent className="landmarks-cat-sublist overflow-hidden pl-4">
-        <ItemGroup className="gap-0 p-0">
-          {(col.labels || []).map((label, i) => (
-            <LayerRow
-              key={`${col.name}-${label}`}
-              active={
-                selected_kind === "type" &&
-                col.name === active_category &&
-                selected_index === i
-              }
-              color={
-                (col.palette || [])[
-                  i % Math.max((col.palette || []).length, 1)
-                ]
-              }
-              label={label}
-              onSelect={() => lm.selectType(col, i)}
-            />
-          ))}
-        </ItemGroup>
+        <div className="landmarks-cat-sublist-inner">
+          <ItemGroup className="gap-0 p-0">
+            {(col.labels || []).map((label, i) => (
+              <LayerRow
+                key={`${col.name}-${label}`}
+                active={
+                  selected_kind === "type" &&
+                  col.name === active_category &&
+                  selected_index === i
+                }
+                color={
+                  (col.palette || [])[
+                    i % Math.max((col.palette || []).length, 1)
+                  ]
+                }
+                label={label}
+                onSelect={() => lm.selectType(col, i)}
+              />
+            ))}
+          </ItemGroup>
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );

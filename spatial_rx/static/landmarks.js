@@ -4509,11 +4509,29 @@ export function mountEngine({ model, host }) {
     return false;
   }
 
+  /** Deep focus inside this widget (shadow-DOM aware). */
+  function widgetHasFocus() {
+    const root = container.getRootNode();
+    if (root instanceof ShadowRoot) {
+      const deep = root.activeElement;
+      if (deep && (deep === webglCanvas || container.contains(deep))) return true;
+    }
+    const ae = document.activeElement;
+    if (!ae) return false;
+    if (ae === webglCanvas || container.contains(ae)) return true;
+    return false;
+  }
+
   let pointerInWidget = false;
 
   function handleKeyDown(event) {
-    if (isTypingTarget(event)) return;
-    if (!eventInWidget(event) && !pointerInWidget) return;
+    // Marimo often keeps focus in the cell editor after clicking the widget.
+    // Only treat typing as blocking when the editable is *inside* our chrome
+    // (gene combobox, etc.); otherwise pointerInWidget / deep focus still win.
+    const typing = isTypingTarget(event);
+    const inWidget = eventInWidget(event) || widgetHasFocus() || pointerInWidget;
+    if (!inWidget) return;
+    if (typing && eventInWidget(event)) return;
 
     const mod = event.metaKey || event.ctrlKey;
     const key = event.key;
@@ -4590,30 +4608,35 @@ export function mountEngine({ model, host }) {
       if (switchMode(MODE_BY_KEY[lower])) {
         event.preventDefault();
         event.stopPropagation();
+        event.stopImmediatePropagation();
       }
       return;
     }
     if (key === "=" || key === "+") {
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       zoomBy(1);
       return;
     }
     if (key === "-" || key === "_") {
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       zoomBy(-1);
       return;
     }
     if (key === "0") {
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       resetZoom();
       return;
     }
     if (lower === "f") {
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       container.dispatchEvent(new CustomEvent("landmarks-toggle-fullscreen"));
     }
   }
@@ -4740,8 +4763,9 @@ export function mountEngine({ model, host }) {
     },
     { signal },
   );
-  // Capture so we win against notebook hosts that also bind shortcuts.
-  document.addEventListener("keydown", handleKeyDown, {
+  // Capture on window so we run before notebook hosts; composedPath keeps
+  // shadow-DOM focus checks correct for marimo anywidget.
+  window.addEventListener("keydown", handleKeyDown, {
     capture: true,
     signal,
   });
