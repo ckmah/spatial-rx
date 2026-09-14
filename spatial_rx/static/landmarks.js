@@ -741,6 +741,38 @@ export function mountEngine({ model, host }) {
     return cache.flatToCompact[flat] ?? -1;
   }
 
+  /**
+   * Cursor-aligned raster probe: nearest packed (nonempty) bin center within R.
+   * Packed bins are nonempty by construction — no grid-cell-under-cursor snap.
+   */
+  function nearestNonemptyBinWithinRadius(x, y) {
+    const cache = refreshRasterArrays();
+    const n = cache.nBins | 0;
+    if (!n) return -1;
+    const size = Number(model.get("raster_bin_size")) || 0;
+    if (!(size > 0)) return -1;
+    const R = probeWindowRadius();
+    const R2 = R * R;
+    const ox = Number(model.get("raster_origin_x")) || 0;
+    const oy = Number(model.get("raster_origin_y")) || 0;
+    const cols = cache.cols;
+    const rows = cache.rows;
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < n; i++) {
+      const cx = ox + ((cols[i] | 0) + 0.5) * size;
+      const cy = oy + ((rows[i] | 0) + 0.5) * size;
+      const dx = cx - x;
+      const dy = cy - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= R2 && d2 < bestD) {
+        bestD = d2;
+        best = i;
+      }
+    }
+    return best;
+  }
+
 
   function worldFromDeckInfo(info) {
     if (info?.coordinate && Number.isFinite(info.coordinate[0])) {
@@ -772,6 +804,11 @@ export function mountEngine({ model, host }) {
   let pointFeatCache = { key: "", features: null, dim: 0, n: 0 };
   let pointScoreCache = { key: "", scores: null };
   let pinnedPointIndex = -1;
+  /** Cursor-aligned probe disk (points): hover overrides pin while scrubbing. */
+  let hoverProbeWorld = null; // {x,y} | null
+  let pinnedProbeWorld = null; // {x,y} | null
+  let probeScrubSeq = 0;
+  let pointDiskScoreCache = { key: "", scores: null };
 
   /** Per-cell observation matrix for the active raster_basis / color signal. */
   function rawPointFeatureMatrix(n) {
@@ -934,19 +971,105 @@ export function mountEngine({ model, host }) {
   }
 
   function activeQueryPoint() {
+    // Legacy index helpers; disk probe uses hoverProbeWorld / pinnedProbeWorld.
     if (hoverPointIndex >= 0) return hoverPointIndex;
     if (pinnedPointIndex >= 0) return pinnedPointIndex;
     return -1;
   }
 
+  function activeProbeWorld() {
+    if (hoverProbeWorld) return hoverProbeWorld;
+    if (pinnedProbeWorld) return pinnedProbeWorld;
+    return null;
+  }
 
+  /** Mean of raw point features inside disk (x,y,R). Null if empty. */
+  function meanRawFeaturesInDisk(x, y) {
+    const pts = getPointsData();
+    const n = pts.length;
+    const raw = rawPointFeatureMatrix(n);
+    if (!raw.features || !raw.dim) return null;
+    const R = probeWindowRadius();
+    const R2 = R * R;
+    const dim = raw.dim;
+    const src = raw.features;
+    const acc = new Float32Array(dim);
+    let count = 0;
+    for (let i = 0; i < n; i++) {
+      const dx = pts[i].x - x;
+      const dy = pts[i].y - y;
+      if (dx * dx + dy * dy > R2) continue;
+      const off = i * dim;
+      for (let d = 0; d < dim; d++) acc[d] += src[off + d] || 0;
+      count += 1;
+    }
+    if (!count) return null;
+    const inv = 1 / count;
+    for (let d = 0; d < dim; d++) acc[d] *= inv;
+    return { vector: acc, dim, count };
+  }
+
+  /** Cosine of each point's raw features to a query vector. */
+  function cosineScoresForFeatureVector(qVec, dim) {
+    const pts = getPointsData();
+    const n = pts.length;
+    const raw = rawPointFeatureMatrix(n);
+    if (!raw.features || raw.dim !== dim || !qVec) return null;
+    const key = [
+      pointsCache.key,
+      n,
+      dim,
+      probeWindowRadius(),
+      probeScrubSeq,
+      qVec[0],
+      qVec[Math.min(dim - 1, 1)] || 0,
+      qVec[dim - 1] || 0,
+    ].join("|");
+    if (pointDiskScoreCache.key === key && pointDiskScoreCache.scores) {
+      return pointDiskScoreCache.scores;
+    }
+    let qn = 0;
+    const q = new Float32Array(dim);
+    for (let d = 0; d < dim; d++) {
+      const v = qVec[d] || 0;
+      q[d] = v;
+      qn += v * v;
+    }
+    qn = Math.sqrt(qn) || 1;
+    for (let d = 0; d < dim; d++) q[d] /= qn;
+    const src = raw.features;
+    const scores = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let dot = 0;
+      let rn = 0;
+      const off = i * dim;
+      for (let d = 0; d < dim; d++) {
+        const v = src[off + d] || 0;
+        rn += v * v;
+        dot += v * q[d];
+      }
+      rn = Math.sqrt(rn) || 1;
+      scores[i] = dot / rn;
+    }
+    pointDiskScoreCache = { key, scores };
+    return scores;
+  }
+
+  function scheduleProbeRedraw() {
+    if (hoverRaf) cancelAnimationFrame(hoverRaf);
+    hoverRaf = requestAnimationFrame(() => {
+      hoverRaf = 0;
+      setDeckLayers();
+    });
+  }
 
   function scrubProbeAtWorld(x, y) {
     if (!probeModeOn()) return false;
     let changed = false;
     if (isRasterMode()) {
       if (!hasRasterFeatures()) return false;
-      const bin = pickBinAtWorld(x, y);
+      // Nearest nonempty bin center within R — idle when none.
+      const bin = nearestNonemptyBinWithinRadius(x, y);
       if (bin !== hoverBinIndex) {
         hoverBinIndex = bin;
         changed = true;
@@ -955,10 +1078,30 @@ export function mountEngine({ model, host }) {
         hoverPointIndex = -1;
         changed = true;
       }
+      if (hoverProbeWorld) {
+        hoverProbeWorld = null;
+        changed = true;
+      }
     } else {
-      const pi = pickPointAtWorld(x, y);
-      if (pi !== hoverPointIndex) {
-        hoverPointIndex = pi;
+      // Points: query = mean raw features in disk (mouse, R); empty → idle.
+      const mean = meanRawFeaturesInDisk(x, y);
+      if (mean) {
+        if (
+          !hoverProbeWorld ||
+          hoverProbeWorld.x !== x ||
+          hoverProbeWorld.y !== y
+        ) {
+          hoverProbeWorld = { x, y };
+          probeScrubSeq = (probeScrubSeq + 1) | 0;
+          changed = true;
+        }
+      } else if (hoverProbeWorld) {
+        hoverProbeWorld = null;
+        probeScrubSeq = (probeScrubSeq + 1) | 0;
+        changed = true;
+      }
+      if (hoverPointIndex >= 0) {
+        hoverPointIndex = -1;
         changed = true;
       }
       if (hoverBinIndex >= 0) {
@@ -966,13 +1109,7 @@ export function mountEngine({ model, host }) {
         changed = true;
       }
     }
-    if (changed) {
-      if (hoverRaf) cancelAnimationFrame(hoverRaf);
-      hoverRaf = requestAnimationFrame(() => {
-        hoverRaf = 0;
-        setDeckLayers();
-      });
-    }
+    if (changed) scheduleProbeRedraw();
     return true;
   }
 
@@ -984,6 +1121,10 @@ export function mountEngine({ model, host }) {
     }
     if (hoverPointIndex >= 0) {
       hoverPointIndex = -1;
+      changed = true;
+    }
+    if (hoverProbeWorld) {
+      hoverProbeWorld = null;
       changed = true;
     }
     if (changed) setDeckLayers();
@@ -1012,9 +1153,11 @@ export function mountEngine({ model, host }) {
 
   function similarityRgbaForPoint(i, opacity) {
     if (pointSimilarityOn()) {
-      const q = activeQueryPoint();
-      if (q < 0) return null;
-      const scores = cosineScoresForPointQuery(q);
+      const world = activeProbeWorld();
+      if (!world) return null;
+      const mean = meanRawFeaturesInDisk(world.x, world.y);
+      if (!mean) return null;
+      const scores = cosineScoresForFeatureVector(mean.vector, mean.dim);
       if (!scores || i < 0 || i >= scores.length) return null;
       const [r, g, b] = sampleRasterGray(scores[i]);
       return [r, g, b, Math.round(Math.max(0, Math.min(1, opacity)) * 255)];
@@ -1181,8 +1324,10 @@ export function mountEngine({ model, host }) {
     if ((model.get("raster_status") || "") === "computing") return [];
     const baked = buildRasterTexture();
     if (!baked?.image) return [];
-    const { BitmapLayer, PathLayer } = deckModules;
-    const layers = [
+    const { BitmapLayer } = deckModules;
+    // No aggregation-window circle at bin center during scrub — that snapped
+    // the visual to the query cell and caused hover flash. Legend is enough.
+    return [
       new BitmapLayer({
         id: "raster-bins",
         image: baked.image,
@@ -1195,38 +1340,11 @@ export function mountEngine({ model, host }) {
         parameters: OVERLAY_GL,
         updateTriggers: {
           image: baked.key,
+          // Rebake when live / pinned query changes.
+          _probe: [hoverBinIndex, model.get("raster_query_bin"), probeScrubSeq],
         },
       }),
     ];
-    const pinned = model.get("raster_query_bin");
-    const outlineIdx =
-      pinned != null && pinned >= 0
-        ? pinned | 0
-        : hoverBinIndex >= 0
-          ? hoverBinIndex
-          : -1;
-    const windowPath = outlineIdx >= 0 ? binWindowCircle(outlineIdx) : null;
-    if (windowPath) {
-      const stroke =
-        pinned != null && pinned >= 0 ? RASTER_QUERY_STROKE : RASTER_HOVER_STROKE;
-      layers.push(
-        new PathLayer({
-          id: "raster-query-window",
-          data: [{ path: windowPath }],
-          getPath: (d) => d.path,
-          getColor: hexToRgbaBytes(stroke, 0.95),
-          getWidth: 2,
-          widthUnits: "pixels",
-          pickable: false,
-          parameters: OVERLAY_GL,
-          updateTriggers: {
-            getColor: [pinned, hoverBinIndex],
-            data: [outlineIdx, refreshRasterArrays().key, model.get("raster_bin_size")],
-          },
-        })
-      );
-    }
-    return layers;
   }
 
   function activeCategoryIndex() {
@@ -1474,10 +1592,12 @@ export function mountEngine({ model, host }) {
 
   function syncInteractionMode() {
     if (currentMode !== "pointer" && currentMode !== "probe") hoverTarget = null;
-    if (currentMode !== "probe" && hoverBinIndex >= 0) {
+    if (currentMode !== "probe" && (hoverBinIndex >= 0 || hoverProbeWorld || pinnedProbeWorld)) {
       hoverBinIndex = -1;
       hoverPointIndex = -1;
       pinnedPointIndex = -1;
+      hoverProbeWorld = null;
+      pinnedProbeWorld = null;
     }
     webglCanvas.style.cursor = defaultCursor();
     if (deckgl) deckgl.setProps({ controller: controllerProps() });
@@ -1797,6 +1917,9 @@ export function mountEngine({ model, host }) {
       hoverBinIndex,
       hoverPointIndex,
       pinnedPointIndex,
+      hoverProbeWorld,
+      pinnedProbeWorld,
+      probeScrubSeq,
       currentMode,
       ...roleTrigger,
     ];
@@ -2442,38 +2565,9 @@ export function mountEngine({ model, host }) {
 
 
   function buildProbeOutlineLayers() {
-    if (!deckModules || !pointSimilarityOn()) return [];
-    const idx = activeQueryPoint();
-    if (idx < 0) return [];
-    const pts = getPointsData();
-    const p = pts[idx];
-    if (!p) return [];
-    const { PathLayer } = deckModules;
-    const radius = probeWindowRadius();
-    const path = [];
-    const segs = 64;
-    for (let i = 0; i <= segs; i++) {
-      const a = (i / segs) * Math.PI * 2;
-      path.push([p.x + Math.cos(a) * radius, p.y + Math.sin(a) * radius]);
-    }
-    const pinned = pinnedPointIndex >= 0 && hoverPointIndex < 0;
-    const stroke = pinned ? RASTER_QUERY_STROKE : RASTER_HOVER_STROKE;
-    return [
-      new PathLayer({
-        id: "probe-point-window",
-        data: [{ path }],
-        getPath: (d) => d.path,
-        getColor: hexToRgbaBytes(stroke, 0.95),
-        getWidth: 2,
-        widthUnits: "pixels",
-        pickable: false,
-        parameters: OVERLAY_GL,
-        updateTriggers: {
-          getColor: [pinnedPointIndex, hoverPointIndex],
-          data: [idx, radius, pointsCache.key],
-        },
-      }),
-    ];
+    // Prefer no probe disk outline: a moving circle at the cursor (or a circle
+    // at the query feature) reads as snap/flash. Similarity legend is enough.
+    return [];
   }
 
   function buildDeckLayers() {
@@ -2742,17 +2836,21 @@ export function mountEngine({ model, host }) {
             if (!world) return;
             if (isRasterMode()) {
               if (!hasRasterFeatures()) return;
-              const bin = pickBinAtWorld(world[0], world[1]);
+              const bin = nearestNonemptyBinWithinRadius(world[0], world[1]);
               if (bin >= 0) {
                 model.set("raster_query_bin", bin);
                 model.save_changes();
+                hoverBinIndex = -1;
                 setDeckLayers();
               }
             } else {
-              const pi = pickPointAtWorld(world[0], world[1]);
-              if (pi >= 0) {
-                pinnedPointIndex = pi;
-                hoverPointIndex = pi;
+              const mean = meanRawFeaturesInDisk(world[0], world[1]);
+              if (mean) {
+                pinnedProbeWorld = { x: world[0], y: world[1] };
+                hoverProbeWorld = null;
+                pinnedPointIndex = -1;
+                hoverPointIndex = -1;
+                probeScrubSeq = (probeScrubSeq + 1) | 0;
                 setDeckLayers();
               }
             }
@@ -2774,41 +2872,10 @@ export function mountEngine({ model, host }) {
           if (probeModeOn()) {
             const world = worldFromDeckInfo(info);
             if (world) {
-              if (isRasterMode()) {
-                if (hasRasterFeatures()) {
-                  const bin = pickBinAtWorld(world[0], world[1]);
-                  if (bin !== hoverBinIndex) {
-                    hoverBinIndex = bin;
-                    if (hoverRaf) cancelAnimationFrame(hoverRaf);
-                    hoverRaf = requestAnimationFrame(() => {
-                      hoverRaf = 0;
-                      setDeckLayers();
-                    });
-                  }
-                }
-              } else {
-                const pi = pickPointAtWorld(world[0], world[1]);
-                if (pi !== hoverPointIndex) {
-                  hoverPointIndex = pi;
-                  if (hoverRaf) cancelAnimationFrame(hoverRaf);
-                  hoverRaf = requestAnimationFrame(() => {
-                    hoverRaf = 0;
-                    setDeckLayers();
-                  });
-                }
-              }
+              scrubProbeAtWorld(world[0], world[1]);
               webglCanvas.style.cursor = "crosshair";
             } else {
-              let changed = false;
-              if (hoverBinIndex >= 0) {
-                hoverBinIndex = -1;
-                changed = true;
-              }
-              if (hoverPointIndex >= 0) {
-                hoverPointIndex = -1;
-                changed = true;
-              }
-              if (changed) setDeckLayers();
+              clearProbeHover();
               webglCanvas.style.cursor = defaultCursor();
             }
           } else if (currentMode === "pointer") {
@@ -3923,6 +3990,11 @@ export function mountEngine({ model, host }) {
         model.save_changes();
       }
       hoverBinIndex = -1;
+      hoverPointIndex = -1;
+      pinnedPointIndex = -1;
+      hoverProbeWorld = null;
+      pinnedProbeWorld = null;
+      probeScrubSeq = (probeScrubSeq + 1) | 0;
       setDeckLayers();
       return;
     }
