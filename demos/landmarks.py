@@ -7,10 +7,12 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import marimo as mo
+    import anndata as ad
+    import fsspec
     import numpy as np
+    import pandas as pd
     import scanpy as sc
     import squidpy as sq
-    from ileum_data import load_ileum_adata
     from spatial_rx import (
         LandmarksWidget,
         geodataframe_to_landmarks,
@@ -18,25 +20,15 @@ def _():
     )
 
 
-    return (
-        LandmarksWidget,
-        geodataframe_to_landmarks,
-        landmarks_to_geodataframe,
-        load_ileum_adata,
-        mo,
-        np,
-        sc,
-        sq,
-    )
+    return LandmarksWidget, fsspec, landmarks_to_geodataframe, mo, np, sc, sq
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Landmarks that stick (M1 demo)
+    # Landmarks
 
-    SPF ileum slice from `demos/data/ileum.h5ad` (Xu et al.), loaded locally or
-    via fsspec from GitHub raw when the file is not beside the notebook.
+    SPF ileum slice from `demos/data/ileum` (Xu et al.).
 
     1. Draw/edit landmarks on the canvas; use the contextual toolbar for buffer /
        style and neighborhood controls.
@@ -49,11 +41,12 @@ def _(mo):
 
 
 @app.cell
-def _(load_ileum_adata, mo):
-    CLUSTER = "cell_type"
-    adata = load_ileum_adata(mo.notebook_dir())
-    adata.obs[CLUSTER] = adata.obs[CLUSTER].astype("category")
-    return CLUSTER, adata
+def _(fsspec, sc):
+    fs = fsspec.filesystem("github", org="ckmah", repo="spatial-rx", sha="main")
+
+    with fs.open("demos/data/ileum.h5ad") as f:
+        adata = sc.read_h5ad(f)
+    return (adata,)
 
 
 @app.cell
@@ -67,10 +60,9 @@ def _(adata, sc):
 @app.cell
 def _(adata, sc):
     # Exploratory UMAP on expression-space neighbors (also stored as X_umap).
-    if "X_umap" not in adata.obsm:
-        _n_comps = min(10, adata.obsm["X_pca"].shape[1], adata.n_obs - 1)
-        sc.pp.neighbors(adata, n_pcs=_n_comps, use_rep="X_pca", random_state=0)
-        sc.tl.umap(adata, init_pos="random", random_state=0)
+    _n_comps = min(10, adata.obsm["X_pca"].shape[1], adata.n_obs - 1)
+    sc.pp.neighbors(adata, n_pcs=_n_comps, use_rep="X_pca", random_state=0)
+    sc.tl.umap(adata, init_pos="random", random_state=0)
     return
 
 
@@ -89,8 +81,8 @@ def _(adata, np, sq):
 
 
 @app.cell
-def _(CLUSTER, LandmarksWidget, adata, mo):
-    widget = mo.ui.anywidget(LandmarksWidget(adata, color=CLUSTER))
+def _(LandmarksWidget, adata, mo):
+    widget = mo.ui.anywidget(LandmarksWidget(adata))
     return (widget,)
 
 
@@ -104,48 +96,6 @@ def _(widget):
 def _(landmarks_to_geodataframe, widget):
     landmarks_gdf = landmarks_to_geodataframe(widget.landmarks)
     landmarks_gdf
-    return (landmarks_gdf,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Commit → reload
-
-    Click the button to clear the widget and reload from the GeoDataFrame above.
-    """)
-    return
-
-
-@app.cell
-def _(mo):
-    reload_btn = mo.ui.run_button(label="Reload from GeoDataFrame")
-    reload_btn
-    return (reload_btn,)
-
-
-@app.cell
-def _(geodataframe_to_landmarks, landmarks_gdf, mo, reload_btn, widget):
-    mo.stop(not reload_btn.value)
-    n_committed = len(landmarks_gdf)
-    widget.clear_landmarks()
-    widget.landmarks = geodataframe_to_landmarks(landmarks_gdf)
-    {
-        "committed": n_committed,
-        "reloaded": len(widget.landmarks),
-    }
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Neighborhood → selection
-
-    Select a type or selection, turn on Radius/k-NN in the contextual toolbar,
-    then click the make-selection icon on the L2 bar (same as
-    `widget.promote_neighborhood_to_selection()`).
-    """)
     return
 
 

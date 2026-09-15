@@ -479,6 +479,16 @@ class LandmarksWidget(AnyWidget):
         # Reference obs — do not obs.copy() / attach synthetic x,y columns.
         df = as_polars(adata.obs)
         cat_names = detect_category_columns(df)
+        # Explicit ``color=`` obs column is always included (and preferred).
+        if (
+            color
+            and color in df.columns
+            and color not in cat_names
+            and color not in {str(v) for v in adata.var_names}
+        ):
+            cat_names = [str(color), *cat_names]
+        elif color and color in cat_names:
+            cat_names = [str(color), *[c for c in cat_names if c != color]]
         cat_meta, cat_codes, cat_labels = encode_category_bundle(
             df, cat_names, color_maps=maps
         )
