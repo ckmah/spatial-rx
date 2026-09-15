@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build demos/data/ileum.h5ad from demos/data/ileum/*.csv.
 
-Writes expression, obs metadata, obsm['spatial'], Okabe–Ito cell_type colors,
+Writes expression, obs metadata, obsm['spatial'], batlowS cell_type colors,
 and exploratory X_pca / X_umap embeddings. Neighbor graphs are not stored —
 demo notebooks recompute spatial neighbors (and may recompute PCA/UMAP).
 
@@ -17,20 +17,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import scanpy as sc
-
-# Okabe–Ito–based (same as spatial_rx.categories.DEFAULT_CATEGORICAL_PALETTE).
-DEFAULT_CATEGORICAL_PALETTE = [
-    "#e69f00",
-    "#56b4e9",
-    "#009e73",
-    "#cc79a7",
-    "#0072b2",
-    "#d55e00",
-    "#f0e442",
-    "#882255",
-    "#44aa99",
-    "#332288",
-]
+from spatial_rx.categories import DEFAULT_CATEGORICAL_PALETTE
 
 CLUSTER = "cell_type"
 ROOT = Path(__file__).resolve().parent
