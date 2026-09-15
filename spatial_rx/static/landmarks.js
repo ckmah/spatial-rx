@@ -512,6 +512,23 @@ export function mountEngine({ model, host }) {
     return pointSimilarityOn() && hasRasterFeatures();
   }
 
+  /**
+   * Gene coloring (points continuous or raster genes basis).
+   */
+  function genesColoringOn() {
+    if (isRasterMode()) return model.get("raster_basis") === "genes";
+    return model.get("color_by") === "continuous";
+  }
+
+  /**
+   * Gene mode with no selection: hover stays inert (no circle / scrub).
+   * With active_genes, hover scrubs like other color modes.
+   */
+  function genesProbeHoverInert() {
+    if (!genesColoringOn()) return false;
+    return !(model.get("active_genes") || []).length;
+  }
+
   function refreshRasterArrays() {
     const rowsB64 = model.get("raster_bin_rows") || "";
     const colsB64 = model.get("raster_bin_cols") || "";
@@ -826,8 +843,8 @@ export function mountEngine({ model, host }) {
   }
 
   function activeQueryBin() {
-    // Hover wins for live scrubbing; pinned query is the idle fallback.
-    if (hoverBinIndex >= 0) return hoverBinIndex;
+    // Hover wins for live scrubbing (not genes — hover is inert there).
+    if (hoverBinIndex >= 0 && !genesProbeHoverInert()) return hoverBinIndex;
     const pinned = model.get("raster_query_bin");
     if (pinned != null && pinned >= 0) return pinned | 0;
     return -1;
@@ -1145,7 +1162,8 @@ export function mountEngine({ model, host }) {
   }
 
   function activeProbeWorld() {
-    if (hoverProbeWorld) return hoverProbeWorld;
+    // Genes with no selection: ignore hover — only a pin drives similarity.
+    if (hoverProbeWorld && !genesProbeHoverInert()) return hoverProbeWorld;
     if (pinnedProbeWorld) return pinnedProbeWorld;
     return null;
   }
@@ -1454,6 +1472,14 @@ export function mountEngine({ model, host }) {
 
   function scrubProbeAtWorld(x, y) {
     if (!probeModeOn()) return false;
+    // Genes with no selection: hover shows nothing until a gene is selected.
+    if (genesProbeHoverInert()) {
+      if (hoverBinIndex >= 0 || hoverPointIndex >= 0 || hoverProbeWorld || probeDisplayWorld) {
+        clearProbeHover();
+        scheduleProbeRedraw({ circleOnly: false });
+      }
+      return true;
+    }
     // Esc reset: hold observation colors until the cursor actually moves.
     if (probeScrubPaused) {
       if (!probePauseWorld) {
@@ -2997,7 +3023,7 @@ export function mountEngine({ model, host }) {
       });
     }
 
-    if (hoverProbeWorld || probeDisplayWorld) {
+    if ((hoverProbeWorld || probeDisplayWorld) && !genesProbeHoverInert()) {
       const circle = probeCircleWorld();
       const hx = circle.x;
       const hy = circle.y;
@@ -4817,7 +4843,10 @@ export function mountEngine({ model, host }) {
   });
   ["point_palette", "point_size", "color_by", "legend_labels", "legend_title", "color_vmin", "color_vmax"].forEach((k) => {
     onChange(k, () => {
-      if (k === "color_by") pendingViewPulse = true;
+      if (k === "color_by") {
+        pendingViewPulse = true;
+        if (genesProbeHoverInert()) clearProbeHover();
+      }
       if (deckgl) setDeckLayers();
       updatePointLegend();
     });
@@ -4853,6 +4882,7 @@ export function mountEngine({ model, host }) {
   });
   ["gene_columns", "active_genes", "gene_scale_mode", "gene_log1p", "gene_expression_logged"].forEach((k) => {
     onChange(k, () => {
+      if (k === "active_genes" && genesProbeHoverInert()) clearProbeHover();
       updateUI();
       updatePointLegend();
       setDeckLayers();
@@ -4905,6 +4935,7 @@ export function mountEngine({ model, host }) {
       }
       if (k === "render_mode" || k === "raster_basis") {
         pendingViewPulse = true;
+        if (genesProbeHoverInert()) clearProbeHover();
       }
       if (deckgl) setDeckLayers();
       updatePointLegend();

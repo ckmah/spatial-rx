@@ -35,6 +35,15 @@ export const LEGEND_CUBE: IsoOpts & { vbW: number; vbH: number } = {
   vbH: 54,
 };
 
+/** Unlabeled overlay cube — tight viewBox (no label gutters). */
+export const LEGEND_CUBE_OVERLAY: IsoOpts & { vbW: number; vbH: number } = {
+  s: 18,
+  ox: 28,
+  oy: 28,
+  vbW: 56,
+  vbH: 46,
+};
+
 /** Embedding cloud — tight viewBox around the isometric hull (little chrome padding). */
 export const CLOUD_CUBE: IsoOpts & { vbW: number; vbH: number } = {
   s: 38,

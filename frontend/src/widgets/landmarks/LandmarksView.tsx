@@ -224,7 +224,7 @@ export function LandmarksView({
             onWheel={(e) => e.stopPropagation()}
           >
             <div
-              className={cn(FLOAT_PANEL, "flex min-h-0 flex-1 flex-col")}
+              className={cn(FLOAT_PANEL, "flex h-full min-h-0 flex-1 flex-col")}
               data-testid="info-explore-stack"
             >
               <RightChromeStack lm={lm} engine={engine} />
@@ -246,7 +246,7 @@ export function LandmarksView({
               onWheel={(e) => e.stopPropagation()}
             >
               <div
-                className={cn(FLOAT_PANEL, "flex min-h-0 flex-1 flex-col")}
+                className={cn(FLOAT_PANEL, "flex max-h-full w-full flex-col")}
                 data-testid="info-explore-stack"
               >
                 <RightChromeStack lm={lm} engine={engine} />

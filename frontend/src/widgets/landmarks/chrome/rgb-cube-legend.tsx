@@ -8,52 +8,58 @@ import {
   LEGEND_CUBE,
 } from "./rgb-cube";
 
-function shortLabel(s: string) {
+function shortLabel(s: string, mode: "name" | "index") {
   const t = String(s || "").trim();
-  if (t.length <= 6) return t;
-  return t.slice(0, 6);
+  if (mode === "index") return t.slice(0, 3);
+  if (t.length <= 8) return t;
+  return `${t.slice(0, 7)}…`;
 }
 
 /**
- * Small isometric channel cube (magenta / lime / azure axes). Faces use the
- * same additive mix as the canvas; corners optionally labeled by gene / dim.
+ * Compact RGB cube at rest; hover/focus grows it and reveals channel labels
+ * (gene names or embed dim indices). Motion: scale from top-right + label fade.
  */
 export function RgbCubeLegend({
   labels,
   className,
-  showLabels = true,
+  labelMode = "name",
 }: {
   labels: string[];
   className?: string;
-  showLabels?: boolean;
+  /** Genes use names; embed uses short dim indices (0 / 1 / 2). */
+  labelMode?: "name" | "index";
 }) {
   const o = LEGEND_CUBE;
   const fillUrl = useMemo(() => buildIsoCubeFillUrl(o), []);
   const c = cubeCorners(o);
   const text = [
-    shortLabel(labels[0] ?? "0"),
-    shortLabel(labels[1] ?? "1"),
-    shortLabel(labels[2] ?? "2"),
+    shortLabel(labels[0] ?? "0", labelMode),
+    shortLabel(labels[1] ?? "1", labelMode),
+    shortLabel(labels[2] ?? "2", labelMode),
   ];
 
   return (
-    <svg
-      viewBox={`0 0 ${o.vbW} ${o.vbH}`}
-      className={cn("h-14 w-[5.25rem]", className)}
+    <div
+      className={cn("landmarks-rgb-cube group/cube", className)}
+      tabIndex={0}
       role="img"
-      aria-label={`RGB cube: ${text.join(", ")}`}
+      aria-label={`RGB cube: ${text.join(", ")}. Hover or focus to enlarge.`}
       data-testid="rgb-cube-legend"
     >
-      {fillUrl ? (
-        <image
-          href={fillUrl}
-          width={o.vbW}
-          height={o.vbH}
-          preserveAspectRatio="none"
-        />
-      ) : null}
-      {showLabels ? (
-        <>
+      <svg
+        viewBox={`0 0 ${o.vbW} ${o.vbH}`}
+        className="landmarks-rgb-cube__svg"
+        aria-hidden
+      >
+        {fillUrl ? (
+          <image
+            href={fillUrl}
+            width={o.vbW}
+            height={o.vbH}
+            preserveAspectRatio="none"
+          />
+        ) : null}
+        <g className="landmarks-rgb-cube__labels" aria-hidden>
           {/* Channel0 down-left, channel1 down-right, channel2 up. */}
           <text
             x={c.c0.x - 5}
@@ -81,8 +87,8 @@ export function RgbCubeLegend({
           >
             {text[2]}
           </text>
-        </>
-      ) : null}
-    </svg>
+        </g>
+      </svg>
+    </div>
   );
 }

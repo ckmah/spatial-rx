@@ -142,13 +142,18 @@ export function compositionSlices(opts: {
     .filter((s: CompositionSlice) => s.value > 0);
 }
 
-/** Smooth density curves for active genes (Gaussian KDE on observed sample range). */
+/** Smooth density curves for active genes (Gaussian KDE).
+ * Axis domain follows selected-gene display bounds when provided so ticks
+ * update with the gene set; otherwise uses the observed sample range.
+ */
 export function geneDensities(opts: {
   n: number;
   mask: Uint8Array;
   geneValuesB64: string;
   activeGenes: string[];
   geneLog1p: boolean;
+  /** Per-gene display bounds (same scale as samples when log1p). */
+  geneBounds?: Array<{ lo: number; hi: number }>;
   bins?: number;
 }): { series: DensitySeries[]; rows: DensityRow[]; xMin: number; xMax: number } {
   const {
@@ -157,6 +162,7 @@ export function geneDensities(opts: {
     geneValuesB64,
     activeGenes,
     geneLog1p,
+    geneBounds,
     bins = 48,
   } = opts;
   const series: DensitySeries[] = activeGenes.map((name, i) => ({
@@ -187,10 +193,37 @@ export function geneDensities(opts: {
   if (!(obsHi > obsLo) || !Number.isFinite(obsLo) || !Number.isFinite(obsHi)) {
     obsLo = 0;
     obsHi = geneLog1p ? Math.log1p(1) : 1;
+    if (geneBounds?.length) {
+      let bLo = Infinity;
+      let bHi = -Infinity;
+      for (const b of geneBounds) {
+        if (Number.isFinite(b.lo)) bLo = Math.min(bLo, b.lo);
+        if (Number.isFinite(b.hi)) bHi = Math.max(bHi, b.hi);
+      }
+      if (Number.isFinite(bLo) && Number.isFinite(bHi) && bHi > bLo) {
+        obsLo = bLo;
+        obsHi = bHi;
+      }
+    }
   }
-  const pad = (obsHi - obsLo) * 0.04 || 1e-3;
-  const xMin = obsLo - pad;
-  const xMax = obsHi + pad;
+
+  // Domain tracks the selected genes' observed mass so ticks update with the set.
+  let xMin = obsLo;
+  let xMax = obsHi;
+  if (geneBounds?.length) {
+    let bHi = -Infinity;
+    for (const b of geneBounds) {
+      if (Number.isFinite(b.hi)) bHi = Math.max(bHi, b.hi);
+    }
+    // Extend to gene display max when the selection under-samples the scale.
+    if (Number.isFinite(bHi) && bHi > xMax) xMax = bHi;
+  }
+
+  const pad = (xMax - xMin) * 0.04 || 1e-3;
+  xMin -= pad;
+  xMax += pad;
+  if (!geneLog1p && xMin < 0) xMin = 0;
+
   const span = xMax - xMin;
   const bandwidth = Math.max(span / 24, 1e-3);
   const rows: DensityRow[] = [];
@@ -215,6 +248,34 @@ export function geneDensities(opts: {
     rows.push(row);
   }
   return { series, rows, xMin, xMax };
+}
+
+/** ~3 nice tick values spanning [lo, hi] for ridge / scale axes. */
+export function niceAxisTicks(lo: number, hi: number, target = 3): number[] {
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [];
+  if (!(hi > lo)) return [lo];
+  const span = hi - lo;
+  const rough = span / Math.max(target - 1, 1);
+  const exp = Math.floor(Math.log10(Math.max(rough, 1e-12)));
+  const pow = 10 ** exp;
+  const norm = rough / pow;
+  const niceNorm =
+    norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
+  const step = niceNorm * pow;
+  const start = Math.ceil(lo / step - 1e-9) * step;
+  const ticks: number[] = [];
+  for (let v = start; v <= hi + step * 1e-6; v += step) {
+    ticks.push(Number(v.toPrecision(12)));
+    if (ticks.length > 8) break;
+  }
+  if (ticks.length < 2) return [lo, hi];
+  const eps = span * 1e-6;
+  if (Math.abs(ticks[0] - lo) > step * 0.35) ticks.unshift(lo);
+  if (Math.abs(ticks[ticks.length - 1] - hi) > step * 0.35) ticks.push(hi);
+  if (ticks.length <= 4) return ticks;
+  return [ticks[0], ticks[Math.floor((ticks.length - 1) / 2)], ticks[ticks.length - 1]].filter(
+    (v, i, a) => i === 0 || Math.abs(v - a[i - 1]) > eps,
+  );
 }
 
 export type EmbeddingCloudPoint = {

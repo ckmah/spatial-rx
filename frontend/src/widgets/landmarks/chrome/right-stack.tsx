@@ -14,7 +14,6 @@ import {
   colorSignalDetail,
   type ColorSignal,
 } from "./coloring";
-import { EmbeddingRgbLegend } from "./embedding-legend";
 import {
   CategoriesControls,
   EmbeddingCombobox,
@@ -22,12 +21,12 @@ import {
 import { GenesCombobox } from "./genes-legend";
 import { InfoPanel } from "./info-panel";
 import { RasterSection } from "./raster-section";
-import { EMBEDDED_PANEL, PANEL_INSET, PILL_TABS_TRIGGER, STACK_GAP_SM } from "./sections";
+import { EMBEDDED_PANEL, PILL_TABS_TRIGGER, STACK_GAP_SM } from "./sections";
 import { SoftFloatSlidingTabsList } from "./sliding-tabs";
 
 /**
- * Soft Float right dock: color pills → info plot → similarity legend →
- * color controls. One Tabs root keeps the switcher wired to the controls.
+ * Soft Float right dock: pinned color pills + info plot; overlay-scroll
+ * color controls underneath. One Tabs root keeps the switcher wired.
  */
 export function RightChromeStack({
   lm,
@@ -59,20 +58,22 @@ export function RightChromeStack({
     <div
       className={cn(
         EMBEDDED_PANEL,
-        "landmarks__explore-panel flex min-h-0 flex-1 flex-col",
+        "landmarks__explore-panel flex max-h-full w-full flex-col",
       )}
       data-testid="info-explore-stack"
     >
       <div
         className={cn(
-          "landmarks__chrome-stack landmarks-float-clip flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain",
-          PANEL_INSET,
+          "landmarks__chrome-stack landmarks-float-clip flex max-h-full w-full flex-col overflow-hidden",
+          // Top inset on the stack; matching bottom inset is a shrink-0 spacer
+          // so it never steals height from the controls scrollport.
+          "px-2.5 pt-1.5",
         )}
       >
         <Tabs
           value={colorBy}
           onValueChange={onColorBy}
-          className="flex min-h-0 flex-col gap-2.5 pb-1.5"
+          className="flex min-h-0 flex-col gap-2"
           data-testid="explore-color-by"
         >
           <SoftFloatSlidingTabsList value={colorBy} aria-label="Color">
@@ -88,20 +89,22 @@ export function RightChromeStack({
               embed
             </TabsTrigger>
           </SoftFloatSlidingTabsList>
-          <span className="sr-only" data-testid="explore-coloring-by">
+          <span className="sr-only absolute" data-testid="explore-coloring-by">
             {detail}
           </span>
 
-          <InfoPanel lm={lm} engine={engine} embedded bare />
+          <div className="shrink-0">
+            <InfoPanel lm={lm} engine={engine} embedded bare />
+          </div>
 
           <RasterSection lm={lm} />
 
-          <div data-testid="explore-panel">
-            <div className="pt-0.5" data-testid="explore-color-controls">
-              <TabsContent value="categories" className="m-0">
+          <div className="w-full shrink-0" data-testid="explore-panel">
+            <div data-testid="explore-color-controls">
+              <TabsContent value="categories" className="m-0 flex-none">
                 <CategoriesControls lm={lm} signal={colorBy} />
               </TabsContent>
-              <TabsContent value="genes" className="m-0">
+              <TabsContent value="genes" className="m-0 flex-none">
                 {lm.gene_columns.length ? (
                   <GenesCombobox lm={lm} />
                 ) : (
@@ -111,15 +114,16 @@ export function RightChromeStack({
                   </FieldDescription>
                 )}
               </TabsContent>
-              <TabsContent value="embedding" className="m-0">
+              <TabsContent value="embedding" className="m-0 flex-none">
                 <div className={STACK_GAP_SM}>
                   <EmbeddingCombobox lm={lm} />
-                  <EmbeddingRgbLegend lm={lm} />
                 </div>
               </TabsContent>
             </div>
           </div>
         </Tabs>
+        {/* Matches pt-1.5; shrink-0 so it stays when the dock hits max-height. */}
+        <div className="h-1.5 shrink-0" aria-hidden />
       </div>
     </div>
   );

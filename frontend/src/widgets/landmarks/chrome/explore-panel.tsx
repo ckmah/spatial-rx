@@ -35,7 +35,6 @@ import {
   colorSignalDetail,
   type ColorSignal,
 } from "./coloring";
-import { EmbeddingRgbLegend } from "./embedding-legend";
 import { GenesCombobox } from "./genes-legend";
 import { LayerRow } from "./primitives";
 import {
@@ -397,7 +396,6 @@ export function ExplorePanel({
           <TabsContent value="embedding" className="m-0">
             <div className={STACK_GAP_SM}>
               <EmbeddingCombobox lm={lm} />
-              <EmbeddingRgbLegend lm={lm} />
             </div>
           </TabsContent>
         </div>

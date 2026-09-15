@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Pie,
   PieChart,
@@ -31,6 +31,7 @@ import {
   compositionSlices,
   embeddingRgbCloud,
   geneDensities,
+  niceAxisTicks,
   resolvePointMask,
   CLOUD_OTHER_ALPHA_SCALE,
   CLOUD_OTHER_SIZE_SCALE,
@@ -38,11 +39,11 @@ import {
   type DensityRow,
   type DensitySeries,
 } from "./info-stats";
-import { CLOUD_CUBE, cubeCornerLabel, embeddingCloudPointRadius } from "./rgb-cube";
-import { RgbCubeLegend } from "./rgb-cube-legend";
+import { CLOUD_CUBE, embeddingCloudPointRadius } from "./rgb-cube";
+import { PlotChannelLegend } from "./plot-channel-legend";
+import { geneDisplayBounds } from "./genes-ternary";
 import {
   EMBEDDED_PANEL,
-  FIELD_CAPTION,
   FLOAT_PANEL,
   FLOAT_PANEL_CLIP,
   PANEL_INSET,
@@ -50,27 +51,22 @@ import {
 } from "./sections";
 
 /** Fixed chart slot so Category / Genes / Embedding swaps do not resize the card. */
-function InfoChartWell({ children }: { children: React.ReactNode }) {
+function InfoChartWell({
+  children,
+  legend,
+}: {
+  children: ReactNode;
+  legend?: ReactNode;
+}) {
   return (
     <div
-      className="landmarks-info-chart relative flex h-44 w-full shrink-0 items-stretch justify-stretch overflow-hidden rounded-[var(--radius)]"
+      className="landmarks-info-chart relative flex h-44 w-full shrink-0 items-stretch justify-stretch rounded-[var(--radius)]"
       data-testid="info-chart-well"
     >
-      {children}
-    </div>
-  );
-}
-
-/** Channel cube on its own Soft Float row: Legend …… [cube]. */
-function ChannelCubeLegendRow({ labels }: { labels: string[] }) {
-  if (labels.length < 3) return null;
-  return (
-    <div
-      className="flex min-w-0 items-center justify-between gap-2"
-      data-testid="info-channel-legend"
-    >
-      <p className={cn(FIELD_CAPTION, "shrink-0")}>Legend</p>
-      <RgbCubeLegend labels={labels.slice(0, 3)} className="h-12 w-[4.75rem]" />
+      <div className="absolute inset-0 overflow-hidden rounded-[inherit]">
+        {children}
+      </div>
+      {legend}
     </div>
   );
 }
@@ -91,13 +87,15 @@ function GeneRidgelines({
   if (!n || !rows.length) return null;
 
   const plotW = 240;
-  const axisH = 18;
-  const plotH = 156;
+  const padTop = 10;
+  const axisH = 26;
+  const plotH = 146;
   const rowH = plotH / n;
   const padX = 6;
   const width = plotW + padX * 2;
-  const height = plotH + axisH;
+  const height = padTop + plotH + axisH;
   const span = xMax - xMin || 1;
+  const ticks = niceAxisTicks(xMin, xMax, 3);
 
   return (
     <svg
@@ -111,7 +109,7 @@ function GeneRidgelines({
       {series.map((s, gi) => {
         const vals = rows.map((r) => Number(r[s.key]) || 0);
         const peak = Math.max(...vals, 1e-12);
-        const baseline = (gi + 1) * rowH - 2;
+        const baseline = padTop + (gi + 1) * rowH - 2;
         const amp = rowH * 0.78;
         let d = `M ${padX} ${baseline}`;
         for (let bi = 0; bi < rows.length; bi++) {
@@ -134,21 +132,23 @@ function GeneRidgelines({
       })}
       <line
         x1={padX}
-        y1={plotH}
+        y1={padTop + plotH}
         x2={padX + plotW}
-        y2={plotH}
+        y2={padTop + plotH}
         className="stroke-foreground/25"
         strokeWidth={1}
       />
-      {[0, 0.5, 1].map((t) => {
+      {ticks.map((value, i) => {
+        const t = (value - xMin) / span;
         const x = padX + t * plotW;
-        const value = xMin + t * span;
+        const anchor =
+          i === 0 ? "start" : i === ticks.length - 1 ? "end" : "middle";
         return (
           <text
-            key={t}
+            key={`${value}-${i}`}
             x={x}
-            y={height - 2}
-            textAnchor={t === 0 ? "start" : t === 1 ? "end" : "middle"}
+            y={height - 6}
+            textAnchor={anchor}
             className="fill-foreground/70"
             style={{ fontSize: 10, fontWeight: 500 }}
           >
@@ -182,6 +182,7 @@ export function InfoPanel({
     active_category,
     gene_values,
     active_genes,
+    gene_columns,
     gene_log1p,
     gene_expression_logged,
   } = lm;
@@ -221,6 +222,7 @@ export function InfoPanel({
       }
     });
   }, [engine, category_codes, category_columns, active_category, n]);
+
   const genes = active_genes || [];
   const signal = colorSignal(lm);
   const showGenes = signal === "genes";
@@ -301,22 +303,31 @@ export function InfoPanel({
   );
 
   const densities = useMemo(
-    () =>
-      showGenes
-        ? geneDensities({
-            n,
-            mask: focusMask,
-            geneValuesB64: gene_values || "",
-            activeGenes: genes,
-            geneLog1p: !!gene_log1p && !gene_expression_logged,
-          })
-        : { series: [], rows: [], xMin: 0, xMax: 1 },
+    () => {
+      if (!showGenes) return { series: [], rows: [], xMin: 0, xMax: 1 };
+      const applyLog = !!gene_log1p && !gene_expression_logged;
+      const geneBounds = genes.map((name) =>
+        geneDisplayBounds(
+          gene_columns.find((c) => c.name === name),
+          applyLog,
+        ),
+      );
+      return geneDensities({
+        n,
+        mask: focusMask,
+        geneValuesB64: gene_values || "",
+        activeGenes: genes,
+        geneLog1p: applyLog,
+        geneBounds,
+      });
+    },
     [
       showGenes,
       n,
       focusMask,
       gene_values,
       genes,
+      gene_columns,
       gene_log1p,
       gene_expression_logged,
     ],
@@ -373,43 +384,45 @@ export function InfoPanel({
 
   const charts = showEmbedding ? (
         embeddingCloud.length ? (
-          <svg
-            viewBox={`0 0 ${CLOUD_CUBE.vbW} ${CLOUD_CUBE.vbH}`}
-            className="h-full w-full"
-            preserveAspectRatio="xMidYMid meet"
-            role="img"
-            aria-label={`${embKey} RGB cloud in current scope`}
-          >
-            {(() => {
-              const baseR = embeddingCloudPointRadius(embeddingCloud.length);
-              const emphasize =
-                selected_kind === "type" || selected_kind === "selection";
-              return embeddingCloud.map((p, i) => {
-                const scale = !emphasize
-                  ? 1
-                  : p.selected
-                    ? CLOUD_SELECTED_SIZE_SCALE
-                    : CLOUD_OTHER_SIZE_SCALE;
-                const opacity = !emphasize
-                  ? 0.85
-                  : p.selected
-                    ? 0.95
-                    : 0.85 * CLOUD_OTHER_ALPHA_SCALE;
-                return (
-                  <circle
-                    key={i}
-                    cx={p.x}
-                    cy={p.y}
-                    r={baseR * scale}
-                    fill={p.color}
-                    fillOpacity={opacity}
-                  />
-                );
-              });
-            })()}
-          </svg>
+          <div className="box-border h-full w-full px-1.5 pb-3 pt-2">
+            <svg
+              viewBox={`0 0 ${CLOUD_CUBE.vbW} ${CLOUD_CUBE.vbH}`}
+              className="h-full w-full"
+              preserveAspectRatio="xMidYMid meet"
+              role="img"
+              aria-label={`${embKey} RGB cloud in current scope`}
+            >
+              {(() => {
+                const baseR = embeddingCloudPointRadius(embeddingCloud.length);
+                const emphasize =
+                  selected_kind === "type" || selected_kind === "selection";
+                return embeddingCloud.map((p, i) => {
+                  const scale = !emphasize
+                    ? 1
+                    : p.selected
+                      ? CLOUD_SELECTED_SIZE_SCALE
+                      : CLOUD_OTHER_SIZE_SCALE;
+                  const opacity = !emphasize
+                    ? 0.85
+                    : p.selected
+                      ? 0.95
+                      : 0.85 * CLOUD_OTHER_ALPHA_SCALE;
+                  return (
+                    <circle
+                      key={i}
+                      cx={p.x}
+                      cy={p.y}
+                      r={baseR * scale}
+                      fill={p.color}
+                      fillOpacity={opacity}
+                    />
+                  );
+                });
+              })()}
+            </svg>
+          </div>
         ) : (
-          <div className="flex h-full w-full items-center justify-center px-2">
+          <div className="flex h-full w-full items-center justify-center px-2 pb-3 pt-2">
             <FieldDescription className="m-0 max-w-[16rem] text-center">
               {embLabels.length
                 ? "No cells in this scope for the embedding cloud."
@@ -419,14 +432,16 @@ export function InfoPanel({
         )
       ) : showGenes ? (
         densities.rows.length && densities.series.length ? (
-          <GeneRidgelines
-            series={densities.series}
-            rows={densities.rows}
-            xMin={densities.xMin}
-            xMax={densities.xMax}
-          />
+          <div className="box-border h-full w-full px-1 pb-2.5 pt-1.5">
+            <GeneRidgelines
+              series={densities.series}
+              rows={densities.rows}
+              xMin={densities.xMin}
+              xMax={densities.xMax}
+            />
+          </div>
         ) : (
-          <div className="flex h-full w-full items-center justify-center px-2">
+          <div className="flex h-full w-full items-center justify-center px-2 pb-2.5 pt-1.5">
             <FieldDescription className="m-0 text-center">
               {genes.length
                 ? "No expression in this scope."
@@ -560,16 +575,11 @@ export function InfoPanel({
         </FieldDescription>
       );
 
-  // Gene RGB cube lives under the gene input; only embedding cube stays here.
-  const cubeLabels =
-    showEmbedding && embLabels.length >= 3
-      ? embLabels.slice(0, 3).map((label, i) => cubeCornerLabel(label, i))
-      : [];
-
   const body = (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 pb-1.5">
-      <InfoChartWell>{charts}</InfoChartWell>
-      <ChannelCubeLegendRow labels={cubeLabels} />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <InfoChartWell legend={<PlotChannelLegend lm={lm} />}>
+        {charts}
+      </InfoChartWell>
     </div>
   );
 
