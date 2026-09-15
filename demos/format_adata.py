@@ -9,7 +9,7 @@ def _(mo):
     mo.md(r"""
     # Format ileum AnnData
 
-    Rebuild `data/ileum.h5ad` from `data/ileum/*.csv` (or run
+    Rebuild `demos/data/ileum.h5ad` from `demos/data/ileum/*.csv` (or run
     `uv run --extra demo python demos/data/build_ileum_h5ad.py`). The file
     includes expression, obs, `obsm["spatial"]`, Okabe–Ito `cell_type` colors,
     plus `X_pca` / `X_umap`.

@@ -6,21 +6,24 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
+    import sys
+    from pathlib import Path
+
     import marimo as mo
-    import anndata as ad
-    import fsspec
     import numpy as np
-    import pandas as pd
     import scanpy as sc
     import squidpy as sq
     from spatial_rx import (
         LandmarksWidget,
-        geodataframe_to_landmarks,
         landmarks_to_geodataframe,
     )
 
+    _demos = Path(__file__).resolve().parent
+    if str(_demos) not in sys.path:
+        sys.path.insert(0, str(_demos))
+    from ileum_data import load_ileum_adata
 
-    return LandmarksWidget, fsspec, landmarks_to_geodataframe, mo, np, sc, sq
+    return LandmarksWidget, landmarks_to_geodataframe, load_ileum_adata, mo, np, sc, sq
 
 
 @app.cell(hide_code=True)
@@ -28,7 +31,7 @@ def _(mo):
     mo.md(r"""
     # Landmarks
 
-    SPF ileum slice from `demos/data/ileum` (Xu et al.).
+    SPF ileum slice from `demos/data/ileum.h5ad` (Xu et al.).
 
     1. Draw/edit landmarks on the canvas; use the contextual toolbar for buffer /
        style and neighborhood controls.
@@ -41,11 +44,8 @@ def _(mo):
 
 
 @app.cell
-def _(fsspec, sc):
-    fs = fsspec.filesystem("github", org="ckmah", repo="spatial-rx", sha="main")
-
-    with fs.open("demos/data/ileum.h5ad") as f:
-        adata = sc.read_h5ad(f)
+def _(load_ileum_adata):
+    adata = load_ileum_adata()
     return (adata,)
 
 

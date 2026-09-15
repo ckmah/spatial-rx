@@ -28,31 +28,27 @@ app = marimo.App(width="medium")
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Gut landmarks (SPF ileum)
+    # A spatial exploration of the mouse gut
+    This is a demo showing how landmarks are a useful tool to aid spatial pattern discovery. Defining anchors in space with points, lines and shapes enable precise, quantitative measurements, recapitulating findings in the study as well as lowering the barrier to testing new hypotheses and exploration.
 
-    Xu et al. SPF ileum slice from `demos/data/ileum` (cells + 14-gene panel).
-    Spatial neighbors are computed **before** the widget (k-max and radius-max
-    graphs). Sliders subset those graphs. Draw landmarks, then measure along a
-    path, distance from a structure, or composition inside a shape. Results
-    write back to `adata.obs` keyed by `obs_names`.
-
-    The measure helpers below are documented inline with
-    [`wigglystuff.ApiDoc`](https://koaning.github.io/wigglystuff/reference/api-doc/).
+    The dataset this notebook uses is a cross-section of the mouse gut, measured with the MERFISH spatial transcriptomics technology from [1] Xu et al.
     """)
     return
 
 
 @app.cell
 def _():
+    import sys
+    from base64 import b64encode
+    from pathlib import Path
+
     import altair as alt
-    import anndata as ad
-    import scanpy as sc
     import marimo as mo
     import matplotlib
     import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
-    import fsspec
+    import scanpy as sc
     import squidpy as sq
     from wigglystuff import ApiDoc
     from spatial_rx import (
@@ -65,22 +61,29 @@ def _():
         write_obs,
     )
 
-    alt.data_transformers.disable_max_rows()
+    _demos = Path(__file__).resolve().parent
+    if str(_demos) not in sys.path:
+        sys.path.insert(0, str(_demos))
+    from ileum_data import demo_asset_src, load_ileum_adata, read_demo_bytes
+
+    alt.data_transformers.disable_max_rows();
     return (
         ApiDoc,
         GalleryWidget,
         LandmarksWidget,
-        ad,
         along_positions,
         alt,
+        b64encode,
         composition,
+        demo_asset_src,
         distances,
-        fsspec,
         landmarks_to_geodataframe,
+        load_ileum_adata,
         matplotlib,
         mo,
         np,
         pd,
+        read_demo_bytes,
         sc,
         sq,
         write_obs,
@@ -94,23 +97,65 @@ def _(matplotlib, mo):
     return (theme,)
 
 
+@app.cell(hide_code=True)
+def _(demo_asset_src, mo):
+    mo.callout(
+        mo.vstack(
+            [
+                mo.md(
+                    "We can think of spatial analysis as analogous to geospatial analysis in the geographical sciences."
+                    "Many of the same concepts apply, such as areas and observations ~ cells and molecules."
+                ),
+                mo.image(demo_asset_src("figure1_spatial_analogy.png")),
+            ]
+        ),
+        title="Maps for biology [2]",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.vstack(
+        [
+            mo.md("### References"),
+            mo.accordion(
+                {
+                    "[1] Mouse ileum MERFISH (Xu et al.)": mo.md(
+                        r"""
+                        Xu, R. J. *et al.* An image-based transcriptomics atlas
+                        reveals the regional and microbiota-dependent molecular,
+                        cellular, and spatial structure of the murine gut.
+                        *Cell Host Microbe* **34**, 509–525.e13 (2026).
+                        [doi:10.1016/j.chom.2026.01.018](https://doi.org/10.1016/j.chom.2026.01.018).
+                        Demo file: `demos/data/ileum.h5ad` (from `ileum/*.csv`).
+                        """
+                    ),
+                    "[2] Mapping the transcriptome (Figure 1)": mo.md(
+                        r"""
+                        Zormpas, E., Queen, R., Comber, A. & Cockell, S. J.
+                        Mapping the transcriptome: Realizing the full potential
+                        of spatial data analysis.
+                        *Cell* **186**, 5677–5689 (2023).
+                        [doi:10.1016/j.cell.2023.11.003](https://doi.org/10.1016/j.cell.2023.11.003).
+                        """
+                    ),
+                }
+            ),
+        ]
+    )
+    return
+
+
 @app.cell
-def _(ad, fsspec):
-    fs = fsspec.filesystem("github", org="ckmah", repo="spatial-rx", sha="main")
-
-    with fs.open("demos/data/ileum.h5ad") as f:
-        adata = ad.read_h5ad(f)
-
-    from base64 import b64encode
+def _(b64encode, load_ileum_adata, read_demo_bytes):
+    adata = load_ileum_adata()
 
     RECIPE_IMAGES = {}
     for _name in ("crypt_villus", "galt", "mucosal_belt", "gene_along"):
-        with fs.open(f"demos/data/recipes/{_name}.svg") as _f:
-            RECIPE_IMAGES[_name] = (
-                "data:image/svg+xml;base64,"
-                + b64encode(_f.read()).decode("ascii")
-            )
-
+        RECIPE_IMAGES[_name] = "data:image/svg+xml;base64," + b64encode(
+            read_demo_bytes(f"recipes/{_name}.svg")
+        ).decode("ascii")
     return RECIPE_IMAGES, adata
 
 
@@ -214,7 +259,6 @@ def _(adata, landmarks_ui, mo):
         value=_cat_default,
         label="Category",
     )
-
     return (category_pick,)
 
 
@@ -366,7 +410,6 @@ def _(alt, np, pd):
             )
         return chart.configure_view(strokeWidth=0)
 
-
     def lajolla_range(n=16):
         """Sample cmcrameri lajolla as hex colors for Altair scales."""
         import cmcrameri.cm as cmc
@@ -374,7 +417,6 @@ def _(alt, np, pd):
 
         cmap = cmc.lajolla
         return [to_hex(cmap(i)) for i in np.linspace(0, 1, int(n))]
-
 
     def kde_row_heatmap(
         df,
@@ -391,7 +433,9 @@ def _(alt, np, pd):
 
         rows = []
         for group in row_order:
-            values = df.loc[df["group"] == group, value_col].to_numpy(dtype=float)
+            values = df.loc[df["group"] == group, value_col].to_numpy(
+                dtype=float
+            )
             values = values[np.isfinite(values)]
             if values.size:
                 rows.append((group, values))
@@ -441,7 +485,9 @@ def _(alt, np, pd):
             .mark_rect(strokeWidth=0)
             .encode(
                 x=alt.X(
-                    "x:Q", title=xlabel, scale=alt.Scale(domain=[x_min, x_max], nice=False)
+                    "x:Q",
+                    title=xlabel,
+                    scale=alt.Scale(domain=[x_min, x_max], nice=False),
                 ),
                 x2="x2:Q",
                 y=alt.Y(
@@ -461,7 +507,6 @@ def _(alt, np, pd):
             ),
             theme,
         )
-
 
     def kde_gene_heatmap(
         pos_df,
@@ -540,7 +585,9 @@ def _(alt, np, pd):
             .mark_rect(strokeWidth=0)
             .encode(
                 x=alt.X(
-                    "x:Q", title=xlabel, scale=alt.Scale(domain=[x_min, x_max], nice=False)
+                    "x:Q",
+                    title=xlabel,
+                    scale=alt.Scale(domain=[x_min, x_max], nice=False),
                 ),
                 x2="x2:Q",
                 y=alt.Y(
@@ -560,7 +607,6 @@ def _(alt, np, pd):
             ),
             theme,
         )
-
 
     return altair_theme, kde_gene_heatmap, kde_row_heatmap
 
@@ -784,7 +830,6 @@ def _(
             ),
         ]
     )
-
     return
 
 

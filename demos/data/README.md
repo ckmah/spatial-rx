@@ -1,10 +1,9 @@
-# Demo data (TIFF + CSV + AnnData)
+# Demo data (ileum AnnData + rebuild sources)
 
-Local TIFF/CSV slices remain under this directory. The landmarks and gut-study
-notebooks load the **ileum** panel via `demos/data/ileum.h5ad` (see
-`demos/ileum_data.py`): local file when present, otherwise
-`https://raw.githubusercontent.com/ckmah/spatial-rx/main/demos/data/ileum.h5ad`
-through anndata/fsspec. CSV under `ileum/` is the rebuild source only.
+Landmarks and gut-study notebooks load the SPF ileum panel via
+`demos/ileum_data.py`: local `demos/data/ileum.h5ad` when present, otherwise
+`https://raw.githubusercontent.com/ckmah/spatial-rx/main/demos/data/ileum.h5ad`.
+CSV under `ileum/` is the rebuild source only.
 
 ## Layout
 
@@ -15,26 +14,26 @@ ileum/
   cells.csv                # x, y, cell_type, cell_class, anatomical_layer, mucosal_pseudospace
                            # (square-cropped SPF ileum slice, n=20185)
   expr.csv                 # 14-gene expression panel, same row order as cells.csv
-cells/
-  morphology_rgb.tif       # (430, 540, 3) uint8 morphology (channels 1–3, p99.5 stretch)
-  nucleus_labels_rgb.tif   # (430, 540, 3) uint8 colorized nucleus labels
-  gene_totals.csv          # gene, count  (column sums from the cells table)
-  transcripts.csv          # x, y, z, feature_name, cell_id
 recipes/
-  *.svg                    # use-case gallery schematics
-figure1_spatial_analogy.png
+  *.svg                    # use-case gallery schematics for gut_study
+figure1_spatial_analogy.png  # Zormpas et al. geography ↔ biology framing
 build_ileum_h5ad.py        # regenerate ileum.h5ad from ileum/*.csv
+export_from_raw.py         # regenerate ileum/*.csv from a source .h5ad
 ```
 
 ## Provenance
 
-- **cells/** — derived from
-  [10x Genomics Xenium Prime FFPE Human Cervical Cancer](https://www.10xgenomics.com/datasets/xenium-prime-ffpe-human-cervical-cancer)
-  (CC BY 4.0).
 - **ileum/** — derived from Xu et al., *Cell Host Microbe* (2026), SPF ileum
   cross-section `20211215_WT_ile1_slice_4` (pre-cropped).
+- **figure1_spatial_analogy.png** — from Zormpas et al., *Cell* (2023)
+  (geography ↔ spatial transcriptomics analogy).
 
-To regenerate CSVs from raw stores, run `demos/data/export_from_raw.py`.
+To regenerate CSVs from a source panel `.h5ad`:
+
+```bash
+uv run --extra demo python demos/data/export_from_raw.py --ileum-h5ad /path/to/source.h5ad
+```
+
 To rebuild `ileum.h5ad` from those CSVs:
 
 ```bash
