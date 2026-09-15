@@ -6,21 +6,46 @@ import base64
 from typing import Any
 
 
-def _batlow_categorical_palette() -> list[str]:
-    """cmcrameri batlowS — discrete batlow, 100 unique categorical colors."""
+def _matplotlib_tab(name: str) -> list[str]:
     from matplotlib.colors import to_hex
-    import cmcrameri.cm as cmc
+    import matplotlib.pyplot as plt
 
-    cmap = cmc.batlowS
+    cmap = plt.get_cmap(name)
     return [to_hex(cmap(i)).lower() for i in range(cmap.N)]
 
 
-# Default categorical when AnnData has no ``{col}_colors``. Avoids landmark/gene
-# neon accents by construction (scientific sequential discrete set).
-DEFAULT_CATEGORICAL_PALETTE = _batlow_categorical_palette()
+_TAB10 = _matplotlib_tab("tab10")
+_TAB20 = _matplotlib_tab("tab20")
+_TAB20B = _matplotlib_tab("tab20b")
+_TAB20C = _matplotlib_tab("tab20c")
 
-_DEFAULT_PALETTE = DEFAULT_CATEGORICAL_PALETTE
+# Largest default pool (tab20 + tab20b + tab20c). Prefer
+# ``default_categorical_palette(n)`` so the pool matches category count.
+DEFAULT_CATEGORICAL_PALETTE = _TAB20 + _TAB20B + _TAB20C
+
 _MAX_LEVELS = 128
+
+
+def default_categorical_palette(n: int) -> list[str]:
+    """Pick the smallest matplotlib tab* pool that fits ``n`` categories.
+
+    - ``n ≤ 10`` → tab10
+    - ``n ≤ 20`` → tab20
+    - ``n ≤ 40`` → tab20 + tab20b
+    - else → tab20 + tab20b + tab20c (wraps if ``n > 60``)
+    """
+    n = max(int(n), 0)
+    if n <= 10:
+        pool = _TAB10
+    elif n <= 20:
+        pool = _TAB20
+    elif n <= 40:
+        pool = _TAB20 + _TAB20B
+    else:
+        pool = DEFAULT_CATEGORICAL_PALETTE
+    if n == 0:
+        return list(pool)
+    return [pool[i % len(pool)] for i in range(n)]
 
 
 def as_polars(frame: Any) -> Any:
@@ -100,14 +125,12 @@ def encode_category_bundle(
             ordered = [str(k) for k in cmap.keys() if str(k) in present]
             ordered.extend(lab for lab in labels if lab not in ordered)
             labels = ordered
+            fallback = default_categorical_palette(len(labels))
             palette = [
-                cmap.get(lab, _DEFAULT_PALETTE[i % len(_DEFAULT_PALETTE)])
-                for i, lab in enumerate(labels)
+                cmap.get(lab, fallback[i]) for i, lab in enumerate(labels)
             ]
         else:
-            palette = [
-                _DEFAULT_PALETTE[i % len(_DEFAULT_PALETTE)] for i in range(len(labels))
-            ]
+            palette = default_categorical_palette(len(labels))
         codes = (
             series.replace_strict(
                 old=labels,

@@ -38,11 +38,11 @@ def _(mo):
 
 @app.cell
 def _():
-    import sys
     from base64 import b64encode
-    from pathlib import Path
 
     import altair as alt
+    import anndata as ad
+    import fsspec
     import marimo as mo
     import matplotlib
     import matplotlib.pyplot as plt
@@ -61,29 +61,23 @@ def _():
         write_obs,
     )
 
-    _demos = Path(__file__).resolve().parent
-    if str(_demos) not in sys.path:
-        sys.path.insert(0, str(_demos))
-    from ileum_data import demo_asset_src, load_ileum_adata, read_demo_bytes
-
-    alt.data_transformers.disable_max_rows();
+    alt.data_transformers.disable_max_rows()
     return (
         ApiDoc,
         GalleryWidget,
         LandmarksWidget,
+        ad,
         along_positions,
         alt,
         b64encode,
         composition,
-        demo_asset_src,
         distances,
+        fsspec,
         landmarks_to_geodataframe,
-        load_ileum_adata,
         matplotlib,
         mo,
         np,
         pd,
-        read_demo_bytes,
         sc,
         sq,
         write_obs,
@@ -98,7 +92,7 @@ def _(matplotlib, mo):
 
 
 @app.cell(hide_code=True)
-def _(demo_asset_src, mo):
+def _(mo):
     mo.callout(
         mo.vstack(
             [
@@ -106,7 +100,10 @@ def _(demo_asset_src, mo):
                     "We can think of spatial analysis as analogous to geospatial analysis in the geographical sciences."
                     "Many of the same concepts apply, such as areas and observations ~ cells and molecules."
                 ),
-                mo.image(demo_asset_src("figure1_spatial_analogy.png")),
+                mo.image(
+                    "https://raw.githubusercontent.com/ckmah/spatial-rx/main/"
+                    "demos/data/figure1_spatial_analogy.png"
+                ),
             ]
         ),
         title="Maps for biology [2]",
@@ -148,31 +145,27 @@ def _(mo):
 
 
 @app.cell
-def _(b64encode, load_ileum_adata, read_demo_bytes):
-    adata = load_ileum_adata()
+def _(ad, b64encode, fsspec):
+    fs = fsspec.filesystem(
+        "github", org="ckmah", repo="spatial-rx", sha="main"
+    )
+
+    with fs.open("demos/data/ileum.h5ad") as f:
+        adata = ad.read_h5ad(f)
 
     RECIPE_IMAGES = {}
     for _name in ("crypt_villus", "galt", "mucosal_belt", "gene_along"):
-        RECIPE_IMAGES[_name] = "data:image/svg+xml;base64," + b64encode(
-            read_demo_bytes(f"recipes/{_name}.svg")
-        ).decode("ascii")
+        with fs.open(f"demos/data/recipes/{_name}.svg") as _f:
+            RECIPE_IMAGES[_name] = "data:image/svg+xml;base64," + b64encode(
+                _f.read()
+            ).decode("ascii")
     return RECIPE_IMAGES, adata
 
 
 @app.cell
 def _(adata, sc):
-    # Exploratory PCA (also stored on ileum.h5ad as X_pca).
-    _n_comps = min(10, adata.n_vars - 1, adata.n_obs - 1)
-    sc.pp.pca(adata, n_comps=_n_comps)
-    return
-
-
-@app.cell
-def _(adata, sc):
-    # Exploratory UMAP on expression-space neighbors (also stored as X_umap).
-    _n_comps = min(10, adata.obsm["X_pca"].shape[1], adata.n_obs - 1)
-    sc.pp.neighbors(adata, n_pcs=_n_comps, use_rep="X_pca", random_state=0)
-    sc.tl.umap(adata, init_pos="random", random_state=0)
+    # Exploratory PCA
+    sc.pp.pca(adata)
     return
 
 

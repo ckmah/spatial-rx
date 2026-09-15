@@ -1,15 +1,14 @@
 # Demo data (ileum AnnData + rebuild sources)
 
-Landmarks and gut-study notebooks load the SPF ileum panel via
-`demos/ileum_data.py`: local `demos/data/ileum.h5ad` when present, otherwise
-`https://raw.githubusercontent.com/ckmah/spatial-rx/main/demos/data/ileum.h5ad`.
+Landmarks and gut-study notebooks load the SPF ileum panel via fsspec from
+`demos/data/ileum.h5ad` on GitHub (`org=ckmah`, `repo=spatial-rx`, `sha=main`).
 CSV under `ileum/` is the rebuild source only.
 
 ## Layout
 
 ```
 ileum.h5ad                 # SPF ileum panel AnnData (committed, <10 MB)
-                           # X, obs, obsm['spatial'|'X_pca'|'X_umap'], colors
+                           # X, obs, obsm['spatial'], cell_type colors
 ileum/
   cells.csv                # x, y, cell_type, cell_class, anatomical_layer, mucosal_pseudospace
                            # (square-cropped SPF ileum slice, n=20185)

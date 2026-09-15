@@ -28,7 +28,7 @@ def _():
     from base64 import b64encode
 
     import marimo as mo
-    from spatial_rx import GalleryWidget
+    from spatial_rx.gallery import GalleryWidget
 
     def _svg(label: str, fill: str) -> str:
         body = (

@@ -1,13 +1,25 @@
 import pandas as pd
 
-from spatial_rx.categories import DEFAULT_CATEGORICAL_PALETTE
+from spatial_rx.categories import (
+    DEFAULT_CATEGORICAL_PALETTE,
+    default_categorical_palette,
+)
 from tests.helpers import adata_xy
 
 
-def test_default_categorical_palette_is_batlow():
-    assert len(DEFAULT_CATEGORICAL_PALETTE) >= 64
-    assert len(set(DEFAULT_CATEGORICAL_PALETTE)) == len(DEFAULT_CATEGORICAL_PALETTE)
-    # Landmark / gene neon accents stay off the scatter default.
+def test_default_categorical_palette_scales_with_n():
+    assert len(DEFAULT_CATEGORICAL_PALETTE) == 60
+    assert len(set(DEFAULT_CATEGORICAL_PALETTE)) == 60
+
+    assert len(default_categorical_palette(3)) == 3
+    assert default_categorical_palette(3) == default_categorical_palette(10)[:3]
+    assert default_categorical_palette(10)[0] == "#1f77b4"
+    assert len(default_categorical_palette(15)) == 15
+    assert len(default_categorical_palette(25)) == 25
+    assert len(default_categorical_palette(45)) == 45
+    # tab10 vs tab20 diverge within the first 10 stops.
+    assert default_categorical_palette(10) != default_categorical_palette(15)[:10]
+
     reserved = {
         "#00e5ff",
         "#ff2d95",
@@ -15,9 +27,21 @@ def test_default_categorical_palette_is_batlow():
         "#ff0099",
         "#00b7ff",
     }
-    assert reserved.isdisjoint({c.lower() for c in DEFAULT_CATEGORICAL_PALETTE})
-    # First stop of cmcrameri batlowS.
-    assert DEFAULT_CATEGORICAL_PALETTE[0].lower() == "#011959"
+    assert reserved.isdisjoint(set(DEFAULT_CATEGORICAL_PALETTE))
+
+
+def test_widget_uses_size_matched_palette_without_uns_colors():
+    from spatial_rx import LandmarksWidget
+
+    labels = [f"t{i}" for i in range(7)]
+    adata = adata_xy(
+        list(range(7)),
+        list(range(7)),
+        color=labels,
+        color_key="cell_type",
+    )
+    w = LandmarksWidget(adata, color="cell_type")
+    assert w.point_palette == default_categorical_palette(7)
 
 
 def test_constructor_detects_categories():

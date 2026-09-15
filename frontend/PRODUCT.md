@@ -71,8 +71,8 @@ Use domain language from `CONTEXT.md` (widget, synced state, traitlet, widget co
 | Landmarks demo | `demos/landmarks.py` |
 | Gallery demo | `demos/gallery.py` |
 | Gut study demo | `demos/gut_study.py` |
-| Landmarks screenshot | `assets/landmarks_widget.png` |
-| Gallery screenshot | `assets/gallery_widget.png` |
+| Landmarks screenshot | `assets/landmarks_widget_{light,dark}.png` |
+| Gallery screenshot | `assets/gallery_widget_{light,dark}.png` |
 | Demo data notes | `demos/data/README.md` |
 | Domain vocabulary | `CONTEXT.md` |
 | Widget architecture docs | `docs/widget-packaging.md`, `docs/widget-scaffold.md`, `docs/shadcn-frontend.md` |

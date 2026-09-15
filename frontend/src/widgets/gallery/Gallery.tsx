@@ -28,11 +28,11 @@ function Media({ item }: { item: GalleryItem }) {
         src={item.image}
         alt={item.title}
         draggable={false}
-        className="max-h-28 w-full object-contain"
+        className="max-h-28 w-full rounded-md object-contain"
       />
     );
   }
-  return <div className="max-h-28 min-h-16 w-full rounded-sm bg-muted" />;
+  return <div className="max-h-28 min-h-16 w-full rounded-md bg-muted" />;
 }
 
 export function GalleryView({
@@ -68,17 +68,19 @@ export function GalleryView({
               key={`${item.title}-${index}`}
               type="button"
               aria-pressed={selected}
-              className="min-w-0 w-full overflow-hidden text-left"
+              className="min-w-0 w-full overflow-hidden text-left outline-none"
               onClick={() => {
                 model.set("selected_index", index);
                 model.save_changes();
               }}
             >
               <Item
-                variant={selected ? "muted" : "outline"}
+                variant="outline"
                 className={cn(
-                  "h-full min-w-0 w-full flex-col flex-nowrap items-stretch overflow-hidden",
-                  selected && "border-ring ring-[3px] ring-ring/35",
+                  "h-full min-w-0 w-full flex-col flex-nowrap items-stretch overflow-hidden border-border",
+                  "focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                  selected &&
+                    "border-primary bg-primary/5 shadow-sm ring-2 ring-primary/40",
                 )}
               >
                 <ItemHeader className="min-w-0 overflow-hidden">

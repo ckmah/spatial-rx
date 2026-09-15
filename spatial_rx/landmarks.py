@@ -13,9 +13,9 @@ from anywidget import AnyWidget
 from spatial_rx._assets import widget_css, widget_esm
 from .categories import (
     as_polars,
+    default_categorical_palette,
     detect_category_columns,
     encode_category_bundle,
-    DEFAULT_CATEGORICAL_PALETTE,
 )
 from .genes import (
     _normalize_column,
@@ -49,7 +49,6 @@ from .selection import (
 if TYPE_CHECKING:
     import numpy as np
 
-_DEFAULT_PALETTE = DEFAULT_CATEGORICAL_PALETTE
 _FALLBACK_POINT = "#00e5ff"
 _SEQUENTIAL_LOW = "#f3e6d4"
 _SEQUENTIAL_HIGH = "#ff0099"
@@ -106,13 +105,13 @@ def _encode_colors(
             present = set(seen)
             cats = [str(c) for c in color_map.keys() if str(c) in present]
             cats.extend(c for c in seen if c not in cats)
+            fallback = default_categorical_palette(len(cats))
             palette = [
-                color_map.get(c, _DEFAULT_PALETTE[i % len(_DEFAULT_PALETTE)])
-                for i, c in enumerate(cats)
+                color_map.get(c, fallback[i]) for i, c in enumerate(cats)
             ]
         else:
             cats = seen
-            palette = [_DEFAULT_PALETTE[i % len(_DEFAULT_PALETTE)] for i in range(len(cats))]
+            palette = default_categorical_palette(len(cats))
         cat_to_i = {c: float(i) for i, c in enumerate(cats)}
         idx = np.asarray(
             [cat_to_i[str(c)] for c in color_arr.tolist()], dtype=np.float32

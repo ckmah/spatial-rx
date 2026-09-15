@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Build demos/data/ileum.h5ad from demos/data/ileum/*.csv.
 
-Writes expression, obs metadata, obsm['spatial'], batlowS cell_type colors,
-and exploratory X_pca / X_umap embeddings. Neighbor graphs are not stored —
-demo notebooks recompute spatial neighbors (and may recompute PCA/UMAP).
+Writes expression, obs metadata, obsm['spatial'], and size-matched tab*
+cell_type colors.
+Neighbor graphs and PCA/UMAP are not stored — demo notebooks compute those.
 
 Usage:
   uv run --extra demo python demos/data/build_ileum_h5ad.py
@@ -16,8 +16,7 @@ from pathlib import Path
 import anndata as ad
 import numpy as np
 import pandas as pd
-import scanpy as sc
-from spatial_rx.categories import DEFAULT_CATEGORICAL_PALETTE
+from spatial_rx.categories import default_categorical_palette
 
 CLUSTER = "cell_type"
 ROOT = Path(__file__).resolve().parent
@@ -38,20 +37,7 @@ def build() -> ad.AnnData:
     adata.obsm["spatial"] = cells[["x", "y"]].to_numpy(dtype=float)
     adata.obs[CLUSTER] = pd.Categorical(adata.obs[CLUSTER].astype(str))
     cats = list(adata.obs[CLUSTER].cat.categories)
-    adata.uns[f"{CLUSTER}_colors"] = [
-        DEFAULT_CATEGORICAL_PALETTE[i % len(DEFAULT_CATEGORICAL_PALETTE)]
-        for i in range(len(cats))
-    ]
-
-    n_comps = min(10, adata.n_vars - 1, adata.n_obs - 1)
-    sc.pp.pca(adata, n_comps=n_comps)
-    sc.pp.neighbors(adata, n_pcs=n_comps, use_rep="X_pca", random_state=0)
-    # 14-gene panel: spectral init is unstable; pin random for reproducibility.
-    sc.tl.umap(adata, init_pos="random", random_state=0)
-    for key in list(adata.obsp.keys()):
-        del adata.obsp[key]
-    if "neighbors" in adata.uns:
-        del adata.uns["neighbors"]
+    adata.uns[f"{CLUSTER}_colors"] = default_categorical_palette(len(cats))
     return adata
 
 

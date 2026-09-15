@@ -26,7 +26,11 @@ uv sync --extra demo --group dev
 
 ## LandmarksWidget
 
-![Landmarks widget](assets/landmarks_widget.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/landmarks_widget_dark.png" />
+  <source media="(prefers-color-scheme: light)" srcset="assets/landmarks_widget_light.png" />
+  <img alt="Landmarks widget" src="assets/landmarks_widget_light.png" />
+</picture>
 
 Draw selections and landmarks on tissue coordinates (lasso, rectangle, ellipse; point,
 line, spline, shape). Format data as `AnnData` with `obsm["spatial"]` and squidpy
@@ -35,6 +39,10 @@ hits with `get_obs_names`.
 
 ## GalleryWidget
 
-![Gallery widget](assets/gallery_widget.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/gallery_widget_dark.png" />
+  <source media="(prefers-color-scheme: light)" srcset="assets/gallery_widget_light.png" />
+  <img alt="Gallery widget" src="assets/gallery_widget_light.png" />
+</picture>
 
 Selectable image cards for recipes or use cases. Synced selection is `selected_index`.

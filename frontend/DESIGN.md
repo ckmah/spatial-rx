@@ -18,9 +18,9 @@ colors:
   gene-azure: "#0088cc"
   sequential-low: "#f3e6d4"
   sequential-high: "#ff0099"
-  categorical-1: "#011959"
-  categorical-2: "#faccfa"
-  categorical-3: "#828231"
+  categorical-1: "#1f77b4"
+  categorical-2: "#aec7e8"
+  categorical-3: "#ff7f0e"
   primary: "#171717"
   primary-foreground: "#ffffff"
   background: "#ffffff"
@@ -136,8 +136,8 @@ Restrained achromatic chrome. Data owns saturation on the canvas.
 ### Canvas (`--lm-*`)
 
 Landmark cyan/magenta/lime (and amber/violet/mint) for annotations only.
-Categorical points use cmcrameri batlowS (discrete batlow, 100 unique hues)
-that avoids that neon triad.
+Categorical points use matplotlib tab* pools sized to the category count
+(tab10 / tab20 / tab20+b / tab20+b+c) and avoid that neon triad.
 Multi-gene and embedding use additive magenta / lime / azure on the first three
 channels (RGB cube legend). Continuous single-gene coloring defaults to warm
 cream → magenta. Points and bins share observation signals: categories, genes,

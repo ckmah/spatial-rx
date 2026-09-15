@@ -6,9 +6,8 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
-    import sys
-    from pathlib import Path
-
+    import anndata as ad
+    import fsspec
     import marimo as mo
     import numpy as np
     import scanpy as sc
@@ -18,12 +17,16 @@ def _():
         landmarks_to_geodataframe,
     )
 
-    _demos = Path(__file__).resolve().parent
-    if str(_demos) not in sys.path:
-        sys.path.insert(0, str(_demos))
-    from ileum_data import load_ileum_adata
-
-    return LandmarksWidget, landmarks_to_geodataframe, load_ileum_adata, mo, np, sc, sq
+    return (
+        LandmarksWidget,
+        ad,
+        fsspec,
+        landmarks_to_geodataframe,
+        mo,
+        np,
+        sc,
+        sq,
+    )
 
 
 @app.cell(hide_code=True)
@@ -44,25 +47,21 @@ def _(mo):
 
 
 @app.cell
-def _(load_ileum_adata):
-    adata = load_ileum_adata()
+def _(ad, fsspec):
+    fs = fsspec.filesystem(
+        "github", org="ckmah", repo="spatial-rx", sha="main"
+    )
+
+    with fs.open("demos/data/ileum.h5ad") as f:
+        adata = ad.read_h5ad(f)
+    adata
     return (adata,)
 
 
 @app.cell
 def _(adata, sc):
-    # Exploratory PCA (also stored on ileum.h5ad as X_pca).
-    _n_comps = min(10, adata.n_vars - 1, adata.n_obs - 1)
-    sc.pp.pca(adata, n_comps=_n_comps)
-    return
-
-
-@app.cell
-def _(adata, sc):
-    # Exploratory UMAP on expression-space neighbors (also stored as X_umap).
-    _n_comps = min(10, adata.obsm["X_pca"].shape[1], adata.n_obs - 1)
-    sc.pp.neighbors(adata, n_pcs=_n_comps, use_rep="X_pca", random_state=0)
-    sc.tl.umap(adata, init_pos="random", random_state=0)
+    # Exploratory PCA
+    sc.pp.pca(adata)
     return
 
 

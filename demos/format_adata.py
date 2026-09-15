@@ -11,11 +11,12 @@ def _(mo):
 
     Rebuild `demos/data/ileum.h5ad` from `demos/data/ileum/*.csv` (or run
     `uv run --extra demo python demos/data/build_ileum_h5ad.py`). The file
-    includes expression, obs, `obsm["spatial"]`, batlowS `cell_type` colors,
-    plus `X_pca` / `X_umap`.
+    includes expression, obs, `obsm["spatial"]`, and size-matched tab*
+    `cell_type` colors.
 
-    Spatial neighbor graphs are **not** stored — `landmarks.py` / `gut_study.py`
-    compute them after load. The `.h5ad` is committed when under 10 MB.
+    Spatial neighbor graphs and PCA/UMAP are **not** stored — `landmarks.py` /
+    `gut_study.py` compute neighbors (and any embeddings) after load. The
+    `.h5ad` is committed when under 10 MB.
     """)
     return
 
