@@ -5,56 +5,41 @@ app = marimo.App(width="medium")
 
 
 @app.cell(hide_code=True)
-def intro(mo):
+def _(mo):
     mo.md(r"""
     # Format ileum AnnData
 
-    Build `data/ileum.h5ad` from `data/ileum/*.csv`: expression, obs metadata,
-    `obsm["spatial"]`, and Okabe–Ito `cell_type` colors.
+    Rebuild `data/ileum.h5ad` from `data/ileum/*.csv` (or run
+    `uv run --extra demo python demos/data/build_ileum_h5ad.py`). The file
+    includes expression, obs, `obsm["spatial"]`, Okabe–Ito `cell_type` colors,
+    plus `X_pca` / `X_umap`.
 
-    Neighbor graphs are **not** stored here — `landmarks.py` / `gut_study.py`
-    compute them after load. Run this notebook once before those demos. The `.h5ad`
-    is gitignored.
+    Spatial neighbor graphs are **not** stored — `landmarks.py` / `gut_study.py`
+    compute them after load. The `.h5ad` is committed when under 10 MB.
     """)
     return
 
 
 @app.cell
-def imports():
+def _():
+    import importlib.util
     import marimo as mo
     import anndata as ad
-    import numpy as np
-    import pandas as pd
-    from spatial_rx.categories import DEFAULT_CATEGORICAL_PALETTE
+    from pathlib import Path
 
-    return DEFAULT_CATEGORICAL_PALETTE, ad, mo, np, pd
+    _script = Path(__file__).resolve().parent / "data" / "build_ileum_h5ad.py"
+    _spec = importlib.util.spec_from_file_location("build_ileum_h5ad", _script)
+    _mod = importlib.util.module_from_spec(_spec)
+    assert _spec.loader is not None
+    _spec.loader.exec_module(_mod)
+    OUT = _mod.OUT
+    build = _mod.build
+    return OUT, ad, build, mo
 
 
 @app.cell
-def build_and_save(DEFAULT_CATEGORICAL_PALETTE, ad, mo, np, pd):
-    CLUSTER = "cell_type"
-    _data = mo.notebook_dir() / "data"
-    OUT = _data / "ileum.h5ad"
-
-    _cells = pd.read_csv(_data / "ileum" / "cells.csv")
-    _expr = pd.read_csv(_data / "ileum" / "expr.csv")
-    _obs = _cells.drop(columns=["x", "y"]).copy()
-    _obs.index = [f"c{i}" for i in range(len(_obs))]
-
-    adata = ad.AnnData(
-        X=_expr.to_numpy(dtype=np.float32),
-        obs=_obs,
-        var=pd.DataFrame(index=_expr.columns.astype(str)),
-    )
-    adata.obsm["spatial"] = _cells[["x", "y"]].to_numpy(dtype=float)
-    adata.obs[CLUSTER] = pd.Categorical(adata.obs[CLUSTER].astype(str))
-
-    _cats = list(adata.obs[CLUSTER].cat.categories)
-    adata.uns[f"{CLUSTER}_colors"] = [
-        DEFAULT_CATEGORICAL_PALETTE[_i % len(DEFAULT_CATEGORICAL_PALETTE)]
-        for _i in range(len(_cats))
-    ]
-
+def _(OUT, build):
+    adata = build()
     OUT.parent.mkdir(parents=True, exist_ok=True)
     adata.write_h5ad(OUT, compression="gzip")
     {
@@ -69,7 +54,7 @@ def build_and_save(DEFAULT_CATEGORICAL_PALETTE, ad, mo, np, pd):
 
 
 @app.cell
-def verify(OUT, ad):
+def _(OUT, ad):
     _loaded = ad.read_h5ad(OUT)
     {
         "path": str(OUT),

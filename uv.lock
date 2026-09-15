@@ -4641,6 +4641,7 @@ dependencies = [
 [package.optional-dependencies]
 demo = [
     { name = "altair" },
+    { name = "fsspec", extra = ["http"] },
     { name = "geopandas" },
     { name = "marimo" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -4679,6 +4680,7 @@ requires-dist = [
     { name = "altair", marker = "extra == 'demo'", specifier = ">=6.2.2" },
     { name = "anndata", specifier = ">=0.10" },
     { name = "anywidget", specifier = ">=0.9.2" },
+    { name = "fsspec", extras = ["http"], marker = "extra == 'demo'", specifier = ">=2024.0" },
     { name = "geopandas", specifier = ">=1.1.4" },
     { name = "geopandas", marker = "extra == 'demo'", specifier = ">=1.1.4" },
     { name = "geopandas", marker = "extra == 'test'", specifier = ">=1.1.4" },

@@ -10,7 +10,9 @@
 #     "shapely",
 #     "scipy",
 #     "anndata",
+#     "scanpy",
 #     "squidpy",
+#     "fsspec",
 #     "spatial-rx[demo]",
 #     "wigglystuff>=0.5.32",
 # ]
@@ -30,11 +32,12 @@ def _(mo):
     mo.md(r"""
     # Gut landmarks (SPF ileum)
 
-    Xu et al. SPF ileum slice from `demos/data/ileum` (cells + 14-gene panel).
-    Spatial neighbors are computed **before** the widget (k-max and radius-max
-    graphs). Sliders subset those graphs. Draw landmarks, then measure along a
-    path, distance from a structure, or composition inside a shape. Results
-    write back to `adata.obs` keyed by `obs_names`.
+    Xu et al. SPF ileum slice from `demos/data/ileum.h5ad` (14-gene panel),
+    loaded locally or via fsspec from GitHub raw. Spatial neighbors are computed
+    **before** the widget (k-max and radius-max graphs). Sliders subset those
+    graphs. Draw landmarks, then measure along a path, distance from a structure,
+    or composition inside a shape. Results write back to `adata.obs` keyed by
+    `obs_names`.
 
     The measure helpers below are documented inline with
     [`wigglystuff.ApiDoc`](https://koaning.github.io/wigglystuff/reference/api-doc/).
@@ -45,13 +48,13 @@ def _(mo):
 @app.cell
 def _():
     import altair as alt
-    import anndata as ad
     import marimo as mo
     import matplotlib
-    import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
+    import scanpy as sc
     import squidpy as sq
+    from ileum_data import load_ileum_adata
     from wigglystuff import ApiDoc
     from spatial_rx import (
         GalleryWidget,
@@ -68,17 +71,17 @@ def _():
         ApiDoc,
         GalleryWidget,
         LandmarksWidget,
-        ad,
         along_positions,
         alt,
         composition,
         distances,
         landmarks_to_geodataframe,
+        load_ileum_adata,
         matplotlib,
         mo,
         np,
         pd,
-        plt,
+        sc,
         sq,
         write_obs,
     )
@@ -92,26 +95,35 @@ def _(matplotlib, mo):
 
 
 @app.cell
-def _(ad, mo, np, pd, plt, sq):
-    import matplotlib.colors as mcolors
-
+def _(load_ileum_adata, mo):
     CLUSTER = "cell_type"
-    _cells = pd.read_csv(mo.notebook_dir() / "data" / "ileum" / "cells.csv")
-    _expr = pd.read_csv(mo.notebook_dir() / "data" / "ileum" / "expr.csv")
-    _obs = _cells.drop(columns=["x", "y"]).copy()
-    _obs.index = [f"c{i}" for i in range(len(_obs))]
-    adata = ad.AnnData(
-        X=_expr.to_numpy(dtype=np.float32),
-        obs=_obs,
-        var=pd.DataFrame(index=_expr.columns.astype(str)),
-    )
-    adata.obsm["spatial"] = _cells[["x", "y"]].to_numpy(dtype=float)
-    adata.obs[CLUSTER] = pd.Categorical(adata.obs[CLUSTER].astype(str))
-    _cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    _cats = list(adata.obs[CLUSTER].cat.categories)
-    adata.uns[f"{CLUSTER}_colors"] = [
-        mcolors.to_hex(_cycle[_i % len(_cycle)]) for _i in range(len(_cats))
-    ]
+    adata = load_ileum_adata(mo.notebook_dir())
+    adata.obs[CLUSTER] = adata.obs[CLUSTER].astype("category")
+    gene_panel = [str(g) for g in adata.var_names]
+    return CLUSTER, adata, gene_panel
+
+
+@app.cell
+def _(adata, sc):
+    # Exploratory PCA (also stored on ileum.h5ad as X_pca).
+    _n_comps = min(10, adata.n_vars - 1, adata.n_obs - 1)
+    sc.pp.pca(adata, n_comps=_n_comps)
+    return
+
+
+@app.cell
+def _(adata, sc):
+    # Exploratory UMAP on expression-space neighbors (also stored as X_umap).
+    if "X_umap" not in adata.obsm:
+        _n_comps = min(10, adata.obsm["X_pca"].shape[1], adata.n_obs - 1)
+        sc.pp.neighbors(adata, n_pcs=_n_comps, use_rep="X_pca", random_state=0)
+        sc.tl.umap(adata, init_pos="random", random_state=0)
+    return
+
+
+@app.cell
+def _(adata, np, sq):
+    # Spatial neighbor graphs for the widget (k-max / radius-max supersets).
     xy = np.asarray(adata.obsm["spatial"], dtype=float)
     span = float(np.hypot(np.ptp(xy[:, 0]), np.ptp(xy[:, 1])))
     radius = 0.05 * span
@@ -121,8 +133,7 @@ def _(ad, mo, np, pd, plt, sq):
     sq.gr.spatial_neighbors(
         adata, coord_type="generic", radius=radius, key_added="spatial_radius"
     )
-    gene_panel = [str(g) for g in adata.var_names]
-    return CLUSTER, adata, gene_panel
+    return
 
 
 @app.cell

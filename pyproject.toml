@@ -34,9 +34,11 @@ dependencies = [
 [project.optional-dependencies]
 demo = [
     "altair>=6.2.2",
+    "fsspec[http]>=2024.0",
     "geopandas>=1.1.4",
     "marimo>=0.24.0",
     "pandas>=2.0",
+    "scanpy>=1.10",
     "scipy>=1.11",
     "shapely>=2.1.2",
     "scanpy>=1.10",
