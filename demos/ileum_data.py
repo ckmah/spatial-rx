@@ -1,4 +1,4 @@
-"""Shared ileum AnnData load path for demos (local file or GitHub via fsspec)."""
+"""Shared demo-data helpers (local file or GitHub via fsspec)."""
 
 from __future__ import annotations
 
@@ -9,25 +9,37 @@ from pathlib import Path
 import anndata as ad
 import fsspec
 
-# Committed under demos/data/; remote URL matches GitHub raw once on main.
+DEMO_DIR = Path(__file__).resolve().parent
+DEMO_DATA_DIR = DEMO_DIR / "data"
 ILEUM_H5AD_NAME = "ileum.h5ad"
-ILEUM_H5AD_URL = (
-    "https://raw.githubusercontent.com/ckmah/spatial-rx/main/demos/data/ileum.h5ad"
+GITHUB_DATA_BASE = (
+    "https://raw.githubusercontent.com/ckmah/spatial-rx/main/demos/data"
 )
 
 
-def load_ileum_adata(notebook_dir: Path | str | None = None) -> ad.AnnData:
-    """Load SPF ileum panel AnnData.
+def read_demo_bytes(rel: str) -> bytes:
+    """Read a file under ``demos/data/``, preferring the local checkout."""
+    local = DEMO_DATA_DIR / rel
+    if local.is_file():
+        return local.read_bytes()
+    with fsspec.open(f"{GITHUB_DATA_BASE}/{rel}", "rb") as f:
+        return f.read()
 
-    Prefers ``{notebook_dir}/data/ileum.h5ad`` when present (local checkout).
-    Otherwise fetches ``ILEUM_H5AD_URL`` through fsspec (molab / remote) into a
-    temp file and reads it with anndata (h5py needs a seekable path).
-    """
-    if notebook_dir is not None:
-        local = Path(notebook_dir) / "data" / ILEUM_H5AD_NAME
-        if local.is_file():
-            return ad.read_h5ad(local)
-    return _read_h5ad_fsspec(ILEUM_H5AD_URL)
+
+def demo_asset_src(rel: str) -> str:
+    """Path or raw GitHub URL for ``mo.image`` / similar."""
+    local = DEMO_DATA_DIR / rel
+    if local.is_file():
+        return str(local)
+    return f"{GITHUB_DATA_BASE}/{rel}"
+
+
+def load_ileum_adata() -> ad.AnnData:
+    """Load SPF ileum panel AnnData (local ``ileum.h5ad``, else GitHub raw)."""
+    local = DEMO_DATA_DIR / ILEUM_H5AD_NAME
+    if local.is_file():
+        return ad.read_h5ad(local)
+    return _read_h5ad_fsspec(f"{GITHUB_DATA_BASE}/{ILEUM_H5AD_NAME}")
 
 
 def _read_h5ad_fsspec(url: str) -> ad.AnnData:
