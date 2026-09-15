@@ -18,9 +18,9 @@ colors:
   gene-azure: "#0088cc"
   sequential-low: "#f3e6d4"
   sequential-high: "#ff0099"
-  categorical-1: "#e69f00"
-  categorical-2: "#56b4e9"
-  categorical-3: "#009e73"
+  categorical-1: "#011959"
+  categorical-2: "#faccfa"
+  categorical-3: "#828231"
   primary: "#171717"
   primary-foreground: "#ffffff"
   background: "#ffffff"
@@ -136,7 +136,8 @@ Restrained achromatic chrome. Data owns saturation on the canvas.
 ### Canvas (`--lm-*`)
 
 Landmark cyan/magenta/lime (and amber/violet/mint) for annotations only.
-Categorical points use an Okabe–Ito–based set that avoids that neon triad.
+Categorical points use cmcrameri batlowS (discrete batlow, 100 unique hues)
+that avoids that neon triad.
 Multi-gene and embedding use additive magenta / lime / azure on the first three
 channels (RGB cube legend). Continuous single-gene coloring defaults to warm
 cream → magenta. Points and bins share observation signals: categories, genes,
