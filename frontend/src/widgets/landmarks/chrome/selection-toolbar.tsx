@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -227,50 +227,14 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
   const showLandmarkBar = isLandmark && (usesBuffer || usesTension || !!selectedLm);
   const showHoodBar = isHood && !!hood;
 
-  const [lmL2, setLmL2] = useState<"width" | "color" | "tension">("width");
-  const leaveTimer = useRef<number | null>(null);
-  const openTimer = useRef<number | null>(null);
+  const [lmL2, setLmL2] = useState<"width" | "color" | "tension" | null>(null);
 
   useEffect(() => {
-    setLmL2("width");
+    setLmL2(null);
   }, [kind, index]);
 
-  useEffect(
-    () => () => {
-      if (leaveTimer.current != null) window.clearTimeout(leaveTimer.current);
-      if (openTimer.current != null) window.clearTimeout(openTimer.current);
-    },
-    [],
-  );
-
-  const clearLeave = () => {
-    if (leaveTimer.current != null) {
-      window.clearTimeout(leaveTimer.current);
-      leaveTimer.current = null;
-    }
-  };
-  const clearOpen = () => {
-    if (openTimer.current != null) {
-      window.clearTimeout(openTimer.current);
-      openTimer.current = null;
-    }
-  };
-  const showL2 = (next: "width" | "color" | "tension") => {
-    clearLeave();
-    clearOpen();
+  const showL2 = (next: "width" | "color" | "tension" | null) => {
     setLmL2(next);
-  };
-  /** Hover peek for width/tension — color opens on click only. */
-  const scheduleShowL2 = (next: "width" | "tension") => {
-    clearLeave();
-    if (lmL2 === next) return;
-    clearOpen();
-    openTimer.current = window.setTimeout(() => setLmL2(next), 80);
-  };
-  const scheduleWidth = () => {
-    clearOpen();
-    clearLeave();
-    leaveTimer.current = window.setTimeout(() => setLmL2("width"), 160);
   };
 
   if (!showLandmarkBar && !showHoodBar) return null;
@@ -298,13 +262,9 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
       onClick={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
-      <div
-        className="pointer-events-none flex flex-col items-center gap-1.5"
-        onMouseLeave={scheduleWidth}
-        onMouseEnter={clearLeave}
-      >
+      <div className="pointer-events-none flex flex-col items-center gap-1.5">
         {showLandmarkBar && lmL2 === "color" ? (
-          <div className={pillClass} onMouseEnter={() => showL2("color")}>
+          <div className={pillClass}>
             <ColorControl
               color={color}
               onChange={(next) => lm.patchLandmark({ color: next })}
@@ -313,7 +273,7 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
         ) : null}
 
         {showLandmarkBar && lmL2 === "width" && usesBuffer ? (
-          <div className={pillClass} onMouseEnter={() => showL2("width")}>
+          <div className={pillClass}>
             <InlineSlider
               label="Width"
               value={bufferWidth}
@@ -327,7 +287,7 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
         ) : null}
 
         {showLandmarkBar && lmL2 === "tension" && usesTension ? (
-          <div className={pillClass} onMouseEnter={() => showL2("tension")}>
+          <div className={pillClass}>
             <InlineSlider
               label="Tension"
               value={Number(selectedLm?.tension ?? 0)}
@@ -423,7 +383,7 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
                 active={lmL2 === "color"}
                 expandable
                 onClick={() =>
-                  showL2(lmL2 === "color" ? "width" : "color")
+                  showL2(lmL2 === "color" ? null : "color")
                 }
               >
                 <span className="inline-flex size-full items-center justify-center leading-none">
@@ -440,9 +400,8 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
                   testId="context-tension-toggle"
                   active={lmL2 === "tension"}
                   expandable
-                  onMouseEnter={() => scheduleShowL2("tension")}
                   onClick={() =>
-                    showL2(lmL2 === "tension" ? "width" : "tension")
+                    showL2(lmL2 === "tension" ? null : "tension")
                   }
                 >
                   <span className="inline-flex size-full items-center justify-center">
@@ -466,7 +425,7 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
                       lm.patchLandmark({ buffer_side: next });
                       setLmL2("width");
                     }}
-                    onMouseEnter={() => scheduleShowL2("width")}
+                    onClick={() => setLmL2("width")}
                   >
                     {(
                       [

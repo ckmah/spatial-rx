@@ -66,8 +66,9 @@ def test_raster_genes_mean_builds_features():
     assert w.raster_status == "ready"
 
     w.set_render_mode("points")
-    assert w.raster_n_bins == 0
-    assert w.raster_features == ""
+    # Features stay available so probe works in points mode.
+    assert w.raster_n_bins >= 2
+    assert w.raster_features != ""
 
 
 def test_raster_default_bin_and_window_microns():
@@ -81,12 +82,12 @@ def test_raster_default_bin_and_window_microns():
         genes={"g1": [0.0, 1.0, 2.0, 3.0]},
     )
     w = LandmarksWidget(adata, color="cell_class", genes=["g1"])
-    assert w.raster_bin_size == pytest.approx(5.0)
-    assert w.raster_window_radius == pytest.approx(10.0)
+    assert w.raster_bin_size == pytest.approx(8.0)
+    assert w.raster_window_radius == pytest.approx(24.0)
     w.active_genes = ["g1"]
     w.set_render_mode("raster")
     assert w.raster_status == "ready"
-    assert w.raster_window_radius == pytest.approx(10.0)
+    assert w.raster_window_radius == pytest.approx(24.0)
 
 
 def test_raster_discovers_embedding_keys():
@@ -206,3 +207,54 @@ def test_embedding_values_pack_for_point_rgb():
     assert np.all(packed >= 0) and np.all(packed <= 1)
     w.color_by = "embedding"
     assert w.color_by == "embedding"
+
+
+def test_probe_builds_features_in_points_mode():
+    """Entering probe in points mode builds bin features without raster view."""
+    from spatial_rx import LandmarksWidget
+
+    adata = adata_xy(
+        [0.0, 0.2, 2.0, 2.1],
+        [0.0, 0.1, 0.0, 2.0],
+        color=["Epi", "Epi", "Imm", "Fib"],
+        color_key="cell_class",
+        genes={"Apob": [0.0, 2.0, 0.0, 4.0]},
+    )
+    w = LandmarksWidget(adata, color="cell_class", genes=["Apob"])
+    w.raster_bin_size = 1.0
+    w.raster_window_radius = 2.0
+    assert w.render_mode == "points"
+    assert w.raster_n_bins == 0
+    w.mode = "probe"
+    # Trait observer on mode rebuilds bin features for points probe.
+    assert w.raster_n_bins > 0
+
+
+def test_empty_genes_keeps_gene_view_across_render_mode():
+    """Clearing genes / flipping View must stay on genes, not fall back to category."""
+    from spatial_rx import LandmarksWidget
+
+    adata = adata_xy(
+        [0.0, 0.2, 2.0, 2.1],
+        [0.0, 0.1, 0.0, 2.0],
+        color=["Epi", "Epi", "Imm", "Fib"],
+        color_key="cell_class",
+        genes={"Apob": [0.0, 2.0, 0.0, 4.0], "Lgr5": [1.0, 0.0, 1.0, 0.0]},
+    )
+    w = LandmarksWidget(adata, color="cell_class", genes=["Apob", "Lgr5"])
+    w.active_genes = ["Apob"]
+    assert w.color_by == "continuous"
+
+    w.active_genes = []
+    assert w.active_genes == []
+    assert w.color_by == "continuous"
+
+    w.set_render_mode("raster")
+    assert w.render_mode == "raster"
+    assert w.raster_basis == "genes"
+    assert w.color_by == "continuous"
+
+    w.set_render_mode("points")
+    assert w.render_mode == "points"
+    assert w.color_by == "continuous"
+    assert w.raster_basis == "genes"

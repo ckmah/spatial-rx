@@ -1,5 +1,6 @@
-import { useId, useMemo } from "react";
-import { Switch } from "@/components/ui/switch";
+import { InfoIcon } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import {
   Combobox,
   ComboboxChip,
@@ -13,198 +14,75 @@ import {
   ComboboxValue,
   useComboboxAnchor,
 } from "@/components/ui/combobox";
+import { Switch } from "@/components/ui/switch";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-import { GENE_COLORS, MAX_ACTIVE_GENES, blendHex, formatLegendValue } from "../helpers";
+import { GENE_COLORS, MAX_ACTIVE_GENES } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
-import { ColorSwatch } from "./primitives";
-import {
-  geneDisplayBounds,
-  buildTernaryFillUrl,
-  TERNARY_SIZE,
-  TERNARY_PATH,
-  TERNARY_DOT_LEFT,
-  TERNARY_DOT_TOP,
-  TERNARY_DOT_RIGHT,
-  TERNARY_VERTEX_R,
-} from "./genes-ternary";
+import { colorSignal } from "./coloring";
+import { ChromeTooltip, ColorSwatch } from "./primitives";
+import { MUTED_CONTROL } from "./sections";
 import { useWidgetPortalContainer } from "./use-widget-portal";
 
-function GenesHorizontalBar({
-  colors,
-  labels,
-  lo,
-  hi,
-}: {
-  colors: string[];
-  labels: string[];
-  lo: number;
-  hi: number;
-}) {
-  const gradient =
-    colors.length === 1
-      ? `linear-gradient(to right, var(--background), ${colors[0]})`
-      : `linear-gradient(to right, ${colors[0]}, ${blendHex(colors[0], colors[1])}, ${colors[1]})`;
-
+function ScaleInfoTip({ label }: { label: string }) {
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex min-w-0 items-center justify-between gap-1 text-[10px] text-foreground/65">
-        {labels.map((label, i) => (
-          <span
-            key={`${label}-${i}`}
-            className="inline-flex min-w-0 items-center gap-1 truncate text-foreground"
-          >
-            <ColorSwatch color={colors[i]} />
-            <span className="truncate">{label}</span>
-          </span>
-        ))}
-      </div>
-      <div
-        className="h-2.5 w-full rounded-full"
-        style={{ background: gradient }}
-      />
-      <div className="flex justify-between text-[10px] text-foreground/65 tabular-nums">
-        <span>{formatLegendValue(lo)}</span>
-        <span>{formatLegendValue(hi)}</span>
-      </div>
-    </div>
-  );
-}
-
-function GenesTernaryLegend() {
-  const clipId = useId();
-  const fillUrl = useMemo(() => buildTernaryFillUrl(), []);
-
-  return (
-    <div className="flex justify-center py-0.5">
-      <svg
-        viewBox={`0 0 ${TERNARY_SIZE} ${TERNARY_SIZE}`}
-        className="size-16"
-        aria-hidden
+    <ChromeTooltip label={label}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        className="size-5 text-foreground/55 hover:bg-transparent hover:text-foreground"
+        aria-label={label}
+        onClick={(e) => e.preventDefault()}
       >
-        <defs>
-          <clipPath id={clipId}>
-            <path d={TERNARY_PATH} />
-          </clipPath>
-        </defs>
-        {fillUrl ? (
-          <image
-            href={fillUrl}
-            width={TERNARY_SIZE}
-            height={TERNARY_SIZE}
-            clipPath={`url(#${clipId})`}
-            preserveAspectRatio="none"
-          />
-        ) : null}
-        <path
-          d={TERNARY_PATH}
-          fill="none"
-          className="stroke-border"
-          strokeWidth={1}
-        />
-        <circle
-          cx={TERNARY_DOT_LEFT.x}
-          cy={TERNARY_DOT_LEFT.y}
-          r={TERNARY_VERTEX_R}
-          fill={GENE_COLORS[0]}
-        />
-        <circle
-          cx={TERNARY_DOT_TOP.x}
-          cy={TERNARY_DOT_TOP.y}
-          r={TERNARY_VERTEX_R}
-          fill={GENE_COLORS[1]}
-        />
-        <circle
-          cx={TERNARY_DOT_RIGHT.x}
-          cy={TERNARY_DOT_RIGHT.y}
-          r={TERNARY_VERTEX_R}
-          fill={GENE_COLORS[2]}
-        />
-      </svg>
-    </div>
-  );
-}
-
-function GenesLegend({ lm }: { lm: LandmarksModel }) {
-  const { active_genes, gene_columns, color_by, gene_log1p, gene_scale_mode } = lm;
-  const selected = active_genes || [];
-  if (color_by !== "continuous" || !selected.length) return null;
-
-  if (selected.length >= 3) {
-    return <GenesTernaryLegend />;
-  }
-
-  const colors = selected.map((_, i) => GENE_COLORS[i % GENE_COLORS.length]);
-  let lo = 0;
-  let hi = 1;
-  if (gene_scale_mode === "shared") {
-    hi = 0;
-    for (const name of selected) {
-      const g = gene_columns.find((c) => c.name === name);
-      hi = Math.max(hi, geneDisplayBounds(g, gene_log1p).hi);
-    }
-    if (!(hi > 0)) hi = 1;
-  } else {
-    const g = gene_columns.find((c) => c.name === selected[0]);
-    const b = geneDisplayBounds(g, gene_log1p);
-    lo = b.lo;
-    hi = b.hi;
-  }
-
-  return (
-    <GenesHorizontalBar
-      colors={colors}
-      labels={selected}
-      lo={lo}
-      hi={hi}
-    />
+        <InfoIcon />
+      </Button>
+    </ChromeTooltip>
   );
 }
 
 function GenesScaleToggles({ lm }: { lm: LandmarksModel }) {
   const {
     active_genes,
-    color_by,
     gene_scale_mode,
     gene_log1p,
     gene_expression_logged,
   } = lm;
-  if (color_by !== "continuous" || !(active_genes?.length || 0)) return null;
+  if (colorSignal(lm) !== "genes" || !(active_genes?.length || 0)) return null;
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="flex items-center justify-between gap-2 text-xs text-foreground">
-        <span className="min-w-0 leading-snug">
-          Shared scale
-          <span className="mt-0.5 block text-[10px] text-foreground/65">
-            Max of selected genes
+    <TooltipProvider delayDuration={80} skipDelayDuration={0}>
+      <div className="flex flex-col gap-0">
+        <div className="landmarks-layer-row justify-between text-xs text-foreground">
+          <span className="inline-flex min-w-0 items-center gap-0.5">
+            Shared scale
+            <ScaleInfoTip label="Max of selected genes" />
           </span>
-        </span>
-        <Switch
-          size="sm"
-          checked={gene_scale_mode === "shared"}
-          onCheckedChange={(on) =>
-            lm.setGeneScaleMode(on ? "shared" : "independent")
-          }
-        />
-      </label>
-      <label className="flex items-center justify-between gap-2 text-xs text-foreground">
-        <span className="min-w-0 leading-snug">
-          log scale
-          <span className="mt-0.5 block text-[10px] text-foreground/65">
-            Compress high expression
+          <Switch
+            size="sm"
+            checked={gene_scale_mode === "shared"}
+            onCheckedChange={(on) =>
+              lm.setGeneScaleMode(on ? "shared" : "independent")
+            }
+          />
+        </div>
+        <div className="landmarks-layer-row justify-between text-xs text-foreground">
+          <span className="inline-flex min-w-0 items-center gap-0.5">
+            log scale
+            <ScaleInfoTip label="Compress high expression" />
           </span>
-        </span>
-        <Switch
-          size="sm"
-          checked={!!gene_log1p}
-          disabled={!!gene_expression_logged}
-          onCheckedChange={(on) => {
-            if (!gene_expression_logged) lm.setGeneLog1p(on);
-          }}
-        />
-      </label>
-    </div>
+          <Switch
+            size="sm"
+            checked={!!gene_log1p}
+            disabled={!!gene_expression_logged}
+            onCheckedChange={(on) => {
+              if (!gene_expression_logged) lm.setGeneLog1p(on);
+            }}
+          />
+        </div>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -217,7 +95,7 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
   const anchor = useComboboxAnchor();
 
   return (
-    <div ref={wrapRef} className="flex min-w-0 flex-col gap-1.5 overflow-x-hidden">
+    <div ref={wrapRef} className="flex min-w-0 flex-col gap-2">
       <Combobox
         items={names}
         multiple
@@ -231,7 +109,8 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
           <ComboboxChips
             ref={anchor}
             className={cn(
-              "min-h-7 min-w-0 w-full flex-wrap rounded-md bg-muted/80 px-1.5 py-0.5 text-[11px] shadow-none",
+              MUTED_CONTROL,
+              "min-w-0 w-full flex-wrap rounded-md px-1.5 py-1",
               selected.length > 0 && "pr-8",
             )}
           >
@@ -280,7 +159,6 @@ export function GenesCombobox({ lm }: { lm: LandmarksModel }) {
           </ComboboxList>
         </ComboboxContent>
       </Combobox>
-      <GenesLegend lm={lm} />
       <GenesScaleToggles lm={lm} />
     </div>
   );

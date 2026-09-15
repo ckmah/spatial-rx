@@ -61,7 +61,10 @@ function SelectionShapeMenu({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <div className="relative">
-        <ChromeTooltip label={label} shortcut={MODE_SHORTCUTS[current]}>
+        <ChromeTooltip
+          label={`${label} · right-click for shape`}
+          shortcut={MODE_SHORTCUTS[current]}
+        >
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
@@ -72,8 +75,9 @@ function SelectionShapeMenu({
                 "w-auto gap-0.5 px-1.5",
                 active && chromeHitOnClass,
               )}
-              aria-label={label}
+              aria-label={`${label}. Right-click for shape menu.`}
               aria-pressed={active}
+              aria-haspopup="menu"
               ref={(node) => {
                 setMenuContainer(
                   node?.closest(
@@ -81,9 +85,17 @@ function SelectionShapeMenu({
                   ) as HTMLElement | null,
                 );
               }}
-              onPointerDown={() => {
-                // Click activates default geometry; menu opens via trigger only.
-                if (!active) onMode(defaultMode);
+              onPointerDown={(e) => {
+                // Left click: activate geometry mode only (do not open menu).
+                if (e.button === 0) {
+                  e.preventDefault();
+                  if (!active) onMode(defaultMode);
+                }
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setOpen(true);
               }}
             >
               <Icon className="size-4" />
@@ -106,16 +118,16 @@ function SelectionShapeMenu({
               <DropdownMenuItem
                 key={id}
                 className={cn(
-                  "gap-2",
+                  "gap-2 py-1 text-xs",
                   isActive &&
                     "bg-accent text-accent-foreground focus:bg-accent focus:text-accent-foreground",
                 )}
                 onSelect={() => onMode(id)}
               >
-                <ItemIcon className="size-4" />
+                <ItemIcon className="size-3.5" />
                 <span className="flex-1">{itemLabel}</span>
                 {MODE_SHORTCUTS[id] ? (
-                  <span className="text-muted-foreground tabular-nums">
+                  <span className="text-[10px] text-muted-foreground tabular-nums">
                     {MODE_SHORTCUTS[id]}
                   </span>
                 ) : null}

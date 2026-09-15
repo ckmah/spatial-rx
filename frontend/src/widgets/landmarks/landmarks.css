@@ -47,6 +47,24 @@
   --lm-float-bg: color-mix(in oklab, var(--card) 80%, transparent);
   --lm-float-blur: blur(14px) saturate(1.05);
   --lm-float-shadow: 0 4px 12px color-mix(in srgb, #000 8%, transparent);
+
+  /* transitions.dev motion tokens — scoped to widget (Soft Float Operate) */
+  --duration-stagger: 40ms;
+  --duration-micro: 80ms;
+  --duration-quick: 150ms;
+  --duration-fast: 250ms;
+  --duration-medium: 350ms;
+  --duration-slow: 400ms;
+  --duration-very-slow: 500ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: ease-in-out;
+  --ease-out: ease-out;
+  --ease-linear: linear;
+  --scale-small: 0.98;
+  --blur-small: 2px;
+  --lm-tab-pill-dur: var(--duration-fast);
+  /* Points↔raster / color-mode canvas pulse (2× --duration-fast). */
+  --lm-view-swap-dur: 500ms;
 }
 
 .landmarks ::selection {
@@ -223,6 +241,38 @@
   background: var(--lm-bg);
 }
 
+/* Points ↔ raster / color-mode continuity — blur via overlay, not the
+   WebGL canvas (filtering the canvas itself blacks out in many browsers). */
+@keyframes landmarks-view-blur-veil {
+  0%,
+  100% {
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
+  }
+  40% {
+    backdrop-filter: blur(var(--blur-small, 2px));
+    -webkit-backdrop-filter: blur(var(--blur-small, 2px));
+  }
+}
+.landmarks__plot--view-swap {
+  position: relative;
+}
+.landmarks__plot--view-swap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  /* Transparent — blur only, no dimming wash. */
+  background: transparent;
+  animation: landmarks-view-blur-veil var(--lm-view-swap-dur) var(--ease-smooth-out) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .landmarks__plot--view-swap::after {
+    animation: none;
+  }
+}
+
 .landmarks__error {
   position: absolute;
   inset: 0;
@@ -381,7 +431,7 @@
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--lm-bg) 80%, transparent),
     0 1px 4px rgba(0, 0, 0, 0.12);
-  transition: opacity 0.15s ease;
+  transition: opacity var(--duration-quick) var(--ease-out);
 }
 
 .landmarks__resize:hover::after,
@@ -448,9 +498,11 @@
 }
 
 /*
- * Layer list geometry — shared by rows + category headers.
- * Trail is a fixed right rail; rows fill remaining width of the panel.
+ * Layer list geometry — shared by selections, landmarks, and category rows.
+ * Defined on both the float panel and the widget root so Explore (right dock)
+ * inherits the same row height as Layers.
  */
+.landmarks,
 .landmarks-float--panel {
   --lm-layer-row-h: 1.875rem;
   --lm-layer-row-gap: 0.375rem;
@@ -462,8 +514,7 @@
   --lm-layer-active-bg: color-mix(in srgb, var(--accent) 55%, transparent);
   --lm-layer-active-hover-bg: color-mix(in srgb, var(--accent) 80%, transparent);
   --lm-trail-hit: 1.5rem;
-  --lm-trail-gap: 0.125rem;
-  --lm-trail: calc(var(--lm-trail-hit) + var(--lm-trail-hit) + var(--lm-trail-gap));
+  --lm-trail: var(--lm-trail-hit);
 }
 
 .landmarks-layer-row,
@@ -480,9 +531,10 @@
   padding-block: 0;
   padding-inline: var(--lm-layer-row-px);
   margin: 0;
+  overflow: hidden;
   border-radius: var(--lm-layer-radius);
   background-color: transparent;
-  transition: background-color 180ms ease;
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
 
 /* Shared hover / active washes — same radius as the row geometry. */
@@ -508,11 +560,12 @@
 
 .landmarks-cat-chevron {
   display: inline-flex;
-  flex: 0 0 var(--lm-layer-icon);
+  flex: 0 0 var(--lm-trail-hit);
   align-items: center;
   justify-content: center;
   width: var(--lm-trail-hit);
   height: var(--lm-trail-hit);
+  max-height: var(--lm-layer-row-h);
   margin: 0;
   padding: 0;
   border: 0;
@@ -530,6 +583,108 @@
 .landmarks-cat-chevron:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 45%, transparent);
+}
+
+/* Category palette dots — right-aligned in both points + raster rows. */
+.landmarks-cat-avatars {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+  line-height: 0;
+}
+
+/* Points-view subcategory list — no gap under the header or between rows. */
+.landmarks-cat-sublist,
+.landmarks-cat-sublist [data-slot="item-group"] {
+  margin: 0;
+  padding-block: 0;
+  gap: 0;
+}
+
+.landmarks-cat-sublist .landmarks-layer-row {
+  margin: 0;
+}
+
+/* Category disclosure: height (Radix measure) + soft content reveal. */
+@keyframes landmarks-collapsible-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+
+@keyframes landmarks-collapsible-up {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+@keyframes landmarks-cat-reveal {
+  from {
+    opacity: 0;
+    filter: blur(var(--blur-small));
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@keyframes landmarks-cat-conceal {
+  from {
+    opacity: 1;
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    filter: blur(var(--blur-small));
+  }
+}
+
+.landmarks-cat-sublist[data-state="open"] {
+  animation: landmarks-collapsible-down var(--duration-fast) var(--ease-smooth-out);
+}
+
+.landmarks-cat-sublist[data-state="closed"] {
+  animation: landmarks-collapsible-up var(--duration-quick) var(--ease-smooth-out);
+}
+
+.landmarks-cat-sublist[data-state="open"] .landmarks-cat-sublist-inner {
+  animation: landmarks-cat-reveal var(--duration-fast) var(--ease-smooth-out) both;
+}
+
+.landmarks-cat-sublist[data-state="closed"] .landmarks-cat-sublist-inner {
+  animation: landmarks-cat-conceal var(--duration-quick) var(--ease-smooth-out) both;
+}
+
+.landmarks-cat-chevron-icon {
+  transform: rotate(0deg);
+  transform-origin: center;
+  transition: transform var(--duration-fast) var(--ease-smooth-out);
+}
+
+.landmarks-cat-chevron-icon--open {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landmarks-cat-sublist[data-state="open"],
+  .landmarks-cat-sublist[data-state="closed"],
+  .landmarks-cat-sublist[data-state="open"] .landmarks-cat-sublist-inner,
+  .landmarks-cat-sublist[data-state="closed"] .landmarks-cat-sublist-inner {
+    animation: none !important;
+  }
+
+  .landmarks-cat-chevron-icon {
+    transition: none !important;
+  }
 }
 
 
@@ -585,33 +740,21 @@
 }
 
 .landmarks-trail {
-  display: grid;
-  grid-template-columns: var(--lm-trail-hit) var(--lm-trail-hit);
-  align-items: center;
-  justify-items: center;
-  column-gap: var(--lm-trail-gap);
+  display: flex;
   flex: 0 0 var(--lm-trail);
+  align-items: center;
+  justify-content: flex-end;
   width: var(--lm-trail);
   min-width: var(--lm-trail);
   margin-left: auto;
-}
-
-.landmarks-trail-cell {
-  display: block;
-  width: 100%;
-  height: var(--lm-trail-hit);
 }
 
 .landmarks-trail-hit {
   width: var(--lm-trail-hit) !important;
   height: var(--lm-trail-hit) !important;
   min-width: var(--lm-trail-hit) !important;
-  justify-self: stretch;
-}
-
-/* End-column glyphs share the trail's right edge */
-.landmarks-trail > :nth-child(2) {
-  justify-self: end;
+  padding: 0 !important;
+  border-radius: 9999px !important;
 }
 
 /* Captions on glass: mix from foreground so tissue behind Soft Float stays readable. */
@@ -693,7 +836,9 @@
   background: color-mix(in oklab, var(--foreground) 55%, var(--muted-foreground));
   /* Compose onto Radix centering — never replace -50% or tracking breaks. */
   transform: var(--radix-slider-thumb-transform, translateX(-50%)) translateX(-2px);
-  transition: opacity 140ms ease, background-color 140ms ease;
+  transition:
+    opacity var(--duration-quick) var(--ease-out),
+    background-color var(--duration-quick) var(--ease-out);
 }
 
 .landmarks--dark .landmarks-slider-control [data-slot="slider-thumb"] {
@@ -783,18 +928,35 @@
   z-index: 16;
   display: flex;
   width: var(--lm-dock-width);
+  /* Definite height up to the band budget so inner overlay ScrollAreas can
+     resolve 100% and scroll instead of growing the dock. */
+  height: min(
+    max-content,
+    calc(
+      100% - var(--lm-chrome-band) - (2 * var(--lm-chrome-gap)) - var(--lm-chrome-inset)
+    )
+  );
   max-height: calc(
     100% - var(--lm-chrome-band) - (2 * var(--lm-chrome-gap)) - var(--lm-chrome-inset)
   );
   flex-direction: column;
   gap: var(--lm-chrome-gap);
   min-height: 0;
+  /* Visible so Soft Float box-shadows are not cropped (clip lives on
+     .landmarks-float-clip inside each panel). */
   overflow: visible;
   background: transparent;
 }
 
 .landmarks__chrome-dock--left {
   left: var(--lm-chrome-inset);
+  height: min(
+    max-content,
+    calc(
+      100% - var(--lm-chrome-band) - var(--lm-chrome-gap) - var(--lm-minimap-slot) -
+        var(--lm-chrome-inset)
+    )
+  );
   max-height: calc(
     100% - var(--lm-chrome-band) - var(--lm-chrome-gap) - var(--lm-minimap-slot) -
       var(--lm-chrome-inset)
@@ -805,7 +967,7 @@
   right: var(--lm-chrome-inset);
 }
 
-/* Layers fills remaining dock height and scrolls inside the card. */
+/* Layers fills remaining dock height; ScrollArea overlays inside the clip. */
 .landmarks__chrome-dock .landmarks__explore-panel {
   display: flex;
   flex: 1 1 auto;
@@ -836,6 +998,44 @@
   flex-direction: column;
   min-height: 0;
   overflow: visible;
+}
+
+/* Soft Float overlay scroll — paints over content, no layout gutter shift */
+.landmarks-overlay-scroll {
+  --lm-overlay-inset-x: 0.625rem; /* match PANEL_INSET px-2.5 */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 45%, transparent)
+    transparent;
+  /* Classic scrollbars (Linux/Windows) overlay via negative margin so content
+     width stays stable when the thumb appears. Inline padding is owned here
+     (not via Tailwind px-*) so the 8px lane is added symmetrically. */
+  margin-inline-end: -8px;
+  padding-inline-start: var(--lm-overlay-inset-x);
+  padding-inline-end: calc(var(--lm-overlay-inset-x) + 8px);
+}
+
+.landmarks-overlay-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.landmarks-overlay-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.landmarks-overlay-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.landmarks-overlay-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
 
 .landmarks__chrome-dock--right > [data-testid="info-panel"] {
@@ -892,7 +1092,8 @@
 
 .landmarks--narrow .landmarks__chrome-dock--narrow-stack {
   display: flex;
-  overflow: hidden;
+  /* Match wide docks — clip content inside float-clip, not the float shadow. */
+  overflow: visible;
 }
 
 .landmarks--narrow .landmarks__chrome-dock--narrow-stack > [data-testid="info-panel"] {
@@ -923,6 +1124,12 @@
 .landmarks.landmarks--fs .landmarks__chrome-dock,
 .landmarks--overlay-fs .landmarks__chrome-dock {
   width: var(--lm-dock-width);
+  height: min(
+    max-content,
+    calc(
+      100% - var(--lm-chrome-band) - (2 * var(--lm-chrome-gap)) - var(--lm-chrome-inset)
+    )
+  );
   max-height: calc(
     100% - var(--lm-chrome-band) - (2 * var(--lm-chrome-gap)) - var(--lm-chrome-inset)
   );
@@ -954,19 +1161,36 @@
     0 0 0 1px color-mix(in oklab, var(--lm-tooltip-text) 8%, transparent),
     0 4px 14px color-mix(in srgb, #000 18%, transparent);
   transform-origin: var(--radix-tooltip-content-transform-origin);
+  /* Keyframes (not transition): Radix mounts already open, so transitions never fire. */
   opacity: 0;
-  scale: 0.98;
-  transition:
-    opacity 50ms ease-out,
-    scale 50ms ease-out;
+  scale: var(--scale-small);
+}
+@keyframes landmarks-tooltip-in {
+  from {
+    opacity: 0;
+    scale: var(--scale-small);
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes landmarks-tooltip-out {
+  from {
+    opacity: 1;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: var(--scale-small);
+  }
 }
 .landmarks-tooltip[data-state="delayed-open"],
 .landmarks-tooltip[data-state="instant-open"] {
-  opacity: 1;
-  scale: 1;
-  transition:
-    opacity 150ms ease-out,
-    scale 150ms ease-out;
+  animation: landmarks-tooltip-in var(--duration-quick) var(--ease-out) both;
+}
+.landmarks-tooltip[data-state="closed"] {
+  animation: landmarks-tooltip-out var(--duration-micro) var(--ease-out) both;
 }
 .landmarks-tooltip-shortcut {
   color: color-mix(in oklab, var(--lm-tooltip-text) 65%, transparent);
@@ -977,8 +1201,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .landmarks-tooltip {
-    transition: none !important;
+  .landmarks-tooltip,
+  .landmarks-tooltip[data-state="delayed-open"],
+  .landmarks-tooltip[data-state="instant-open"],
+  .landmarks-tooltip[data-state="closed"] {
+    animation: none !important;
+    opacity: 1;
     scale: 1;
   }
 }
@@ -1001,30 +1229,26 @@
 }
 
 /* Right Info+Explore stack uses the same float shell as left Layers. */
+.landmarks__chrome-dock--right > .landmarks__explore-panel {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
 .landmarks__chrome-dock--right > .landmarks__chrome-stack.landmarks-float {
   min-height: 0;
 }
 
-.landmarks__chrome-stack > [data-testid="info-panel"] {
-  flex: 0 0 auto;
-  max-height: 40%;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.landmarks__chrome-stack > .landmarks__explore-panel {
-  display: flex;
-  min-height: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* Sliding Soft Float color tabs (transitions.dev tabs-sliding). */
+/* Sliding Soft Float color tabs — no track fill; light accent active pill. */
 .landmarks-sliding-tabs {
   position: relative;
   display: flex;
   align-items: center;
+  background: none;
+}
+
+.dark .landmarks-sliding-tabs,
+.landmarks--dark .landmarks-sliding-tabs {
+  background: none;
 }
 
 .landmarks-sliding-tabs__pill {
@@ -1033,22 +1257,22 @@
   left: 0;
   z-index: 0;
   height: calc(100% - 4px);
-  border-radius: 9999px;
-  background: color-mix(in oklab, var(--background) 88%, var(--foreground));
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
-    0 1px 2px color-mix(in srgb, #000 14%, transparent);
+  border-radius: calc(var(--lm-float-radius) - 2px);
+  /* Same wash as category / selection / landmark active rows. */
+  background: var(--lm-layer-active-bg, color-mix(in srgb, var(--accent) 55%, transparent));
+  box-shadow: none;
   transition:
-    transform var(--lm-tab-pill-dur, 250ms) cubic-bezier(0.22, 1, 0.36, 1),
-    width var(--lm-tab-pill-dur, 250ms) cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 120ms ease;
+    transform var(--lm-tab-pill-dur) var(--ease-smooth-out),
+    width var(--lm-tab-pill-dur) var(--ease-smooth-out),
+    opacity var(--duration-quick) var(--ease-out);
   will-change: transform, width;
   pointer-events: none;
 }
 
 .dark .landmarks-sliding-tabs__pill,
 .landmarks--dark .landmarks-sliding-tabs__pill {
-  background: var(--foreground);
+  background: var(--lm-layer-active-bg, color-mix(in srgb, var(--accent) 55%, transparent));
+  box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1060,4 +1284,101 @@
 
 .landmarks-minimap-float {
   border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent);
+}
+
+/* View CTA — icon swap + brief press pop. */
+.landmarks-view-cta__icon {
+  transition:
+    opacity var(--lm-view-swap-dur) var(--ease-in-out),
+    filter var(--lm-view-swap-dur) var(--ease-in-out),
+    transform var(--lm-view-swap-dur) var(--ease-in-out);
+}
+.landmarks-view-cta__icon--in {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+.landmarks-view-cta__icon--out {
+  opacity: 0;
+  filter: blur(var(--blur-small));
+  transform: scale(0.86);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .landmarks-view-cta__icon {
+    transition: none;
+    filter: none;
+  }
+  .landmarks-view-cta__icon--out {
+    transform: none;
+  }
+}
+
+/* View CTA click delight — brief overshoot pop (impeccable delight). */
+@keyframes landmarks-view-cta-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(0.86); }
+  100% { transform: scale(1); }
+}
+.landmarks-view-cta--pop {
+  animation: landmarks-view-cta-pop var(--duration-medium) var(--ease-smooth-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .landmarks-view-cta--pop {
+    animation: none;
+  }
+}
+
+/*
+ * RGB cube legend — rest compact; hover/focus grows from top-right and
+ * reveals channel labels (gene names or embed dims). Operate feedback.
+ */
+.landmarks-rgb-cube {
+  position: relative;
+  width: 3.5rem;
+  height: 2.5rem;
+  outline: none;
+}
+
+.landmarks-rgb-cube__svg {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: block;
+  width: 5.25rem;
+  height: 3.5rem;
+  transform-origin: top right;
+  transform: scale(0.67);
+  transition: transform var(--duration-fast) var(--ease-smooth-out);
+  will-change: transform;
+}
+
+.landmarks-rgb-cube__labels {
+  opacity: 0;
+  transition: opacity var(--duration-quick) var(--ease-smooth-out);
+  pointer-events: none;
+}
+
+.landmarks-rgb-cube:hover .landmarks-rgb-cube__svg,
+.landmarks-rgb-cube:focus-visible .landmarks-rgb-cube__svg {
+  transform: scale(1);
+}
+
+.landmarks-rgb-cube:hover .landmarks-rgb-cube__labels,
+.landmarks-rgb-cube:focus-visible .landmarks-rgb-cube__labels {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landmarks-rgb-cube__svg {
+    transition: none;
+    transform: scale(0.67);
+  }
+  .landmarks-rgb-cube:hover .landmarks-rgb-cube__svg,
+  .landmarks-rgb-cube:focus-visible .landmarks-rgb-cube__svg {
+    transform: scale(0.67);
+  }
+  .landmarks-rgb-cube__labels {
+    transition: opacity 80ms linear;
+  }
 }

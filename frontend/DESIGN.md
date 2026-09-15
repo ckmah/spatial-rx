@@ -14,8 +14,8 @@ colors:
   selection-slate: "#a3a3a3"
   neighborhood-teal: "#b3f2e8"
   gene-magenta: "#ff0099"
-  gene-lime: "#b8ff00"
-  gene-azure: "#00b7ff"
+  gene-lime: "#5cbf00"
+  gene-azure: "#0088cc"
   sequential-low: "#f3e6d4"
   sequential-high: "#ff0099"
   categorical-1: "#e69f00"
@@ -137,13 +137,12 @@ Restrained achromatic chrome. Data owns saturation on the canvas.
 
 Landmark cyan/magenta/lime (and amber/violet/mint) for annotations only.
 Categorical points use an Okabe–Ito–based set that avoids that neon triad.
-Genes keep the additive magenta/lime/azure blend. Continuous point coloring
-defaults to warm cream → gene magenta. Points and bins share observation
-signals: categories, genes, and embedding. Embedding colors points and bins
-with additive magenta/lime/azure on the first three dims (RGB triangle legend).
-Composition bins use majority cell-type colors from the point palette;
-single-gene uses theme background → magenta. Similarity scrubbing uses
-blue→light→magenta. Selections stay Framer-neutral greys.
+Multi-gene and embedding use additive magenta / lime / azure on the first three
+channels (RGB cube legend). Continuous single-gene coloring defaults to warm
+cream → magenta. Points and bins share observation signals: categories, genes,
+and embedding. Composition bins use majority cell-type colors from the point
+palette. Similarity scrubbing uses blue→light→magenta. Selections stay
+Framer-neutral greys.
 
 ### Named Rules
 
@@ -186,8 +185,8 @@ blue→light→magenta. Selections stay Framer-neutral greys.
 - Slightly denser frosted fill (~80% card mix) so borderless glass still separates from busy tissue
 - Panels and toolbars share the same glass material; `--toolbar` is slightly rounder than `--panel`
 - Inner chrome stays quiet: slider capsules are fill-only (no inset rings); section dividers use spacing, not rules; segmented controls sit in muted trays without outline strokes
-- Tabs / segments: Soft Float sliding pill Tabs (lowercase category / genes / embed) are the Explore color control — `PILL_TABS_LIST` / `PILL_TABS_TRIGGER` in `chrome/sections.ts`. Lab at `frontend/dev/tabs.html`.
-- Floating View CTA: top-right Soft Float **icon hover flip** (`ViewCta`) for Points/Raster — current mode at rest, hover reveals the destination icon, click commits. Lab at `frontend/dev/view-cta.html`. View is no longer nested in Explore.
+- Tabs / segments: Soft Float sliding pill Tabs (lowercase category / genes / embed) are the Explore color control — `PILL_TABS_LIST` / `PILL_TABS_TRIGGER` in `chrome/sections.ts`.
+- Floating View CTA: top-right Soft Float **icon hover flip** (`ViewCta`) for Points/Raster — current mode at rest, hover reveals the destination icon, click commits. View is no longer nested in Explore.
 - Explore distill: Color by only in the right dock; similarity scale only when Bins; status copy only when computing/error/pinned; Color-by meta line only for genes/embedding
 - Captions and helper text on Soft Float use foreground mixes (`--foreground` ~62–72%), not raw `--muted-foreground`, so tissue behind glass does not wash them out
 - Menus / tooltips keep a crisp border (opaque portaled surfaces need an edge)

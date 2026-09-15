@@ -4,14 +4,13 @@ import { useNotebookTheme } from "@/hooks/use-notebook-theme";
 import { cn } from "@/lib/utils";
 
 import {
-  ExplorePanel,
   LayersPanel,
-  InfoPanel,
   MinimapPanel,
   SelectionToolbar,
   Topbar,
   LandmarkCanvasMenu,
   ViewCta,
+  RightChromeStack,
 } from "./chrome";
 import { FLOAT_PANEL } from "./chrome/sections";
 import { mountEngine, type EngineHandle } from "./engine";
@@ -48,6 +47,7 @@ export function LandmarksView({
   const lm = useLandmarksModel(model);
   const plotHostRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const [rootEl, setRootEl] = useState<HTMLElement | null>(null);
   const engineRef = useRef<EngineHandle | null>(null);
   const [engine, setEngine] = useState<EngineHandle | null>(null);
   const [shellHeight, setShellHeight] = useState(defaultHeight);
@@ -152,7 +152,10 @@ export function LandmarksView({
 
   return (
     <div
-      ref={rootRef}
+      ref={(node) => {
+        rootRef.current = node;
+        setRootEl((prev) => (prev === node ? prev : node));
+      }}
       className={cn(
         "spatial-rx-widget landmarks relative min-w-0 w-full",
         dark && "dark landmarks--dark",
@@ -221,13 +224,10 @@ export function LandmarksView({
             onWheel={(e) => e.stopPropagation()}
           >
             <div
-              className={cn(FLOAT_PANEL, "flex min-h-0 flex-1 flex-col")}
+              className={cn(FLOAT_PANEL, "flex h-full min-h-0 flex-1 flex-col")}
               data-testid="info-explore-stack"
             >
-              <div className="landmarks__chrome-stack landmarks-float-clip flex min-h-0 flex-1 flex-col">
-                <InfoPanel lm={lm} engine={engine} embedded />
-                <ExplorePanel lm={lm} embedded />
-              </div>
+              <RightChromeStack lm={lm} engine={engine} />
             </div>
             <LayersPanel lm={lm} />
           </div>
@@ -246,13 +246,10 @@ export function LandmarksView({
               onWheel={(e) => e.stopPropagation()}
             >
               <div
-                className={cn(FLOAT_PANEL, "flex min-h-0 flex-1 flex-col")}
+                className={cn(FLOAT_PANEL, "flex max-h-full w-full flex-col")}
                 data-testid="info-explore-stack"
               >
-                <div className="landmarks__chrome-stack landmarks-float-clip flex min-h-0 flex-1 flex-col">
-                  <InfoPanel lm={lm} engine={engine} embedded />
-                  <ExplorePanel lm={lm} embedded />
-                </div>
+                <RightChromeStack lm={lm} engine={engine} />
               </div>
             </div>
             <div
@@ -264,7 +261,7 @@ export function LandmarksView({
             </div>
           </>
         )}
-        <LandmarkCanvasMenu lm={lm} engine={engine} />
+        <LandmarkCanvasMenu lm={lm} engine={engine} rootEl={rootEl} />
       </div>
     </div>
   );

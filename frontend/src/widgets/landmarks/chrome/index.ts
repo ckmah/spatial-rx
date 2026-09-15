@@ -7,3 +7,4 @@ export { SelectionToolbar } from "./selection-toolbar";
 export { LandmarkCanvasMenu } from "./landmark-canvas-menu";
 export { ViewCta } from "./view-cta";
 export type { PanelSectionId } from "./sections";
+export { RightChromeStack } from "./right-stack";

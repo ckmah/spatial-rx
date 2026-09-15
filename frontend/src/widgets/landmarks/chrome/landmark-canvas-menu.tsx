@@ -20,12 +20,6 @@ type MenuState = {
   y: number;
 } | null;
 
-function widgetRoot(): HTMLElement | null {
-  return document.querySelector(
-    ".spatial-rx-widget.landmarks, .landmarks",
-  ) as HTMLElement | null;
-}
-
 function MenuItem({
   children,
   shortcut,
@@ -63,27 +57,24 @@ function MenuItem({
 export function LandmarkCanvasMenu({
   lm,
   engine,
+  rootEl,
 }: {
   lm: LandmarksModel;
   engine: EngineHandle | null;
+  /** Widget root (must be passed — document.querySelector misses shadow DOM). */
+  rootEl: HTMLElement | null;
 }) {
   const [menu, setMenu] = useState<MenuState>(null);
-  const [container, setContainer] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    setContainer(widgetRoot());
-  }, []);
 
   useEffect(() => {
     if (!engine?.subscribeLandmarkMenu) return;
     return engine.subscribeLandmarkMenu((evt) => {
-      const root = widgetRoot();
+      const root = rootEl;
       if (!root) {
         setMenu({ index: evt.index, x: evt.clientX, y: evt.clientY });
         return;
       }
       const rect = root.getBoundingClientRect();
-      setContainer(root);
       // Position relative to the widget so theme tokens apply and transforms
       // on ancestors do not offset fixed client coordinates.
       setMenu({
@@ -92,7 +83,7 @@ export function LandmarkCanvasMenu({
         y: evt.clientY - rect.top,
       });
     });
-  }, [engine]);
+  }, [engine, rootEl]);
 
   useEffect(() => {
     if (!menu) return;
@@ -102,8 +93,17 @@ export function LandmarkCanvasMenu({
     let removeDown: (() => void) | undefined;
     const timer = window.setTimeout(() => {
       const onDown = (e: PointerEvent) => {
-        const el = document.getElementById("landmarks-canvas-menu");
-        if (el && e.target instanceof Node && el.contains(e.target)) return;
+        // Menu lives in the widget shadow root — document.getElementById misses it.
+        const el = rootEl?.querySelector("#landmarks-canvas-menu");
+        const path =
+          typeof e.composedPath === "function" ? e.composedPath() : [];
+        if (
+          el &&
+          (path.includes(el) ||
+            (e.target instanceof Node && el.contains(e.target)))
+        ) {
+          return;
+        }
         setMenu(null);
       };
       document.addEventListener("pointerdown", onDown, true);
@@ -116,10 +116,10 @@ export function LandmarkCanvasMenu({
       document.removeEventListener("keydown", onKey);
       removeDown?.();
     };
-  }, [menu]);
+  }, [menu, rootEl]);
 
   const item = menu ? lm.landmarks[menu.index] : null;
-  if (!menu || !item || !container) return null;
+  if (!menu || !item || !rootEl) return null;
 
   const close = () => setMenu(null);
   const run = (fn: () => void) => {
@@ -170,6 +170,6 @@ export function LandmarkCanvasMenu({
         Delete
       </MenuItem>
     </div>,
-    container,
+    rootEl,
   );
 }

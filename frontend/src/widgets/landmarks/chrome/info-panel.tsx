@@ -1,18 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Pie,
   PieChart,
   Cell,
   Sector,
-  Area,
-  AreaChart,
-  CartesianGrid,
-  XAxis,
-  YAxis,
   Label,
 } from "recharts";
 
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -29,36 +23,140 @@ import { FieldDescription } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 
 import { decodeI32Base64 } from "../binary";
+import { formatLegendValue } from "../helpers";
 import type { EngineHandle } from "../engine";
-import {
-  LANDMARK_COLORS,
-  SELECTION_COLORS,
-} from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
 import { colorSignal } from "./coloring";
 import {
   compositionSlices,
-  embeddingTernaryCloud,
+  embeddingRgbCloud,
   geneDensities,
+  niceAxisTicks,
   resolvePointMask,
+  CLOUD_OTHER_ALPHA_SCALE,
+  CLOUD_OTHER_SIZE_SCALE,
+  CLOUD_SELECTED_SIZE_SCALE,
+  type DensityRow,
+  type DensitySeries,
 } from "./info-stats";
-import { ColorSwatch } from "./primitives";
+import { CLOUD_CUBE, embeddingCloudPointRadius } from "./rgb-cube";
+import { PlotChannelLegend } from "./plot-channel-legend";
+import { geneDisplayBounds } from "./genes-ternary";
 import {
   EMBEDDED_PANEL,
   FLOAT_PANEL,
   FLOAT_PANEL_CLIP,
   PANEL_INSET,
+  PANEL_SCROLL,
 } from "./sections";
 
 /** Fixed chart slot so Category / Genes / Embedding swaps do not resize the card. */
-function InfoChartWell({ children }: { children: React.ReactNode }) {
+function InfoChartWell({
+  children,
+  legend,
+}: {
+  children: ReactNode;
+  legend?: ReactNode;
+}) {
   return (
     <div
-      className="landmarks-info-chart flex min-h-44 w-full flex-1 items-center justify-center overflow-hidden"
+      className="landmarks-info-chart relative flex h-44 w-full shrink-0 items-stretch justify-stretch rounded-[var(--radius)]"
       data-testid="info-chart-well"
     >
-      {children}
+      <div className="absolute inset-0 overflow-hidden rounded-[inherit]">
+        {children}
+      </div>
+      {legend}
     </div>
+  );
+}
+
+/** Minimal ridgeline: one density ridge per selected gene (no y labels). */
+function GeneRidgelines({
+  series,
+  rows,
+  xMin,
+  xMax,
+}: {
+  series: DensitySeries[];
+  rows: DensityRow[];
+  xMin: number;
+  xMax: number;
+}) {
+  const n = series.length;
+  if (!n || !rows.length) return null;
+
+  const plotW = 240;
+  const padTop = 10;
+  const axisH = 26;
+  const plotH = 146;
+  const rowH = plotH / n;
+  const padX = 6;
+  const width = plotW + padX * 2;
+  const height = padTop + plotH + axisH;
+  const span = xMax - xMin || 1;
+  const ticks = niceAxisTicks(xMin, xMax, 3);
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="h-full w-full"
+      preserveAspectRatio="xMidYMid meet"
+      role="img"
+      aria-label="Gene expression densities"
+      data-testid="gene-ridgelines"
+    >
+      {series.map((s, gi) => {
+        const vals = rows.map((r) => Number(r[s.key]) || 0);
+        const peak = Math.max(...vals, 1e-12);
+        const baseline = padTop + (gi + 1) * rowH - 2;
+        const amp = rowH * 0.78;
+        let d = `M ${padX} ${baseline}`;
+        for (let bi = 0; bi < rows.length; bi++) {
+          const x = padX + (bi / Math.max(rows.length - 1, 1)) * plotW;
+          const y = baseline - (vals[bi] / peak) * amp;
+          d += ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
+        }
+        d += ` L ${padX + plotW} ${baseline} Z`;
+        return (
+          <path
+            key={s.key}
+            d={d}
+            fill={s.color}
+            fillOpacity={0.28}
+            stroke={s.color}
+            strokeWidth={1.15}
+            strokeLinejoin="round"
+          />
+        );
+      })}
+      <line
+        x1={padX}
+        y1={padTop + plotH}
+        x2={padX + plotW}
+        y2={padTop + plotH}
+        className="stroke-foreground/25"
+        strokeWidth={1}
+      />
+      {ticks.map((value, i) => {
+        const t = (value - xMin) / span;
+        const x = padX + t * plotW;
+        const anchor =
+          i === 0 ? "start" : i === ticks.length - 1 ? "end" : "middle";
+        return (
+          <text
+            key={`${value}-${i}`}
+            x={x}
+            y={height - 6}
+            textAnchor={anchor}
+            className="fill-foreground/70"
+            style={{ fontSize: 10, fontWeight: 500 }}
+          >
+            {formatLegendValue(value)}
+          </text>
+        );
+      })}
+    </svg>
   );
 }
 
@@ -66,10 +164,13 @@ export function InfoPanel({
   lm,
   engine = null,
   embedded = false,
+  bare = false,
 }: {
   lm: LandmarksModel;
   engine?: EngineHandle | null;
   embedded?: boolean;
+  /** Skip outer inset when nested in RightChromeStack. */
+  bare?: boolean;
 }) {
   const {
     selected_kind,
@@ -81,6 +182,7 @@ export function InfoPanel({
     active_category,
     gene_values,
     active_genes,
+    gene_columns,
     gene_log1p,
     gene_expression_logged,
   } = lm;
@@ -120,6 +222,7 @@ export function InfoPanel({
       }
     });
   }, [engine, category_codes, category_columns, active_category, n]);
+
   const genes = active_genes || [];
   const signal = colorSignal(lm);
   const showGenes = signal === "genes";
@@ -200,71 +303,36 @@ export function InfoPanel({
   );
 
   const densities = useMemo(
-    () =>
-      showGenes
-        ? geneDensities({
-            n,
-            mask: focusMask,
-            geneValuesB64: gene_values || "",
-            activeGenes: genes,
-            geneLog1p: !!gene_log1p && !gene_expression_logged,
-          })
-        : { series: [], rows: [] },
+    () => {
+      if (!showGenes) return { series: [], rows: [], xMin: 0, xMax: 1 };
+      const applyLog = !!gene_log1p && !gene_expression_logged;
+      const geneBounds = genes.map((name) =>
+        geneDisplayBounds(
+          gene_columns.find((c) => c.name === name),
+          applyLog,
+        ),
+      );
+      return geneDensities({
+        n,
+        mask: focusMask,
+        geneValuesB64: gene_values || "",
+        activeGenes: genes,
+        geneLog1p: applyLog,
+        geneBounds,
+      });
+    },
     [
       showGenes,
       n,
       focusMask,
       gene_values,
       genes,
+      gene_columns,
       gene_log1p,
       gene_expression_logged,
     ],
   );
 
-  const layerChip = useMemo(() => {
-    if (selected_kind === "selection" && selected_index >= 0) {
-      return {
-        label: selections[selected_index]?.id || "Selection",
-        color: SELECTION_COLORS[selected_index % SELECTION_COLORS.length],
-        variant: "selection" as const,
-      };
-    }
-    if (selected_kind === "type" && selected_index >= 0) {
-      const col =
-        category_columns.find((c) => c.name === active_category) || null;
-      const labels = col?.labels || [];
-      const palette = col?.palette || [];
-      return {
-        label: labels[selected_index] || active_category || "Type",
-        color:
-          palette[selected_index % Math.max(palette.length, 1)] || undefined,
-        variant: "solid" as const,
-      };
-    }
-    if (selected_kind === "landmark" && selected_index >= 0) {
-      const item = lm.landmarks[selected_index];
-      const color =
-        (typeof item?.color === "string" && item.color) ||
-        LANDMARK_COLORS[selected_index % LANDMARK_COLORS.length];
-      return {
-        label: item?.id || "Landmark",
-        color,
-        variant: "landmark" as const,
-      };
-    }
-    return {
-      label: active_category || "All cells",
-      color: undefined,
-      variant: "solid" as const,
-    };
-  }, [
-    selected_kind,
-    selected_index,
-    selections,
-    category_columns,
-    active_category,
-    lm.landmarks,
-  ]);
 
   const activeTypeIndex = useMemo(() => {
     if (hoverTypeIndex != null) return hoverTypeIndex;
@@ -280,14 +348,6 @@ export function InfoPanel({
     return cfg;
   }, [composition]);
 
-  const densityConfig = useMemo(() => {
-    const cfg: ChartConfig = {};
-    for (const s of densities.series) {
-      cfg[s.key] = { label: s.label, color: s.color };
-    }
-    return cfg;
-  }, [densities.series]);
-
   const pieTotal = useMemo(
     () => composition.reduce((acc, s) => acc + s.value, 0),
     [composition],
@@ -296,9 +356,16 @@ export function InfoPanel({
   const embeddingCloud = useMemo(() => {
     if (!showEmbedding) return [];
     const labels = lm.embedding_channel_labels || [];
-    return embeddingTernaryCloud({
+    const hasFocus =
+      selected_kind === "type" || selected_kind === "selection";
+    // Always sample the full cohort; emphasize focus via size/opacity.
+    const allMask = new Uint8Array(n);
+    allMask.fill(1);
+    return embeddingRgbCloud({
       n,
-      mask: focusMask,
+      mask: allMask,
+      focusMask,
+      hasFocus,
       embeddingValuesB64: lm.embedding_values || "",
       nChannels: labels.length,
     });
@@ -306,6 +373,7 @@ export function InfoPanel({
     showEmbedding,
     n,
     focusMask,
+    selected_kind,
     lm.embedding_values,
     lm.embedding_channel_labels,
   ]);
@@ -316,76 +384,74 @@ export function InfoPanel({
 
   const charts = showEmbedding ? (
         embeddingCloud.length ? (
-          <div className="flex h-full min-h-0 w-full flex-1 items-center justify-center">
+          <div className="box-border h-full w-full px-1.5 pb-3 pt-2">
             <svg
-              viewBox="0 0 80 80"
-              className="h-full max-h-52 w-full max-w-[13rem]"
+              viewBox={`0 0 ${CLOUD_CUBE.vbW} ${CLOUD_CUBE.vbH}`}
+              className="h-full w-full"
+              preserveAspectRatio="xMidYMid meet"
               role="img"
               aria-label={`${embKey} RGB cloud in current scope`}
             >
-              {embeddingCloud.map((p, i) => (
-                <circle
-                  key={i}
-                  cx={p.x}
-                  cy={p.y}
-                  r={1.4}
-                  fill={p.color}
-                  fillOpacity={0.85}
-                />
-              ))}
+              {(() => {
+                const baseR = embeddingCloudPointRadius(embeddingCloud.length);
+                const emphasize =
+                  selected_kind === "type" || selected_kind === "selection";
+                return embeddingCloud.map((p, i) => {
+                  const scale = !emphasize
+                    ? 1
+                    : p.selected
+                      ? CLOUD_SELECTED_SIZE_SCALE
+                      : CLOUD_OTHER_SIZE_SCALE;
+                  const opacity = !emphasize
+                    ? 0.85
+                    : p.selected
+                      ? 0.95
+                      : 0.85 * CLOUD_OTHER_ALPHA_SCALE;
+                  return (
+                    <circle
+                      key={i}
+                      cx={p.x}
+                      cy={p.y}
+                      r={baseR * scale}
+                      fill={p.color}
+                      fillOpacity={opacity}
+                    />
+                  );
+                });
+              })()}
             </svg>
           </div>
         ) : (
-          <FieldDescription className="m-0 max-w-[16rem] text-center">
-            {embLabels.length
-              ? "No cells in this scope for the embedding cloud."
-              : "Pick an embedding in Explore to color points and see the RGB mix."}
-          </FieldDescription>
+          <div className="flex h-full w-full items-center justify-center px-2 pb-3 pt-2">
+            <FieldDescription className="m-0 max-w-[16rem] text-center">
+              {embLabels.length
+                ? "No cells in this scope for the embedding cloud."
+                : "Pick an embedding in Explore to color points and see the RGB mix."}
+            </FieldDescription>
+          </div>
         )
       ) : showGenes ? (
         densities.rows.length && densities.series.length ? (
-          <ChartContainer
-            config={densityConfig}
-            className="h-full max-h-44 w-full aspect-auto"
-            initialDimension={{ width: 240, height: 176 }}
-          >
-            <AreaChart data={densities.rows} margin={{ left: 4, right: 4, top: 8 }}>
-              <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey="x"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={6}
-                tickFormatter={(v) => Number(v).toFixed(2)}
-              />
-              <YAxis hide />
-              <ChartTooltip
-                cursor={false}
-                content={<ChartTooltipContent indicator="line" />}
-              />
-              {densities.series.map((s) => (
-                <Area
-                  key={s.key}
-                  dataKey={s.key}
-                  type="monotone"
-                  fill={`var(--color-${s.key})`}
-                  fillOpacity={0.18}
-                  stroke={`var(--color-${s.key})`}
-                  strokeWidth={1.5}
-                  isAnimationActive={false}
-                />
-              ))}
-            </AreaChart>
-          </ChartContainer>
+          <div className="box-border h-full w-full px-1 pb-2.5 pt-1.5">
+            <GeneRidgelines
+              series={densities.series}
+              rows={densities.rows}
+              xMin={densities.xMin}
+              xMax={densities.xMax}
+            />
+          </div>
         ) : (
-          <FieldDescription className="m-0 text-center">
-            {genes.length
-              ? "No expression in this scope."
-              : "Pick genes in Explore to see densities."}
-          </FieldDescription>
+          <div className="flex h-full w-full items-center justify-center px-2 pb-2.5 pt-1.5">
+            <FieldDescription className="m-0 text-center">
+              {genes.length
+                ? "No expression in this scope."
+                : "Pick genes in Explore to see densities."}
+            </FieldDescription>
+          </div>
         )
       ) : composition.length ? (
-        <div className="relative aspect-square h-full max-h-44 w-auto max-w-full">
+        <div className="flex h-full w-full items-center justify-center">
+          <div className="relative aspect-square h-full max-h-44 w-auto max-w-full">
           <ChartContainer
             config={pieConfig}
             className="aspect-square h-full w-full [&_.recharts-responsive-container]:!aspect-square"
@@ -499,6 +565,7 @@ export function InfoPanel({
               </Pie>
             </PieChart>
           </ChartContainer>
+          </div>
         </div>
       ) : (
         <FieldDescription className="m-0 text-center">
@@ -508,33 +575,22 @@ export function InfoPanel({
         </FieldDescription>
       );
 
-  const chipLabel = showEmbedding ? embKey : layerChip.label;
-  const chip = (
-    <Badge
-      variant="secondary"
-      title={chipLabel}
-      className="min-w-0 max-w-full shrink gap-1 truncate rounded-md border border-border/60 bg-muted/90 px-1.5 py-0.5 text-[11px] font-normal text-foreground"
-    >
-      {!showEmbedding && layerChip.color ? (
-        <ColorSwatch
-          color={layerChip.color}
-          variant={layerChip.variant}
-          fillOpacity={0.28}
-          className="!size-2.5 !min-h-2.5 !min-w-2.5 !flex-none"
-        />
-      ) : null}
-      <span className="min-w-0 truncate">{chipLabel}</span>
-    </Badge>
-  );
-
   const body = (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 pb-1.5">
-      {chip}
-      <InfoChartWell>{charts}</InfoChartWell>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <InfoChartWell legend={<PlotChannelLegend lm={lm} />}>
+        {charts}
+      </InfoChartWell>
     </div>
   );
 
   if (embedded) {
+    if (bare) {
+      return (
+        <div className="flex min-h-0 flex-col" data-testid="info-panel">
+          {body}
+        </div>
+      );
+    }
     return (
       <div
         className={cn(EMBEDDED_PANEL, "flex min-h-0 flex-col")}
@@ -542,7 +598,7 @@ export function InfoPanel({
       >
         <div
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            PANEL_SCROLL,
             PANEL_INSET,
           )}
         >
@@ -562,7 +618,7 @@ export function InfoPanel({
         </CardHeader>
         <CardContent
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            PANEL_SCROLL,
             PANEL_INSET,
           )}
         >

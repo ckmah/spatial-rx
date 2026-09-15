@@ -11,10 +11,14 @@
     "watch:landmarks": "SPATIAL_RX_BUILD_WIDGET=landmarks vite build --watch",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
+    "test:e2e:core": "playwright test e2e/core",
+    "test:e2e:landmarks": "playwright test e2e/landmarks",
+    "test:e2e:gallery": "playwright test e2e/gallery",
     "test:e2e:install": "playwright install chromium",
     "test:e2e:mac": "PLAYWRIGHT_CHANNEL=chrome playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
-    "dev:tabs": "vite --open /tabs.html"
+    "test:e2e:update:core": "playwright test e2e/core --update-snapshots",
+    "test:e2e:update:landmarks": "playwright test e2e/landmarks --update-snapshots"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
