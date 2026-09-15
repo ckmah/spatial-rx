@@ -7,10 +7,10 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import marimo as mo
-    import anndata as ad
     import numpy as np
-    import pandas as pd
+    import scanpy as sc
     import squidpy as sq
+    from ileum_data import load_ileum_adata
     from spatial_rx import (
         LandmarksWidget,
         geodataframe_to_landmarks,
@@ -20,12 +20,12 @@ def _():
 
     return (
         LandmarksWidget,
-        ad,
         geodataframe_to_landmarks,
         landmarks_to_geodataframe,
+        load_ileum_adata,
         mo,
         np,
-        pd,
+        sc,
         sq,
     )
 
@@ -35,7 +35,8 @@ def _(mo):
     mo.md(r"""
     # Landmarks that stick (M1 demo)
 
-    SPF ileum slice from `demos/data/ileum` (Xu et al.).
+    SPF ileum slice from `demos/data/ileum.h5ad` (Xu et al.), loaded locally or
+    via fsspec from GitHub raw when the file is not beside the notebook.
 
     1. Draw/edit landmarks on the canvas; use the contextual toolbar for buffer /
        style and neighborhood controls.
@@ -48,19 +49,34 @@ def _(mo):
 
 
 @app.cell
-def _(ad, mo, np, pd, sq):
+def _(load_ileum_adata, mo):
     CLUSTER = "cell_type"
-    _cells = pd.read_csv(mo.notebook_dir() / "data" / "ileum" / "cells.csv")
-    _expr = pd.read_csv(mo.notebook_dir() / "data" / "ileum" / "expr.csv")
-    _obs = _cells.drop(columns=["x", "y"]).copy()
-    _obs.index = [f"c{i}" for i in range(len(_obs))]
-    adata = ad.AnnData(
-        X=_expr.to_numpy(dtype=np.float32),
-        obs=_obs,
-        var=pd.DataFrame(index=_expr.columns.astype(str)),
-    )
-    adata.obsm["spatial"] = _cells[["x", "y"]].to_numpy(dtype=float)
-    adata.obs[CLUSTER] = pd.Categorical(adata.obs[CLUSTER].astype(str))
+    adata = load_ileum_adata(mo.notebook_dir())
+    adata.obs[CLUSTER] = adata.obs[CLUSTER].astype("category")
+    return CLUSTER, adata
+
+
+@app.cell
+def _(adata, sc):
+    # Exploratory PCA (also stored on ileum.h5ad as X_pca).
+    _n_comps = min(10, adata.n_vars - 1, adata.n_obs - 1)
+    sc.pp.pca(adata, n_comps=_n_comps)
+    return
+
+
+@app.cell
+def _(adata, sc):
+    # Exploratory UMAP on expression-space neighbors (also stored as X_umap).
+    if "X_umap" not in adata.obsm:
+        _n_comps = min(10, adata.obsm["X_pca"].shape[1], adata.n_obs - 1)
+        sc.pp.neighbors(adata, n_pcs=_n_comps, use_rep="X_pca", random_state=0)
+        sc.tl.umap(adata, init_pos="random", random_state=0)
+    return
+
+
+@app.cell
+def _(adata, np, sq):
+    # Spatial neighbor graphs for the widget (k-max / radius-max supersets).
     xy = np.asarray(adata.obsm["spatial"], dtype=float)
     radius = 0.05 * float(np.hypot(np.ptp(xy[:, 0]), np.ptp(xy[:, 1])))
     sq.gr.spatial_neighbors(
@@ -69,8 +85,7 @@ def _(ad, mo, np, pd, sq):
     sq.gr.spatial_neighbors(
         adata, coord_type="generic", radius=radius, key_added="spatial_radius"
     )
-
-    return CLUSTER, adata
+    return
 
 
 @app.cell
