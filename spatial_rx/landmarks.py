@@ -18,6 +18,8 @@ from .categories import (
     DEFAULT_CATEGORICAL_PALETTE,
 )
 from .genes import (
+    _normalize_column,
+    _column_vector,
     encode_gene_bundle,
     encode_genes_from_adata,
     expression_is_log_scaled,
@@ -26,6 +28,17 @@ from .genes import (
     genes_look_log_scaled,
 )
 from .neighbors import DEFAULT_K_MAX, NeighborhoodIndex
+from .raster import (
+    DEFAULT_WINDOW_RADIUS,
+    aggregate_mean_window,
+    assign_bins,
+    build_grid,
+    composition_hist_window,
+    default_bin_size,
+    default_window_radius,
+    pack_bin_arrays,
+    pack_features,
+)
 from .selection import (
     neighborhood_expand,
     neighborhood_params,
@@ -195,6 +208,62 @@ def _median_nn_distance(knn: NeighborhoodIndex | None) -> float | None:
     return float(np.median(np.asarray(first, dtype=np.float64)))
 
 
+_SPATIAL_OBSM_SKIP = frozenset(
+    {
+        "spatial",
+        "X_spatial",
+        "spatial_compartments",
+        "spatial_connectivities",
+    }
+)
+_EMBEDDING_KEY_PREF = (
+    "X_pca",
+    "X_pca_harmony",
+    "X_scVI",
+    "X_scvi",
+    "X_svd",
+    "X_umap",
+    "X_tsne",
+)
+
+
+def _discover_embedding_keys(adata: AnnData, *, spatial_key: str = "spatial") -> list[str]:
+    """List 2d+ ``obsm`` keys suitable as raster embedding bases."""
+    import numpy as np
+
+    skip = set(_SPATIAL_OBSM_SKIP) | {spatial_key}
+    keys: list[str] = []
+    obsm = getattr(adata, "obsm", None)
+    if obsm is None:
+        return keys
+    for key in obsm.keys():
+        name = str(key)
+        if name in skip:
+            continue
+        try:
+            mat = np.asarray(obsm[key])
+        except Exception:  # noqa: BLE001
+            continue
+        if mat.ndim == 1:
+            mat = mat.reshape(-1, 1)
+        if mat.ndim != 2 or mat.shape[0] != adata.n_obs or mat.shape[1] < 1:
+            continue
+        keys.append(name)
+    # Prefer PCA/scVI-like keys first, then the rest alphabetically.
+    rank = {k: i for i, k in enumerate(_EMBEDDING_KEY_PREF)}
+    keys.sort(key=lambda k: (rank.get(k, len(rank)), k.lower()))
+    return keys
+
+
+def _pick_default_embedding_key(keys: list[str]) -> str:
+    if not keys:
+        return ""
+    for pref in _EMBEDDING_KEY_PREF:
+        if pref in keys:
+            return pref
+    return keys[0]
+
+
 def _spatial_metrics(
     x_arr: "np.ndarray",
     y_arr: "np.ndarray",
@@ -284,6 +353,11 @@ class LandmarksWidget(AnyWidget):
     gene_log1p = traitlets.Bool(False).tag(sync=True)
     # True when input expression is already log-scaled (disables log1p toggle).
     gene_expression_logged = traitlets.Bool(False).tag(sync=True)
+    # Packed RGB embedding channels for point coloring (col-major float32 [0, 1]).
+    embedding_values = traitlets.Unicode("").tag(sync=True)
+    embedding_channel_labels = traitlets.List(traitlets.Unicode(), default_value=[]).tag(
+        sync=True
+    )
 
     # Precomputed k-NN graph (from adata.obsp) for client-side expand lookup.
     neighbor_indptr = traitlets.Unicode("").tag(sync=True)  # base64 int32
@@ -298,6 +372,40 @@ class LandmarksWidget(AnyWidget):
 
     # Chrome bumps this to request promote_neighborhood_to_selection().
     promote_tick = traitlets.Int(0).tag(sync=True)
+
+    # --- Raster bins + similarity query ---
+    render_mode = traitlets.Unicode("points").tag(sync=True)  # points | raster
+    raster_bin_size = traitlets.Float(0.0).tag(sync=True)
+    # Aggregation window radius in world units (µm when spatial is µm).
+    raster_window_radius = traitlets.Float(0.0).tag(sync=True)
+    raster_basis = traitlets.Unicode("composition").tag(sync=True)  # genes | embedding | composition
+    raster_embedding_key = traitlets.Unicode("").tag(sync=True)
+    # Keys discovered from adata.obsm (excludes spatial); UI picks from this list.
+    raster_embedding_keys = traitlets.List(traitlets.Unicode(), default_value=[]).tag(
+        sync=True
+    )
+    # Empty = all dims. Client masks for cosine / RGB (empty = all).
+    raster_embedding_dims = traitlets.List(traitlets.Int(), default_value=[]).tag(sync=True)
+    # Reserved for pathway / score columns (slice A); unused in MVP.
+    raster_obs_key = traitlets.Unicode("").tag(sync=True)
+    raster_gene_mode = traitlets.Unicode("active").tag(sync=True)
+    raster_origin_x = traitlets.Float(0.0).tag(sync=True)
+    raster_origin_y = traitlets.Float(0.0).tag(sync=True)
+    raster_n_cols = traitlets.Int(0).tag(sync=True)
+    raster_n_rows = traitlets.Int(0).tag(sync=True)
+    raster_n_bins = traitlets.Int(0).tag(sync=True)
+    raster_bin_rows = traitlets.Unicode("").tag(sync=True)  # base64 int32
+    raster_bin_cols = traitlets.Unicode("").tag(sync=True)
+    raster_bin_counts = traitlets.Unicode("").tag(sync=True)
+    raster_features = traitlets.Unicode("").tag(sync=True)  # base64 float32 row-major
+    raster_feature_dim = traitlets.Int(0).tag(sync=True)
+    raster_feature_labels = traitlets.List(traitlets.Unicode(), default_value=[]).tag(
+        sync=True
+    )
+    raster_query_bin = traitlets.Int(-1).tag(sync=True)  # -1 = none (pin)
+    raster_similarity_enabled = traitlets.Bool(False).tag(sync=True)
+    raster_threshold = traitlets.Float(0.0).tag(sync=True)
+    raster_status = traitlets.Unicode("").tag(sync=True)
 
     def __init__(
         self,
@@ -371,6 +479,16 @@ class LandmarksWidget(AnyWidget):
         # Reference obs — do not obs.copy() / attach synthetic x,y columns.
         df = as_polars(adata.obs)
         cat_names = detect_category_columns(df)
+        # Explicit ``color=`` obs column is always included (and preferred).
+        if (
+            color
+            and color in df.columns
+            and color not in cat_names
+            and color not in {str(v) for v in adata.var_names}
+        ):
+            cat_names = [str(color), *cat_names]
+        elif color and color in cat_names:
+            cat_names = [str(color), *[c for c in cat_names if c != color]]
         cat_meta, cat_codes, cat_labels = encode_category_bundle(
             df, cat_names, color_maps=maps
         )
@@ -427,6 +545,9 @@ class LandmarksWidget(AnyWidget):
         self._radius_index = radius_idx
         self._obs_names = adata.obs_names
         self._data_label_arrays = cat_labels
+        self._median_nn = _median_nn_distance(knn_idx)
+        self._raster_assignment = None
+        self._raster_rebuild_depth = 0
         active_cat = ""
         if cat_meta and gene_color is None:
             active_cat = active if active in cat_labels else cat_meta[0]["name"]
@@ -442,6 +563,9 @@ class LandmarksWidget(AnyWidget):
         gene_names = gene_names_from_adata(adata, genes)
         gene_meta = gene_catalog(gene_names)
         gene_logged = bool(expression_is_log_scaled(adata)) if gene_names else False
+        init_bin_size = default_bin_size(self._median_nn, point_size)
+        embedding_keys = _discover_embedding_keys(adata, spatial_key=spatial_key)
+        embedding_key = _pick_default_embedding_key(embedding_keys)
 
         AnyWidget.__init__(
             self,
@@ -465,12 +589,23 @@ class LandmarksWidget(AnyWidget):
             active_genes=[],
             gene_log1p=False,
             gene_expression_logged=gene_logged,
+            embedding_values="",
+            embedding_channel_labels=[],
+            render_mode="points",
+            raster_bin_size=float(init_bin_size),
+            raster_window_radius=float(DEFAULT_WINDOW_RADIUS),
+            raster_basis="composition",
+            raster_embedding_key=embedding_key,
+            raster_embedding_keys=embedding_keys,
+            raster_embedding_dims=[],
+            raster_status="",
             **knn_idx.to_sync(prefix="neighbor"),
             **radius_idx.to_sync(prefix="radius"),
             neighbor_radius_max=float(radius_idx.radius_max),
         )
         if gene_color is not None:
             self.set_color(gene_color, legend_title=str(color))
+        self._pack_embedding_values()
 
     def set_neighbor_graphs(
         self,
@@ -627,6 +762,396 @@ class LandmarksWidget(AnyWidget):
         if change.get("new") == change.get("old"):
             return
         self._pack_active_gene_values()
+        genes = list(self.active_genes or [])
+        # Genes are an exclusive observation signal — keep point color_by aligned.
+        if genes and self.color_by != "continuous":
+            self.color_by = "continuous"
+        if not self._should_maintain_raster_features():
+            return
+        # Selected genes own the observation signal in bins mode.
+        if genes:
+            if self.raster_basis != "genes":
+                # Basis observer rebuilds; avoid a double rebuild here.
+                self.raster_basis = "genes"
+                return
+            self._rebuild_raster()
+        elif self.raster_basis == "genes":
+            self._rebuild_raster()
+
+    def set_render_mode(self, mode: str) -> None:
+        """Switch canvas between point scatter and spatial raster bins."""
+        m = str(mode or "points").lower()
+        if m not in ("points", "raster"):
+            raise ValueError("render_mode must be 'points' or 'raster'")
+        genes = list(self.active_genes or [])
+        basis = str(self.raster_basis or "composition")
+        color_by = str(self.color_by or "")
+        gene_intent = bool(genes) or basis == "genes" or color_by == "continuous"
+        embed_intent = (
+            basis == "embedding" or color_by == "embedding"
+        ) and bool(self.raster_embedding_key)
+        if m == "raster":
+            # Keep the active observation when flipping geometry (incl. empty genes).
+            if gene_intent:
+                self.raster_basis = "genes"
+                self.color_by = "continuous"
+            elif embed_intent:
+                self.raster_basis = "embedding"
+                self.color_by = "embedding"
+            else:
+                self.raster_basis = "composition"
+                self.color_by = "categorical"
+        else:
+            # Points: keep the same observation family that raster was showing.
+            if gene_intent:
+                self.color_by = "continuous"
+            elif basis == "embedding" or color_by == "embedding":
+                self.color_by = "embedding"
+            else:
+                self.color_by = "categorical"
+        if m == "raster" and str(self.selected_kind or "") == "type":
+            self.selected_kind = ""
+            self.selected_index = -1
+        self.render_mode = m
+
+    def set_raster_basis(
+        self,
+        *,
+        genes: str | None = None,
+        embedding: str | None = None,
+        composition: str | None = None,
+    ) -> None:
+        """Select bin aggregation basis (genes / embedding / composition).
+
+        Pathway / ``obs`` score columns are deferred (plan slice A); use
+        ``raster_obs_key`` later via the same mean-into-bin path.
+        """
+        chosen = sum(x is not None for x in (genes, embedding, composition))
+        if chosen != 1:
+            raise ValueError("pass exactly one of genes=, embedding=, composition=")
+        if genes is not None:
+            self.raster_basis = "genes"
+            self.raster_gene_mode = str(genes or "active")
+        elif embedding is not None:
+            self.raster_basis = "embedding"
+            key = str(embedding)
+            known = list(self.raster_embedding_keys or [])
+            if key and known and key not in known:
+                raise ValueError(
+                    f"unknown embedding key {key!r}; choose from {known}"
+                )
+            self.raster_embedding_key = key or str(self.raster_embedding_key or "")
+        else:
+            self.raster_basis = "composition"
+            if composition:
+                self.active_category = str(composition)
+        if self._should_maintain_raster_features():
+            self._rebuild_raster()
+
+    def _should_maintain_raster_features(self) -> bool:
+        """Keep / rebuild bin features for raster view or probe (points or raster)."""
+        return (
+            self.render_mode == "raster"
+            or self.mode == "probe"
+            or bool(self.raster_similarity_enabled)
+            or int(self.raster_n_bins or 0) > 0
+        )
+
+    def clear_raster_query(self) -> None:
+        """Clear the pinned similarity query bin."""
+        self.raster_query_bin = -1
+
+    def _clear_raster_sync(self, *, status: str = "") -> None:
+        self.raster_origin_x = 0.0
+        self.raster_origin_y = 0.0
+        self.raster_n_cols = 0
+        self.raster_n_rows = 0
+        self.raster_n_bins = 0
+        self.raster_bin_rows = ""
+        self.raster_bin_cols = ""
+        self.raster_bin_counts = ""
+        self.raster_features = ""
+        self.raster_feature_dim = 0
+        self.raster_feature_labels = []
+        self.raster_query_bin = -1
+        self.raster_status = status
+        self._raster_assignment = None
+
+    def _gene_feature_matrix(self) -> tuple["np.ndarray", list[str]]:
+        """Active-gene columns for bin means, in ``active_genes`` order.
+
+        Prefer display-normalized ``gene_values`` (same [0, 1] packing as point
+        coloring) so bins track the selected genes the user sees on points.
+        Fall back to raw expression only when the packed buffer is missing.
+        """
+        import base64
+        import numpy as np
+
+        names = [str(g) for g in (self.active_genes or [])]
+        n = int(self._data_x.shape[0])
+        if not names:
+            return np.zeros((n, 0), dtype=np.float64), []
+
+        packed = str(self.gene_values or "")
+        if packed:
+            try:
+                buf = np.frombuffer(base64.b64decode(packed), dtype=np.float32)
+            except Exception:
+                buf = np.zeros(0, dtype=np.float32)
+            n_genes = len(names)
+            if buf.size == n * n_genes:
+                # Column-major pack from encode_gene_bundle / encode_genes_from_adata.
+                mat = np.asarray(buf, dtype=np.float64).reshape((n, n_genes), order="F")
+                return mat, list(names)
+
+        frame = getattr(self, "_expr_frame", None)
+        cols: list[Any] = []
+        used: list[str] = []
+        if frame is not None:
+            available = set(map(str, frame.columns))
+            for name in names:
+                if name not in available:
+                    continue
+                vals = np.asarray(frame[name].to_numpy(), dtype=np.float64).ravel()
+                if vals.shape[0] != n:
+                    raise ValueError(f"expr rows {vals.shape[0]} != n_points {n}")
+                cols.append(vals)
+                used.append(name)
+        else:
+            adata = getattr(self, "_adata", None)
+            if adata is None:
+                return np.zeros((n, 0), dtype=np.float64), []
+            for name in names:
+                try:
+                    cols.append(_column_vector(adata, name))
+                    used.append(name)
+                except Exception:
+                    continue
+        if not cols:
+            return np.zeros((n, 0), dtype=np.float64), []
+        return np.column_stack(cols), used
+
+
+    def _embedding_rgb_dims(self, n_dims: int) -> list[int]:
+        """Dims mapped to RGB for point coloring (≤3). Empty trait → first three."""
+        n_dims = int(n_dims)
+        if n_dims <= 0:
+            return []
+        raw = [int(d) for d in (self.raster_embedding_dims or [])]
+        picked: list[int] = []
+        seen: set[int] = set()
+        for d in raw:
+            if d < 0 or d >= n_dims or d in seen:
+                continue
+            seen.add(d)
+            picked.append(d)
+            if len(picked) >= 3:
+                break
+        if not picked:
+            picked = list(range(min(3, n_dims)))
+        return picked[:3]
+
+    def _pack_embedding_values(self) -> None:
+        """Pack ≤3 embedding dims as display-normalized [0, 1] for point RGB."""
+        import base64
+        import numpy as np
+
+        adata = getattr(self, "_adata", None)
+        key = str(self.raster_embedding_key or "")
+        n = int(getattr(self, "_data_x").shape[0])
+        if adata is None or not key or key not in getattr(adata, "obsm", {}):
+            self.embedding_values = ""
+            self.embedding_channel_labels = []
+            return
+        mat = np.asarray(adata.obsm[key], dtype=np.float64)
+        if mat.ndim == 1:
+            mat = mat.reshape(-1, 1)
+        if mat.shape[0] != n:
+            self.embedding_values = ""
+            self.embedding_channel_labels = []
+            return
+        dims = self._embedding_rgb_dims(mat.shape[1])
+        if not dims:
+            self.embedding_values = ""
+            self.embedding_channel_labels = []
+            return
+        cols: list[Any] = []
+        labels: list[str] = []
+        for d in dims:
+            norm, _vmin, _vmax = _normalize_column(mat[:, d])
+            cols.append(norm.astype(np.float32, copy=False))
+            labels.append(str(int(d)))
+        packed = np.column_stack(cols).ravel(order="F")
+        self.embedding_values = base64.b64encode(packed.tobytes()).decode("ascii")
+        self.embedding_channel_labels = labels
+
+    def _embedding_feature_matrix(self) -> tuple["np.ndarray", list[str]]:
+        import numpy as np
+
+        adata = getattr(self, "_adata", None)
+        key = str(self.raster_embedding_key or "")
+        n = int(self._data_x.shape[0])
+        if adata is None or not key or key not in getattr(adata, "obsm", {}):
+            return np.zeros((n, 0), dtype=np.float64), []
+        mat = np.asarray(adata.obsm[key], dtype=np.float64)
+        if mat.ndim == 1:
+            mat = mat.reshape(-1, 1)
+        if mat.shape[0] != n:
+            raise ValueError(f"obsm[{key!r}] rows {mat.shape[0]} != n_obs {n}")
+        # Pack all dims; the engine masks with ``raster_embedding_dims`` for
+        # rest-state RGB and cosine (empty = all).
+        labels = [str(i) for i in range(mat.shape[1])]
+        return mat, labels
+
+    def _composition_codes(self) -> tuple["np.ndarray", list[str]]:
+        import numpy as np
+
+        col = str(self.active_category or "")
+        n = int(self._data_x.shape[0])
+        meta = next(
+            (c for c in (self.category_columns or []) if c.get("name") == col),
+            None,
+        )
+        labels_arr = getattr(self, "_data_label_arrays", {}).get(col)
+        if meta is None or labels_arr is None:
+            return np.full(n, -1, dtype=np.int32), []
+        label_list = [str(x) for x in (meta.get("labels") or [])]
+        to_i = {lab: i for i, lab in enumerate(label_list)}
+        codes = np.array(
+            [to_i.get(str(v), -1) for v in np.asarray(labels_arr).tolist()],
+            dtype=np.int32,
+        )
+        return codes, label_list
+
+    def _rebuild_raster(self) -> None:
+        """Assign bins and rebuild feature matrix ``B`` for the current basis."""
+        import numpy as np
+
+        if self._raster_rebuild_depth:
+            return
+        self._raster_rebuild_depth += 1
+        try:
+            self.raster_status = "computing"
+            self.raster_query_bin = -1
+            xy = np.column_stack(
+                [
+                    np.asarray(self._data_x, dtype=np.float64),
+                    np.asarray(self._data_y, dtype=np.float64),
+                ]
+            )
+            size = float(self.raster_bin_size)
+            if not np.isfinite(size) or size <= 0:
+                size = default_bin_size(self._median_nn, float(self.point_size))
+                self.raster_bin_size = float(size)
+            grid = build_grid(xy, size)
+            assignment = assign_bins(xy, grid)
+            n_bins = int(assignment.counts.shape[0])
+            # Soft neighborhood mean around each bin center (fixed µm default).
+            window_radius = default_window_radius(size)
+            if (
+                float(self.raster_window_radius) > 0
+                and np.isfinite(float(self.raster_window_radius))
+            ):
+                window_radius = float(self.raster_window_radius)
+            self.raster_window_radius = float(window_radius)
+            basis = str(self.raster_basis or "composition")
+            labels: list[str] = []
+            B = np.zeros((n_bins, 0), dtype=np.float32)
+            try:
+                if basis == "genes":
+                    feats, labels = self._gene_feature_matrix()
+                    if feats.shape[1]:
+                        B = aggregate_mean_window(
+                            xy, feats, assignment, window_radius=window_radius
+                        )
+                elif basis == "embedding":
+                    feats, labels = self._embedding_feature_matrix()
+                    if feats.shape[1]:
+                        B = aggregate_mean_window(
+                            xy, feats, assignment, window_radius=window_radius
+                        )
+                elif basis == "composition":
+                    codes, labels = self._composition_codes()
+                    if labels:
+                        B = composition_hist_window(
+                            xy,
+                            codes,
+                            assignment,
+                            len(labels),
+                            window_radius=window_radius,
+                        )
+                else:
+                    self._clear_raster_sync(status=f"error:unknown basis {basis}")
+                    return
+            except Exception as exc:  # noqa: BLE001 — surface to chrome status
+                self._clear_raster_sync(status=f"error:{exc}")
+                return
+
+            # Keep raw bin means for rest-state observation coloring; the engine
+            # L2-normalizes rows when scoring cosine similarity.
+            if B.shape[1] > 0:
+                B = np.asarray(B, dtype=np.float32)
+
+            packs = pack_bin_arrays(assignment.rows, assignment.cols, assignment.counts)
+            self.raster_origin_x = float(grid.origin_x)
+            self.raster_origin_y = float(grid.origin_y)
+            self.raster_n_cols = int(grid.n_cols)
+            self.raster_n_rows = int(grid.n_rows)
+            self.raster_n_bins = n_bins
+            self.raster_bin_rows = packs["raster_bin_rows"]
+            self.raster_bin_cols = packs["raster_bin_cols"]
+            self.raster_bin_counts = packs["raster_bin_counts"]
+            self.raster_features = pack_features(B) if B.size else ""
+            self.raster_feature_dim = int(B.shape[1])
+            self.raster_feature_labels = list(labels)
+            self._raster_assignment = assignment
+            self.raster_status = "ready"
+        finally:
+            self._raster_rebuild_depth -= 1
+
+
+    @traitlets.observe("raster_embedding_key", "raster_embedding_dims")
+    def _on_embedding_pack_params(self, change: dict) -> None:
+        if change.get("new") == change.get("old"):
+            return
+        self._pack_embedding_values()
+
+    @traitlets.observe("mode", "raster_similarity_enabled")
+    def _on_probe_traits(self, change: dict) -> None:
+        if change.get("new") == change.get("old"):
+            return
+        if (
+            (self.mode == "probe" or bool(self.raster_similarity_enabled))
+            and int(self.raster_n_bins or 0) <= 0
+        ):
+            self._rebuild_raster()
+
+    @traitlets.observe("render_mode")
+    def _on_render_mode(self, change: dict) -> None:
+        if change.get("new") == change.get("old"):
+            return
+        mode = str(change.get("new") or "points")
+        if mode == "raster":
+            self._rebuild_raster()
+        # Points: retain bin features so probe works without revisiting raster.
+
+    @traitlets.observe(
+        "raster_bin_size",
+        "raster_window_radius",
+        "raster_basis",
+        "raster_embedding_key",
+        "raster_gene_mode",
+        "active_category",
+    )
+    def _on_raster_params(self, change: dict) -> None:
+        if change.get("new") == change.get("old"):
+            return
+        if not self._should_maintain_raster_features():
+            return
+        # active_category only affects composition basis
+        if change.get("name") == "active_category" and self.raster_basis != "composition":
+            return
+        self._rebuild_raster()
 
     def set_color(
         self,

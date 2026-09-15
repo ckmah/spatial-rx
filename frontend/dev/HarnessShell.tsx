@@ -47,7 +47,7 @@ export function HarnessShell() {
         </p>
         <div
           className={cn(
-            "spatial-rx-widget inline-flex",
+            "spatial-rx-widget inline-flex items-center gap-2",
             theme === "dark" && "dark",
           )}
         >

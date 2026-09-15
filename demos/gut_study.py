@@ -10,9 +10,7 @@
 #     "shapely",
 #     "scipy",
 #     "anndata",
-#     "scanpy",
 #     "squidpy",
-#     "fsspec",
 #     "spatial-rx[demo]",
 #     "wigglystuff>=0.5.32",
 # ]
@@ -30,31 +28,28 @@ app = marimo.App(width="medium")
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Gut landmarks (SPF ileum)
+    # A spatial exploration of the mouse gut
+    This is a demo showing how landmarks are a useful tool to aid spatial pattern discovery. Defining anchors in space with points, lines and shapes enable precise, quantitative measurements, recapitulating findings in the study as well as lowering the barrier to testing new hypotheses and exploration.
 
-    Xu et al. SPF ileum slice from `demos/data/ileum.h5ad` (14-gene panel),
-    loaded locally or via fsspec from GitHub raw. Spatial neighbors are computed
-    **before** the widget (k-max and radius-max graphs). Sliders subset those
-    graphs. Draw landmarks, then measure along a path, distance from a structure,
-    or composition inside a shape. Results write back to `adata.obs` keyed by
-    `obs_names`.
-
-    The measure helpers below are documented inline with
-    [`wigglystuff.ApiDoc`](https://koaning.github.io/wigglystuff/reference/api-doc/).
+    The dataset this notebook uses is a cross-section of the mouse gut, measured with the MERFISH spatial transcriptomics technology from [1] Xu et al.
     """)
     return
 
 
 @app.cell
 def _():
+    import sys
+    from base64 import b64encode
+    from pathlib import Path
+
     import altair as alt
     import marimo as mo
     import matplotlib
+    import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
     import scanpy as sc
     import squidpy as sq
-    from ileum_data import load_ileum_adata
     from wigglystuff import ApiDoc
     from spatial_rx import (
         GalleryWidget,
@@ -66,14 +61,21 @@ def _():
         write_obs,
     )
 
-    alt.data_transformers.disable_max_rows()
+    _demos = Path(__file__).resolve().parent
+    if str(_demos) not in sys.path:
+        sys.path.insert(0, str(_demos))
+    from ileum_data import demo_asset_src, load_ileum_adata, read_demo_bytes
+
+    alt.data_transformers.disable_max_rows();
     return (
         ApiDoc,
         GalleryWidget,
         LandmarksWidget,
         along_positions,
         alt,
+        b64encode,
         composition,
+        demo_asset_src,
         distances,
         landmarks_to_geodataframe,
         load_ileum_adata,
@@ -81,6 +83,7 @@ def _():
         mo,
         np,
         pd,
+        read_demo_bytes,
         sc,
         sq,
         write_obs,
@@ -94,13 +97,66 @@ def _(matplotlib, mo):
     return (theme,)
 
 
+@app.cell(hide_code=True)
+def _(demo_asset_src, mo):
+    mo.callout(
+        mo.vstack(
+            [
+                mo.md(
+                    "We can think of spatial analysis as analogous to geospatial analysis in the geographical sciences."
+                    "Many of the same concepts apply, such as areas and observations ~ cells and molecules."
+                ),
+                mo.image(demo_asset_src("figure1_spatial_analogy.png")),
+            ]
+        ),
+        title="Maps for biology [2]",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.vstack(
+        [
+            mo.md("### References"),
+            mo.accordion(
+                {
+                    "[1] Mouse ileum MERFISH (Xu et al.)": mo.md(
+                        r"""
+                        Xu, R. J. *et al.* An image-based transcriptomics atlas
+                        reveals the regional and microbiota-dependent molecular,
+                        cellular, and spatial structure of the murine gut.
+                        *Cell Host Microbe* **34**, 509–525.e13 (2026).
+                        [doi:10.1016/j.chom.2026.01.018](https://doi.org/10.1016/j.chom.2026.01.018).
+                        Demo file: `demos/data/ileum.h5ad` (from `ileum/*.csv`).
+                        """
+                    ),
+                    "[2] Mapping the transcriptome (Figure 1)": mo.md(
+                        r"""
+                        Zormpas, E., Queen, R., Comber, A. & Cockell, S. J.
+                        Mapping the transcriptome: Realizing the full potential
+                        of spatial data analysis.
+                        *Cell* **186**, 5677–5689 (2023).
+                        [doi:10.1016/j.cell.2023.11.003](https://doi.org/10.1016/j.cell.2023.11.003).
+                        """
+                    ),
+                }
+            ),
+        ]
+    )
+    return
+
+
 @app.cell
-def _(load_ileum_adata, mo):
-    CLUSTER = "cell_type"
-    adata = load_ileum_adata(mo.notebook_dir())
-    adata.obs[CLUSTER] = adata.obs[CLUSTER].astype("category")
-    gene_panel = [str(g) for g in adata.var_names]
-    return CLUSTER, adata, gene_panel
+def _(b64encode, load_ileum_adata, read_demo_bytes):
+    adata = load_ileum_adata()
+
+    RECIPE_IMAGES = {}
+    for _name in ("crypt_villus", "galt", "mucosal_belt", "gene_along"):
+        RECIPE_IMAGES[_name] = "data:image/svg+xml;base64," + b64encode(
+            read_demo_bytes(f"recipes/{_name}.svg")
+        ).decode("ascii")
+    return RECIPE_IMAGES, adata
 
 
 @app.cell
@@ -114,10 +170,9 @@ def _(adata, sc):
 @app.cell
 def _(adata, sc):
     # Exploratory UMAP on expression-space neighbors (also stored as X_umap).
-    if "X_umap" not in adata.obsm:
-        _n_comps = min(10, adata.obsm["X_pca"].shape[1], adata.n_obs - 1)
-        sc.pp.neighbors(adata, n_pcs=_n_comps, use_rep="X_pca", random_state=0)
-        sc.tl.umap(adata, init_pos="random", random_state=0)
+    _n_comps = min(10, adata.obsm["X_pca"].shape[1], adata.n_obs - 1)
+    sc.pp.neighbors(adata, n_pcs=_n_comps, use_rep="X_pca", random_state=0)
+    sc.tl.umap(adata, init_pos="random", random_state=0)
     return
 
 
@@ -125,8 +180,7 @@ def _(adata, sc):
 def _(adata, np, sq):
     # Spatial neighbor graphs for the widget (k-max / radius-max supersets).
     xy = np.asarray(adata.obsm["spatial"], dtype=float)
-    span = float(np.hypot(np.ptp(xy[:, 0]), np.ptp(xy[:, 1])))
-    radius = 0.05 * span
+    radius = 0.05 * float(np.hypot(np.ptp(xy[:, 0]), np.ptp(xy[:, 1])))
     sq.gr.spatial_neighbors(
         adata, coord_type="generic", n_neighs=64, key_added="spatial_knn"
     )
@@ -180,15 +234,38 @@ def _():
 
 
 @app.cell
-def _(CLUSTER, LandmarksWidget, adata, gene_panel):
-    landmarks = LandmarksWidget(adata, color=CLUSTER, genes=gene_panel)
-    return (landmarks,)
-
-
-@app.cell
-def _(landmarks, mo):
-    landmarks_ui = mo.ui.anywidget(landmarks)
+def _(LandmarksWidget, adata, mo):
+    landmarks_ui = mo.ui.anywidget(LandmarksWidget(adata, color="cell_type"))
     return (landmarks_ui,)
+
+
+@app.cell(hide_code=True)
+def _(adata, landmarks_ui, mo):
+    _cat_opts = [c["name"] for c in landmarks_ui.category_columns]
+    if not _cat_opts:
+        _cat_opts = [
+            c
+            for c in map(str, adata.obs.columns)
+            if 1 < adata.obs[c].nunique() <= 128
+            and (
+                str(adata.obs[c].dtype) == "category"
+                or adata.obs[c].dtype == object
+                or str(adata.obs[c].dtype).startswith("str")
+            )
+        ]
+    _cat_default = "cell_type" if "cell_type" in _cat_opts else _cat_opts[0]
+    category_pick = mo.ui.dropdown(
+        options=_cat_opts,
+        value=_cat_default,
+        label="Category",
+    )
+    return (category_pick,)
+
+
+@app.cell(hide_code=True)
+def _(category_pick):
+    CLUSTER = category_pick.value
+    return (CLUSTER,)
 
 
 @app.cell
@@ -217,7 +294,7 @@ def _(RECIPE_SCENES, use_case):
 
 @app.cell
 def _(
-    gene_panel,
+    adata,
     get_lm_pick,
     get_measure_pick,
     landmarks_ui,
@@ -296,8 +373,8 @@ def _(
         on_change=_on_measure_change("plot"),
     )
     gene_pick = mo.ui.multiselect(
-        options=gene_panel,
-        value=gene_panel[:4],
+        options=adata.var_names,
+        value=adata.var_names[:4],
         label="Genes",
         full_width=True,
     )
@@ -333,17 +410,32 @@ def _(alt, np, pd):
             )
         return chart.configure_view(strokeWidth=0)
 
-    def sequential_range(theme="dark"):
-        if theme == "dark":
-            return ("#6b7280", "#f87171")
-        return ("#f3e6d4", "#ff0099")
+    def lajolla_range(n=16):
+        """Sample cmcrameri lajolla as hex colors for Altair scales."""
+        import cmcrameri.cm as cmc
+        from matplotlib.colors import to_hex
 
-    def kde_row_heatmap(df, value_col, row_order, title, xlabel, x_min=0.0, x_max=None, n_bins=128, theme="dark"):
+        cmap = cmc.lajolla
+        return [to_hex(cmap(i)) for i in np.linspace(0, 1, int(n))]
+
+    def kde_row_heatmap(
+        df,
+        value_col,
+        row_order,
+        title,
+        xlabel,
+        x_min=0.0,
+        x_max=None,
+        n_bins=128,
+        theme="dark",
+    ):
         from scipy.stats import gaussian_kde
 
         rows = []
         for group in row_order:
-            values = df.loc[df["group"] == group, value_col].to_numpy(dtype=float)
+            values = df.loc[df["group"] == group, value_col].to_numpy(
+                dtype=float
+            )
             values = values[np.isfinite(values)]
             if values.size:
                 rows.append((group, values))
@@ -376,38 +468,58 @@ def _(alt, np, pd):
         if not mat:
             return None
         mat = np.vstack(mat)
-        dx = float(grid[1] - grid[0]) if len(grid) > 1 else 1.0
         long_rows = []
         for i, group in enumerate(shown):
-            for j, xv in enumerate(grid):
+            for j in range(len(grid) - 1):
                 long_rows.append(
                     {
                         "group": group,
-                        "x": float(xv - 0.5 * dx),
-                        "x2": float(xv + 0.5 * dx),
+                        "x": float(grid[j]),
+                        "x2": float(grid[j + 1]),
                         "density": float(mat[i, j]),
                     }
                 )
         heat = pd.DataFrame(long_rows)
-        _lo, _hi = sequential_range(theme)
         return altair_theme(
             alt.Chart(heat)
-            .mark_rect()
+            .mark_rect(strokeWidth=0)
             .encode(
-                x=alt.X("x:Q", title=xlabel, scale=alt.Scale(domain=[x_min, x_max])),
+                x=alt.X(
+                    "x:Q",
+                    title=xlabel,
+                    scale=alt.Scale(domain=[x_min, x_max], nice=False),
+                ),
                 x2="x2:Q",
-                y=alt.Y("group:N", sort=shown, title="cell type"),
+                y=alt.Y(
+                    "group:N",
+                    sort=shown,
+                    title="cell type",
+                    scale=alt.Scale(paddingInner=0, paddingOuter=0),
+                ),
                 color=alt.Color(
                     "density:Q",
                     title="Density (Norm.)",
-                    scale=alt.Scale(range=[_lo, _hi], domain=[0, 1]),
+                    scale=alt.Scale(range=lajolla_range(), domain=[0, 1]),
                 ),
             )
-            .properties(title=title, width=420, height=max(140, 18 * len(shown))),
+            .properties(
+                title=title, width=420, height=max(140, 18 * len(shown))
+            ),
             theme,
         )
 
-    def kde_gene_heatmap(pos_df, value_col, adata, genes, title, xlabel, x_min, x_max, theme="dark", n_bins=128):
+    def kde_gene_heatmap(
+        pos_df,
+        value_col,
+        adata,
+        genes,
+        title,
+        xlabel,
+        x_min,
+        x_max,
+        theme="dark",
+        n_bins=128,
+    ):
         if pos_df is None or pos_df.empty or not genes:
             return None
         if "obs_name" not in pos_df.columns or value_col not in pos_df.columns:
@@ -444,43 +556,55 @@ def _(alt, np, pd):
             num = yy @ w
             with np.errstate(invalid="ignore"):
                 mat[gi] = np.divide(
-                    num, den, out=np.full(int(n_bins), np.nan), where=den > 1e-9
+                    num,
+                    den,
+                    out=np.full(int(n_bins), np.nan),
+                    where=den > 1e-9,
                 )
         if not np.isfinite(mat).any():
             return None
-        dx = float(grid[1] - grid[0]) if len(grid) > 1 else 1.0
         long_rows = []
         for i, gene in enumerate(shown):
-            for j, xv in enumerate(grid):
+            for j in range(len(grid) - 1):
                 val = mat[i, j]
                 if not np.isfinite(val):
                     continue
                 long_rows.append(
                     {
                         "gene": gene,
-                        "x": float(xv - 0.5 * dx),
-                        "x2": float(xv + 0.5 * dx),
+                        "x": float(grid[j]),
+                        "x2": float(grid[j + 1]),
                         "expression": float(val),
                     }
                 )
         if not long_rows:
             return None
         heat = pd.DataFrame(long_rows)
-        _lo, _hi = sequential_range(theme)
         return altair_theme(
             alt.Chart(heat)
-            .mark_rect()
+            .mark_rect(strokeWidth=0)
             .encode(
-                x=alt.X("x:Q", title=xlabel, scale=alt.Scale(domain=[x_min, x_max])),
+                x=alt.X(
+                    "x:Q",
+                    title=xlabel,
+                    scale=alt.Scale(domain=[x_min, x_max], nice=False),
+                ),
                 x2="x2:Q",
-                y=alt.Y("gene:N", sort=shown, title="gene"),
+                y=alt.Y(
+                    "gene:N",
+                    sort=shown,
+                    title="gene",
+                    scale=alt.Scale(paddingInner=0, paddingOuter=0),
+                ),
                 color=alt.Color(
                     "expression:Q",
                     title="mean expression",
-                    scale=alt.Scale(range=[_lo, _hi]),
+                    scale=alt.Scale(range=lajolla_range()),
                 ),
             )
-            .properties(title=title, width=420, height=max(120, 20 * len(shown))),
+            .properties(
+                title=title, width=420, height=max(120, 20 * len(shown))
+            ),
             theme,
         )
 
@@ -493,7 +617,9 @@ def _(ApiDoc, along_positions, composition, distances, mo, write_obs):
         {
             "distances": mo.ui.anywidget(ApiDoc(distances, width=640)),
             "composition": mo.ui.anywidget(ApiDoc(composition, width=640)),
-            "along_positions": mo.ui.anywidget(ApiDoc(along_positions, width=640)),
+            "along_positions": mo.ui.anywidget(
+                ApiDoc(along_positions, width=640)
+            ),
             "write_obs": mo.ui.anywidget(ApiDoc(write_obs, width=640)),
         }
     )
@@ -583,13 +709,18 @@ def _(
                     x=alt.X("proportion:Q"),
                     color=alt.Color("group:N", legend=None),
                 )
-                .properties(title=f"Composition · {_lid}", height=max(180, 16 * len(_domain))),
+                .properties(
+                    title=f"Composition · {_lid}",
+                    height=max(180, 16 * len(_domain)),
+                ),
                 theme,
             )
     elif plot_type.value == "Gene (along)":
         _p = along_positions(adata, _gdf, obs_key=CLUSTER, obs_names=_names)
         if _p.empty:
-            chart = mo.md("_Need a **line** or **spline** near cells for Gene (along)._")
+            chart = mo.md(
+                "_Need a **line** or **spline** near cells for Gene (along)._"
+            )
         else:
             write_obs(adata, _p, "path_s", "s")
             chart = kde_gene_heatmap(
@@ -624,7 +755,9 @@ def _(
     else:
         _p = along_positions(adata, _gdf, obs_key=CLUSTER, obs_names=_names)
         if _p.empty:
-            chart = mo.md("_Need a **line** or **spline** landmark for Gradient (along)._")
+            chart = mo.md(
+                "_Need a **line** or **spline** landmark for Gradient (along)._"
+            )
         else:
             write_obs(adata, _p, "path_s", "s")
             _row_order = [g for g in _groups if g in set(_p["group"])]
@@ -647,9 +780,13 @@ def _(
 
 
 @app.cell
-def _(GalleryWidget, RECIPE_SPECS, mo):
+def _(GalleryWidget, RECIPE_IMAGES, RECIPE_SPECS, mo):
     _items = [
-        {"title": spec["id"], "description": spec["description"]}
+        {
+            "title": spec["id"],
+            "description": spec["description"],
+            "image": RECIPE_IMAGES[spec["kind"]],
+        }
         for spec in RECIPE_SPECS
     ]
     recipe_gallery = GalleryWidget(items=_items, selected_index=0, columns=4)
@@ -658,13 +795,23 @@ def _(GalleryWidget, RECIPE_SPECS, mo):
 
 
 @app.cell(hide_code=True)
-def _(chart, measure_apidocs, measure_controls, mo, recipe_gallery_ui):
+def _(
+    category_pick,
+    chart,
+    measure_apidocs,
+    measure_controls,
+    mo,
+    recipe_gallery_ui,
+):
     mo.vstack(
         [
             mo.vstack(
                 [
                     mo.md("**Use cases**"),
-                    mo.md("Click a card for the suggested measure, then draw the landmark."),
+                    mo.md(
+                        "Click a card for the suggested measure, then draw the landmark."
+                    ),
+                    category_pick,
                     recipe_gallery_ui,
                 ],
                 gap=0.35,

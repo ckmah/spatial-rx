@@ -2,6 +2,7 @@
 export const KEYBOARD_SHORTCUTS: { action: string; keys: string }[] = [
   { action: "Pointer", keys: "V" },
   { action: "Move", keys: "H" },
+  { action: "Probe", keys: "P" },
   { action: "Lasso", keys: "L" },
   { action: "Square", keys: "R" },
   { action: "Circle", keys: "O" },
@@ -22,13 +23,14 @@ export const KEYBOARD_SHORTCUTS: { action: string; keys: string }[] = [
     keys: "⌫ / Delete",
   },
   { action: "Finish draft", keys: "Enter" },
-  { action: "Cancel draft / deselect", keys: "Esc" },
+  { action: "Cancel draft / deselect / clear probe", keys: "Esc" },
 ];
 
 /** Mode id → tooltip shortcut glyph. */
 export const MODE_SHORTCUTS: Record<string, string> = {
   pointer: "V",
   move: "H",
+  probe: "P",
   lasso: "L",
   rectangle: "R",
   ellipse: "O",
@@ -50,9 +52,12 @@ export const LANDMARK_COLORS = [
 ];
 /** Quiet Framer-neutral selection strokes (active selection uses stronger chrome). */
 export const SELECTION_COLORS = ["#a3a3a3", "#8a8a8a", "#737373", "#c4c4c4"];
-/** Additive channels for multi-gene blend (selection order): magenta / lime / azure. */
-export const GENE_COLORS = ["#ff0099", "#b8ff00", "#00b7ff"];
+/** Additive channels for multi-gene / embed blend (selection order): magenta / lime / azure. */
+export const GENE_COLORS = ["#ff0099", "#5cbf00", "#0088cc"];
 export const MAX_ACTIVE_GENES = GENE_COLORS.length;
+/** Probe similarity legend — Crameri lajolla (matches engine LAJOLLA_LUT). */
+export const SIMILARITY_LEGEND_CSS =
+  "linear-gradient(to right, #191900 0%, #372411 12%, #67342a 25%, #a64644 38%, #d9604e 50%, #e58751 62%, #ecac54 75%, #f7d971 88%, #fffecb 100%)";
 /** Scatter fallback when no palette is set (landmark cyan — never Tailwind blue). */
 export const FALLBACK_POINT_COLOR = LANDMARK_COLORS[0];
 export type GeneScaleMode = "independent" | "shared";
@@ -62,6 +67,7 @@ export const TENSION_TYPES = ["spline", "shape", "gradient"];
 export const MODE_LABELS: Record<string, string> = {
   pointer: "Pointer",
   move: "Move",
+  probe: "Probe",
   selection: "Selection",
   lasso: "Lasso",
   polygon: "Shape",
@@ -74,7 +80,7 @@ export const MODE_LABELS: Record<string, string> = {
 };
 
 /** Top-level interaction tools (left ToggleGroup). */
-export const INTERACTION_MODE_IDS = ["pointer", "move"];
+export const INTERACTION_MODE_IDS = ["pointer", "move", "probe"];
 /** Selection geometry modes (lasso dropdown on Topbar). */
 export const GEOMETRY_MODE_IDS = ["lasso", "rectangle", "ellipse", "polygon"];
 export const LANDMARK_MODE_IDS = ["point", "line", "spline", "shape"];
@@ -85,7 +91,7 @@ export function isGeometryMode(mode: string) {
 
 /** Map concrete mode → left-group interaction value (empty when landmark/geometry). */
 export function interactionFromMode(mode: string) {
-  if (mode === "pointer" || mode === "move") return mode;
+  if (mode === "pointer" || mode === "move" || mode === "probe") return mode;
   return "";
 }
 

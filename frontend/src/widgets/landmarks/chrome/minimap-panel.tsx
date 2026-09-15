@@ -5,14 +5,13 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 import { decodeF32Base64 } from "../binary";
 import type { EngineHandle } from "../engine";
 import type { LandmarksModel } from "../use-landmarks-model";
-import { FLOAT_PANEL } from "./sections";
+import { FLOAT_PANEL, FLOAT_PANEL_CLIP } from "./sections";
 
 type WorldBounds = [number, number, number, number];
 
@@ -52,7 +51,12 @@ function mapLayout(
   };
 }
 
-/** World → minimap; same orientation as the main plot. */
+/**
+ * World → minimap canvas.
+ * deck.gl OrthographicView defaults to flipY=true, so world +Y goes toward
+ * the bottom of the screen (CSS-like). Canvas y also grows downward, so
+ * minY → row 0 matches the main plot — do not invert Y here.
+ */
 function toCanvasXY(
   x: number,
   y: number,
@@ -110,9 +114,11 @@ function drawMinimap(
   },
 ) {
   const { pointsB64, xBounds, yBounds, viewport, dark } = opts;
+  const cssW = canvas.clientWidth;
+  const cssH = canvas.clientHeight;
+  // Skip until laid out — do not rewrite the bitmap into a 0×0 box.
+  if (cssW < 2 || cssH < 2) return;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const cssW = canvas.clientWidth || 160;
-  const cssH = canvas.clientHeight || 120;
   const w = Math.max(1, Math.round(cssW * dpr));
   const h = Math.max(1, Math.round(cssH * dpr));
   if (canvas.width !== w || canvas.height !== h) {
@@ -191,35 +197,44 @@ export function MinimapPanel({
   embedded?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+
+  const paint = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    // Skip until laid out — painting into a 0-size box bakes a blank bitmap.
+    if (canvas.clientWidth < 2 || canvas.clientHeight < 2) return;
+    drawMinimap(canvas, {
+      pointsB64: lm.points_data || "",
+      xBounds: lm.x_bounds || [0, 1],
+      yBounds: lm.y_bounds || [0, 1],
+      viewport: engine?.getViewportWorldBounds?.() ?? null,
+      dark,
+    });
+  }, [lm.points_data, lm.x_bounds, lm.y_bounds, engine, dark]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    const frame = frameRef.current;
     if (!canvas) return;
-
-    const paint = () => {
-      drawMinimap(canvas, {
-        pointsB64: lm.points_data || "",
-        xBounds: lm.x_bounds || [0, 1],
-        yBounds: lm.y_bounds || [0, 1],
-        viewport: engine?.getViewportWorldBounds?.() ?? null,
-        dark,
-      });
-    };
 
     paint();
     const raf = requestAnimationFrame(paint);
     const t = window.setTimeout(paint, 80);
+    const tLate = window.setTimeout(paint, 250);
     const unsub = engine?.subscribeViewState?.(() => paint());
     const ro = new ResizeObserver(() => paint());
     ro.observe(canvas);
+    if (frame) ro.observe(frame);
     return () => {
       cancelAnimationFrame(raf);
       window.clearTimeout(t);
+      window.clearTimeout(tLate);
       unsub?.();
       ro.disconnect();
     };
-  }, [lm.points_data, lm.x_bounds, lm.y_bounds, engine, dark]);
+  }, [paint, engine]);
 
   const panAt = useCallback(
     (clientX: number, clientY: number, animate = false) => {
@@ -271,18 +286,20 @@ export function MinimapPanel({
   };
 
   const body = (
-    <canvas
-      ref={canvasRef}
-      className="w-full cursor-grab active:cursor-grabbing rounded-[var(--lm-float-radius)]"
-      style={{ aspectRatio: `${MINIMAP_ASPECT} / 1` }}
-      data-testid="landmarks-minimap"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      onWheel={onWheel}
-      aria-label="Minimap — drag to pan, scroll to zoom"
-    />
+    <div ref={frameRef} className="w-full">
+      <canvas
+        ref={canvasRef}
+        className="w-full cursor-grab active:cursor-grabbing rounded-[var(--lm-float-radius)]"
+        style={{ aspectRatio: `${MINIMAP_ASPECT} / 1` }}
+        data-testid="landmarks-minimap"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onWheel={onWheel}
+        aria-label="Minimap — drag to pan, scroll to zoom"
+      />
+    </div>
   );
 
   if (embedded) {
@@ -291,14 +308,15 @@ export function MinimapPanel({
 
   return (
     <Card
-      className={cn(FLOAT_PANEL, "shrink-0 overflow-hidden p-0")}
+      className={cn(FLOAT_PANEL, "landmarks-minimap-float shrink-0")}
       data-testid="minimap-panel"
     >
-      <CardHeader className="sr-only">
-        <CardTitle>Overview</CardTitle>
-        <CardDescription>Minimap of the tissue scatter</CardDescription>
-      </CardHeader>
-      <CardContent className="p-0">{body}</CardContent>
+      <div className={FLOAT_PANEL_CLIP}>
+        <CardHeader className="sr-only">
+          <CardDescription>Minimap of the tissue scatter</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">{body}</CardContent>
+      </div>
     </Card>
   );
 }

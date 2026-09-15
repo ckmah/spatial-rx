@@ -51,18 +51,14 @@ def write_obs(
     then assigns `df[value_col]` into `adata.obs[column]`. Missing cells stay
     NaN. No-op when `df` is empty or lacks the name column.
 
-    Parameters
-    ----------
-    adata :
-        Target AnnData (mutated in place).
-    df :
-        Tidy measurement frame, typically from `distances` or `along_positions`.
-    column :
-        New or existing `obs` column to write.
-    value_col :
-        Column in `df` holding the numeric values (e.g. "distance", "s").
-    obs_name_col :
-        Column in `df` with cell ids (default "obs_name").
+    Args:
+        adata: Target AnnData (mutated in place).
+        df: Tidy measurement frame, typically from `distances` or
+            `along_positions`.
+        column: New or existing `obs` column to write.
+        value_col: Column in `df` holding the numeric values (e.g.
+            "distance", "s").
+        obs_name_col: Column in `df` with cell ids (default "obs_name").
     """
     if df is None or df.empty or obs_name_col not in df.columns:
         return
@@ -76,9 +72,14 @@ def write_obs(
 def cardinal_sample(vertices, tension=0.0, n_per_seg=20, closed=False):
     """Densify cardinal-spline control points into a polyline.
 
-    Shared by GeoDataFrame export. `tension` is in [0, 1] (widget default 0).
-    Open curves with two points return those points unchanged; closed curves
-    need at least three distinct vertices.
+    Shared by GeoDataFrame export. Open curves with two points return those
+    points unchanged; closed curves need at least three distinct vertices.
+
+    Args:
+        vertices: Control points as ``(x, y)`` pairs.
+        tension: Cardinal tension in ``[0, 1]`` (widget default 0).
+        n_per_seg: Samples per segment between control points.
+        closed: Whether the spline loops (periodic).
     """
     pts = [(float(x), float(y)) for x, y in vertices]
     if closed:
@@ -162,8 +163,14 @@ def buffer_polygon(geom, ltype, *, buffer_width: float = 0.0, buffer_side: str =
     """Polygon band around a line/spline from buffer_width / buffer_side.
 
     Returns None when the landmark is not a line/spline, width is <= 0, or
-    geometry is not a LineString. buffer_side is "both" (default), "left", or
-    "right" (right reverses the line for single-sided buffer).
+    geometry is not a LineString.
+
+    Args:
+        geom: Landmark geometry (LineString for a non-empty band).
+        ltype: Landmark type; only ``line`` / ``spline`` produce a band.
+        buffer_width: Buffer half-width in tissue units.
+        buffer_side: ``both`` (default), ``left``, or ``right`` (right
+            reverses the line for a single-sided buffer).
     """
     from shapely.geometry import LineString
 
@@ -213,24 +220,17 @@ def distances(
     cells inside that band are returned. Pair with `write_obs` to store a
     column such as `dist_<landmark_id>`.
 
-    Parameters
-    ----------
-    adata :
-        AnnData with `obsm[spatial_key]` xy and `obs[obs_key]` labels.
-    landmarks :
-        Landmarks GeoDataFrame. Required: `geometry`, `id`, `type`. Optional:
-        `buffer_width`, `buffer_side` (see module docstring).
-    obs_key :
-        `obs` column copied into the returned `group` field.
-    spatial_key :
-        `obsm` key for coordinates (default "spatial").
-    obs_names :
-        Optional cell subset (e.g. `widget.get_obs_names(...)`). None uses all
-        cells.
+    Args:
+        adata: AnnData with `obsm[spatial_key]` xy and `obs[obs_key]` labels.
+        landmarks: Landmarks GeoDataFrame. Required: `geometry`, `id`,
+            `type`. Optional: `buffer_width`, `buffer_side` (see module
+            docstring).
+        obs_key: `obs` column copied into the returned `group` field.
+        spatial_key: `obsm` key for coordinates (default "spatial").
+        obs_names: Optional cell subset (e.g. `widget.get_obs_names(...)`).
+            None uses all cells.
 
-    Returns
-    -------
-    pandas.DataFrame
+    Returns:
         One row per included cell: `obs_name`, `point_index`, `landmark_id`,
         `landmark_type`, `group`, `distance`.
     """
@@ -276,24 +276,16 @@ def composition(
     counts cells inside that band. Returns tidy counts and proportions per
     `obs_key` group.
 
-    Parameters
-    ----------
-    adata :
-        AnnData with `obsm[spatial_key]` and `obs[obs_key]`.
-    landmarks :
-        Landmarks GeoDataFrame. Required: `geometry`, `id`, `type`. Optional:
-        `buffer_width`, `buffer_side`. Typically one closed `shape` (or a
-        buffered line/spline).
-    obs_key :
-        Categorical `obs` column whose levels become `group`.
-    spatial_key :
-        `obsm` key for coordinates (default "spatial").
-    obs_names :
-        Optional cell subset. None uses all cells.
+    Args:
+        adata: AnnData with `obsm[spatial_key]` and `obs[obs_key]`.
+        landmarks: Landmarks GeoDataFrame. Required: `geometry`, `id`,
+            `type`. Optional: `buffer_width`, `buffer_side`. Typically one
+            closed `shape` (or a buffered line/spline).
+        obs_key: Categorical `obs` column whose levels become `group`.
+        spatial_key: `obsm` key for coordinates (default "spatial").
+        obs_names: Optional cell subset. None uses all cells.
 
-    Returns
-    -------
-    pandas.DataFrame
+    Returns:
         Columns: `landmark_id`, `group`, `count`, `proportion`, `n_total`.
         Empty when no landmark covers any selected cells.
     """
@@ -346,27 +338,18 @@ def along_positions(
     (default ~5% of the larger spatial span). Pair with `write_obs` to store
     `s` on `adata.obs`.
 
-    Parameters
-    ----------
-    adata :
-        AnnData with `obsm[spatial_key]` and `obs[obs_key]`.
-    landmarks :
-        Landmarks GeoDataFrame with line or spline `geometry` (points/shapes
-        are skipped). Required: `geometry`, `id`, `type`. Optional:
-        `buffer_width`, `buffer_side`.
-    obs_key :
-        `obs` column copied into `group`.
-    spatial_key :
-        `obsm` key for coordinates (default "spatial").
-    obs_names :
-        Optional cell subset. None uses all cells.
-    radius :
-        Fallback inclusion radius when the landmark has no buffer. None
-        derives a span-based default.
+    Args:
+        adata: AnnData with `obsm[spatial_key]` and `obs[obs_key]`.
+        landmarks: Landmarks GeoDataFrame with line or spline `geometry`
+            (points/shapes are skipped). Required: `geometry`, `id`,
+            `type`. Optional: `buffer_width`, `buffer_side`.
+        obs_key: `obs` column copied into `group`.
+        spatial_key: `obsm` key for coordinates (default "spatial").
+        obs_names: Optional cell subset. None uses all cells.
+        radius: Fallback inclusion radius when the landmark has no buffer.
+            None derives a span-based default.
 
-    Returns
-    -------
-    pandas.DataFrame
+    Returns:
         Columns: `obs_name`, `point_index`, `landmark_id`, `landmark_type`,
         `group`, `s`, `distance`.
     """

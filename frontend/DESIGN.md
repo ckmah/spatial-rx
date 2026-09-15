@@ -14,13 +14,13 @@ colors:
   selection-slate: "#a3a3a3"
   neighborhood-teal: "#b3f2e8"
   gene-magenta: "#ff0099"
-  gene-lime: "#b8ff00"
-  gene-azure: "#00b7ff"
+  gene-lime: "#5cbf00"
+  gene-azure: "#0088cc"
   sequential-low: "#f3e6d4"
   sequential-high: "#ff0099"
-  categorical-1: "#e69f00"
-  categorical-2: "#56b4e9"
-  categorical-3: "#009e73"
+  categorical-1: "#011959"
+  categorical-2: "#faccfa"
+  categorical-3: "#828231"
   primary: "#171717"
   primary-foreground: "#ffffff"
   background: "#ffffff"
@@ -136,9 +136,14 @@ Restrained achromatic chrome. Data owns saturation on the canvas.
 ### Canvas (`--lm-*`)
 
 Landmark cyan/magenta/lime (and amber/violet/mint) for annotations only.
-Categorical points use an Okabe–Ito–based set that avoids that neon triad.
-Genes keep the additive magenta/lime/azure blend. Continuous defaults to
-warm cream → gene magenta. Selections stay Framer-neutral greys.
+Categorical points use cmcrameri batlowS (discrete batlow, 100 unique hues)
+that avoids that neon triad.
+Multi-gene and embedding use additive magenta / lime / azure on the first three
+channels (RGB cube legend). Continuous single-gene coloring defaults to warm
+cream → magenta. Points and bins share observation signals: categories, genes,
+and embedding. Composition bins use majority cell-type colors from the point
+palette. Similarity scrubbing uses blue→light→magenta. Selections stay
+Framer-neutral greys.
 
 ### Named Rules
 
@@ -166,8 +171,8 @@ warm cream → gene magenta. Selections stay Framer-neutral greys.
 - Shell height default 550px (400–1400); plot fills figure under floating chrome
 - Shared chrome scale on `.landmarks`: `--lm-space-*` (4px base), `--lm-chrome-inset`, `--lm-chrome-gap`, `--lm-chrome-band` (3.25rem), `--lm-dock-width` (14rem / 15rem fullscreen)
 - Tool pill (`landmarks__chrome-tools`): reserved top band, centered — docks start below band + gap
-- Wide: left Layers (Categories, Genes, Selections, Landmarks) + right Controls (`landmarks__chrome-dock--*`); max-height accounts for band
-- Narrow (`landmarks--narrow`, width < 640px): Info then Layers in one top-left stack; no side rail, right dock, or minimap
+- Wide: left Layers (Selections, Landmarks) + right Explore (View / Color by) and Info (`landmarks__chrome-dock--*`); max-height accounts for band
+- Narrow (`landmarks--narrow`, width < 640px): Info then Explore then Layers in one top-left stack; no side rail, right dock, or minimap
 - Wide left dock: Layers fills remaining height and scrolls inside the card (multi-open accordion; no nested list max-heights)
 - Narrow stack: Info capped (~45%), Layers flex-fills and scrolls
 - Zoom lives in the top tool pill (in / out / reset), not a separate bottom cluster
@@ -176,8 +181,16 @@ warm cream → gene magenta. Selections stay Framer-neutral greys.
 ## Elevation & Depth
 
 - Widget body: soft offset shadow (not flat ring-only)
-- Shared float tokens (`--lm-float-bg`, `--lm-float-border`, `--lm-float-blur`, `--lm-float-shadow`) drive every floating chrome surface
-- Panels and toolbars use the same glass material; `--toolbar` is pill radius, `--panel` is card radius
+- Shared float tokens (`--lm-float-bg`, `--lm-float-blur`, `--lm-float-shadow`) drive every floating chrome surface
+- **Shadow-only Soft Float:** panels and toolbars have no hairline border; elevation is fill + soft drop shadow (craft floor: declare elevation once). `--lm-float-border` stays transparent for token compatibility.
+- Slightly denser frosted fill (~80% card mix) so borderless glass still separates from busy tissue
+- Panels and toolbars share the same glass material; `--toolbar` is slightly rounder than `--panel`
+- Inner chrome stays quiet: slider capsules are fill-only (no inset rings); section dividers use spacing, not rules; segmented controls sit in muted trays without outline strokes
+- Tabs / segments: Soft Float sliding pill Tabs (lowercase category / genes / embed) are the Explore color control — `PILL_TABS_LIST` / `PILL_TABS_TRIGGER` in `chrome/sections.ts`.
+- Floating View CTA: top-right Soft Float **icon hover flip** (`ViewCta`) for Points/Raster — current mode at rest, hover reveals the destination icon, click commits. View is no longer nested in Explore.
+- Explore distill: Color by only in the right dock; similarity scale only when Bins; status copy only when computing/error/pinned; Color-by meta line only for genes/embedding
+- Captions and helper text on Soft Float use foreground mixes (`--foreground` ~62–72%), not raw `--muted-foreground`, so tissue behind glass does not wash them out
+- Menus / tooltips keep a crisp border (opaque portaled surfaces need an edge)
 - Plot canvas: flat — no drop shadows on scatter
 
 Glass is a deliberate float treatment over live canvas, not decorative blur on static chrome.
@@ -198,7 +211,7 @@ Icon-only select + landmark mode groups, zoom (in / out / reset), and fullscreen
 
 ### Glass docks
 
-`landmarks-float landmarks-float--panel` on Card. Layers accordion (Selections, Categories, Genes, Landmarks). Controls accordion (Style, Stats, Neighbors, Landmark params).
+`landmarks-float landmarks-float--panel` on Card. Layers (Selections, Landmarks). Explore (Color by Category/Genes/Embedding; similarity when Raster). Info (selection-linked composition / gene densities). Floating View CTA (top-right Soft Float icon hover flip) for Points/Raster.
 
 ### Compact fields
 

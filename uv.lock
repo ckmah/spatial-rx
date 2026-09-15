@@ -672,6 +672,21 @@ wheels = [
 ]
 
 [[package]]
+name = "cmcrameri"
+version = "1.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "matplotlib" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/94/9e/43d76a835977e9d1b5cb1f9524004055c2d66a12406f91ef7262c83d1631/cmcrameri-1.10.tar.gz", hash = "sha256:38a776359040674cb4028695faf0121d0ccadb40eee0c9834eb4947674962b7e", size = 260605, upload-time = "2026-08-04T09:54:50.477Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/83/17/24e1d6d7a882a15fed5dcf7528891c9782613fd9a2ebe1bb426f4f1ef581/cmcrameri-1.10-py3-none-any.whl", hash = "sha256:0ccc9970fe35d74543bb8aeca5a5a97d8a09de71d2237d1bb714c9968cc2018d", size = 277668, upload-time = "2026-08-04T09:54:49.139Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -4623,6 +4638,7 @@ dependencies = [
     { name = "anndata", version = "0.12.19", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "anndata", version = "0.13.3.post0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "anywidget" },
+    { name = "cmcrameri" },
     { name = "geopandas" },
     { name = "matplotlib" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -4641,7 +4657,7 @@ dependencies = [
 [package.optional-dependencies]
 demo = [
     { name = "altair" },
-    { name = "fsspec", extra = ["http"] },
+    { name = "cmcrameri" },
     { name = "geopandas" },
     { name = "marimo" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -4680,7 +4696,8 @@ requires-dist = [
     { name = "altair", marker = "extra == 'demo'", specifier = ">=6.2.2" },
     { name = "anndata", specifier = ">=0.10" },
     { name = "anywidget", specifier = ">=0.9.2" },
-    { name = "fsspec", extras = ["http"], marker = "extra == 'demo'", specifier = ">=2024.0" },
+    { name = "cmcrameri", specifier = ">=1.10" },
+    { name = "cmcrameri", marker = "extra == 'demo'", specifier = ">=1.7" },
     { name = "geopandas", specifier = ">=1.1.4" },
     { name = "geopandas", marker = "extra == 'demo'", specifier = ">=1.1.4" },
     { name = "geopandas", marker = "extra == 'test'", specifier = ">=1.1.4" },

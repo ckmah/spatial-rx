@@ -1,25 +1,175 @@
 name: Frontend e2e
+
+# Path-gated Playwright tiers (skips when the change set has no frontend/):
+#   core      — shared shadcn / Soft Float chrome
+#   landmarks — LandmarksWidget
+#   gallery   — GalleryWidget (no-op until e2e/gallery specs exist)
+
 on:
   pull_request:
     paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend-e2e.yml'
-      - '.github/scripts/post-playwright-visuals.sh'
+      - "frontend/**"
+      - ".github/workflows/frontend-e2e.yml"
+      - ".github/scripts/post-playwright-visuals.sh"
   push:
     branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-e2e.yml"
+      - ".github/scripts/post-playwright-visuals.sh"
   workflow_dispatch:
     inputs:
       update_snapshots:
         description: "Re-generate snapshots; download artifact and commit locally"
         type: boolean
         default: false
+      tier:
+        description: "Which tier(s) to run"
+        type: choice
+        options:
+          - all
+          - core
+          - landmarks
+          - gallery
+        default: all
 
 permissions:
   contents: read
   pull-requests: write
 
+concurrency:
+  group: frontend-e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  playwright:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.select.outputs.core }}
+      landmarks: ${{ steps.select.outputs.landmarks }}
+      gallery: ${{ steps.select.outputs.gallery }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            core:
+              - 'frontend/src/components/**'
+              - 'frontend/src/styles/**'
+              - 'frontend/src/lib/**'
+              - 'frontend/src/hooks/**'
+              - 'frontend/components.json'
+              - 'frontend/e2e/core/**'
+            landmarks:
+              - 'frontend/src/widgets/landmarks/**'
+              - 'frontend/e2e/landmarks/**'
+              - 'frontend/dev/**'
+            gallery:
+              - 'frontend/src/widgets/gallery/**'
+              - 'frontend/e2e/gallery/**'
+            infra:
+              - 'frontend/e2e/helpers.ts'
+              - 'frontend/playwright.config.ts'
+              - 'frontend/package.json'
+              - 'frontend/package-lock.json'
+              - 'frontend/vite.config.ts'
+              - 'frontend/vite.config.*'
+              - 'frontend/index.html'
+              - '.github/workflows/frontend-e2e.yml'
+              - '.github/scripts/post-playwright-visuals.sh'
+
+      - name: Select tiers
+        id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          TIER: ${{ inputs.tier || '' }}
+          CORE: ${{ steps.filter.outputs.core || 'false' }}
+          LANDMARKS: ${{ steps.filter.outputs.landmarks || 'false' }}
+          GALLERY: ${{ steps.filter.outputs.gallery || 'false' }}
+          INFRA: ${{ steps.filter.outputs.infra || 'false' }}
+        run: |
+          set -euo pipefail
+          core=false
+          landmarks=false
+          gallery=false
+          if [[ "${EVENT}" == "workflow_dispatch" ]]; then
+            case "${TIER}" in
+              all) core=true; landmarks=true; gallery=true ;;
+              core) core=true ;;
+              landmarks) landmarks=true ;;
+              gallery) gallery=true ;;
+            esac
+          else
+            if [[ "${INFRA}" == "true" ]]; then
+              core=true; landmarks=true; gallery=true
+            else
+              [[ "${CORE}" == "true" ]] && core=true
+              [[ "${LANDMARKS}" == "true" ]] && landmarks=true
+              [[ "${GALLERY}" == "true" ]] && gallery=true
+            fi
+          fi
+          echo "core=${core}" >> "$GITHUB_OUTPUT"
+          echo "landmarks=${landmarks}" >> "$GITHUB_OUTPUT"
+          echo "gallery=${gallery}" >> "$GITHUB_OUTPUT"
+          echo "Selected tiers: core=${core} landmarks=${landmarks} gallery=${gallery}"
+
+  e2e-core:
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx playwright install chromium --with-deps
+      - name: Run core e2e
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.update_snapshots != true }}
+        run: npm run test:e2e:core
+        env:
+          CI: true
+          E2E_SCREENSHOTS: "1"
+      - name: Update core snapshots
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_snapshots == true }}
+        run: npm run test:e2e:core -- --update-snapshots
+        env:
+          CI: true
+          E2E_SCREENSHOTS: "1"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-core
+          path: frontend/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-test-results-core
+          path: frontend/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_snapshots == true }}
+        with:
+          name: playwright-snapshots-core
+          path: frontend/e2e/core/**/*-snapshots/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  e2e-landmarks:
+    needs: changes
+    if: needs.changes.outputs.landmarks == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -27,80 +177,97 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright Chromium
-        run: npx playwright install chromium --with-deps
-
-      - name: Run e2e (compare committed Linux snapshots)
+      - run: npm ci
+      - run: npx playwright install chromium --with-deps
+      - name: Run landmarks e2e
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.update_snapshots != true }}
-        run: npm run test:e2e
+        run: npm run test:e2e:landmarks
         env:
           CI: true
           E2E_SCREENSHOTS: "1"
-
-      - name: Update snapshots (artifact only)
+      - name: Update landmarks snapshots
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_snapshots == true }}
-        run: npm run test:e2e:update
+        run: npm run test:e2e:landmarks -- --update-snapshots
         env:
           CI: true
           E2E_SCREENSHOTS: "1"
-
-      - name: Post Playwright visuals sticky PR comment
-        if: ${{ success() && github.event_name == 'pull_request' }}
-        working-directory: .
-        env:
-          # Classic PAT (repo scope) enables gh --attach uploads; else raw snapshot URLs.
-          GH_TOKEN: ${{ secrets.VISUALS_GH_TOKEN || secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          GITHUB_SERVER_URL: ${{ github.server_url }}
-        run: bash .github/scripts/post-playwright-visuals.sh
-
-      - name: Upload Playwright HTML report
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-landmarks
           path: frontend/playwright-report/
           retention-days: 14
           if-no-files-found: ignore
-
-      - name: Upload test results
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: playwright-test-results
+          name: playwright-test-results-landmarks
           path: frontend/test-results/
           retention-days: 14
           if-no-files-found: ignore
-
-      - name: Upload Playwright videos
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_snapshots == true }}
         with:
-          name: playwright-videos
-          path: |
-            frontend/test-results/**/*.webm
-            frontend/test-results/**/*.mp4
+          name: playwright-snapshots-landmarks
+          path: frontend/e2e/landmarks/**/*-snapshots/
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: Upload updated snapshots
-        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.update_snapshots == true }}
-        uses: actions/upload-artifact@v4
+  e2e-gallery:
+    needs: changes
+    if: needs.changes.outputs.gallery == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for gallery specs
+        id: specs
+        run: |
+          if compgen -G "e2e/gallery/**/*.spec.ts" > /dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No gallery e2e specs yet; skipping."
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.specs.outputs.exists == 'true'
         with:
-          name: playwright-snapshots
-          path: frontend/e2e/**/*-snapshots/
-          retention-days: 7
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - if: steps.specs.outputs.exists == 'true'
+        run: npm ci
+      - if: steps.specs.outputs.exists == 'true'
+        run: npx playwright install chromium --with-deps
+      - name: Run gallery e2e
+        if: >-
+          steps.specs.outputs.exists == 'true' &&
+          (github.event_name != 'workflow_dispatch' || inputs.update_snapshots != true)
+        run: npm run test:e2e:gallery
+        env:
+          CI: true
+          E2E_SCREENSHOTS: "1"
+      - name: Update gallery snapshots
+        if: >-
+          steps.specs.outputs.exists == 'true' &&
+          github.event_name == 'workflow_dispatch' &&
+          inputs.update_snapshots == true
+        run: npm run test:e2e:gallery -- --update-snapshots
+        env:
+          CI: true
+          E2E_SCREENSHOTS: "1"
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && steps.specs.outputs.exists == 'true' }}
+        with:
+          name: playwright-report-gallery
+          path: frontend/playwright-report/
+          retention-days: 14
           if-no-files-found: ignore

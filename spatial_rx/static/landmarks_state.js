@@ -25,6 +25,7 @@ export function applyActiveCategory(model, col) {
   model.set("legend_labels", col.labels || []);
   model.set("legend_title", col.name || "");
   model.set("color_by", "categorical");
+  model.set("raster_basis", "composition");
   model.save_changes();
 }
 
@@ -39,14 +40,9 @@ export function setActiveGenes(model, names) {
   }
   model.set("active_genes", next);
   if (!next.length) {
-    const cols = model.get("category_columns") || [];
-    const active = model.get("active_category") || "";
-    const col = cols.find((c) => c.name === active) || cols[0];
-    if (col) {
-      applyActiveCategory(model, col);
-      return;
-    }
-    model.set("color_by", "categorical");
+    // Stay in the genes observation family — empty selection, not categories.
+    model.set("color_by", "continuous");
+    model.set("raster_basis", "genes");
     model.set("legend_title", "");
     model.save_changes();
     return;
@@ -60,6 +56,7 @@ export function setActiveGenes(model, names) {
   } else {
     model.set("legend_title", next.join(", "));
   }
+  model.set("raster_basis", "genes");
   model.save_changes();
 }
 
@@ -75,6 +72,108 @@ export function setGeneLog1p(model, enabled) {
     return;
   }
   model.set("gene_log1p", !!enabled);
+  model.save_changes();
+}
+
+export function setRenderMode(model, mode) {
+  const next = mode === "raster" ? "raster" : "points";
+  const genes = model.get("active_genes") || [];
+  const basis = model.get("raster_basis");
+  const colorBy = model.get("color_by");
+  const embKey = model.get("raster_embedding_key");
+  const geneIntent =
+    genes.length > 0 || basis === "genes" || colorBy === "continuous";
+  const embedIntent =
+    (basis === "embedding" || colorBy === "embedding") && !!embKey;
+  if (next === "raster") {
+    // Keep the active observation when flipping geometry, including empty genes.
+    if (geneIntent) {
+      model.set("raster_basis", "genes");
+      model.set("color_by", "continuous");
+    } else if (embedIntent) {
+      model.set("raster_basis", "embedding");
+      model.set("color_by", "embedding");
+    } else {
+      model.set("raster_basis", "composition");
+      model.set("color_by", "categorical");
+    }
+  } else {
+    // Points: keep the same observation family that raster was showing.
+    if (geneIntent) {
+      model.set("color_by", "continuous");
+    } else if (basis === "embedding" || colorBy === "embedding") {
+      model.set("color_by", "embedding");
+    } else {
+      model.set("color_by", "categorical");
+    }
+  }
+  model.set("render_mode", next);
+  if (next === "raster" && model.get("selected_kind") === "type") {
+    model.set("selected_kind", "");
+    model.set("selected_index", -1);
+  }
+  model.save_changes();
+}
+
+export function setRasterBinSize(model, size) {
+  const v = Number(size);
+  if (!Number.isFinite(v) || v <= 0) return;
+  model.set("raster_bin_size", v);
+  model.save_changes();
+}
+
+export function setRasterBasis(model, basis) {
+  const allowed = new Set(["genes", "embedding", "composition"]);
+  if (!allowed.has(basis)) return;
+  model.set("raster_basis", basis);
+  // Align point color_by with the exclusive observation signal.
+  if (basis === "genes") {
+    model.set("color_by", "continuous");
+  } else if (basis === "embedding") {
+    model.set("active_genes", []);
+    model.set("color_by", "embedding");
+  } else if (basis === "composition") {
+    model.set("color_by", "categorical");
+  }
+  model.save_changes();
+}
+
+export function setRasterEmbeddingKey(model, key) {
+  model.set("raster_embedding_key", String(key || ""));
+  // Embedding is an exclusive coloring signal — drop gene continuous color.
+  model.set("active_genes", []);
+  model.set("color_by", "embedding");
+  model.set("raster_basis", "embedding");
+  model.save_changes();
+}
+
+/** Empty array = all embedding dims. */
+export function setRasterEmbeddingDims(model, dims) {
+  const arr = Array.isArray(dims)
+    ? dims.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0)
+    : [];
+  // Dedupe, keep order.
+  const seen = new Set();
+  const ordered = [];
+  for (const d of arr) {
+    if (!seen.has(d)) {
+      seen.add(d);
+      ordered.push(d);
+    }
+  }
+  model.set("raster_embedding_dims", ordered);
+  model.save_changes();
+}
+
+export function setRasterThreshold(model, value) {
+  const v = Number(value);
+  if (!Number.isFinite(v)) return;
+  model.set("raster_threshold", Math.max(0, Math.min(1, v)));
+  model.save_changes();
+}
+
+export function clearRasterQuery(model) {
+  model.set("raster_query_bin", -1);
   model.save_changes();
 }
 
@@ -154,6 +253,11 @@ export function setSelected(model, kind, index) {
 
 export function setMode(model, mode) {
   model.set("mode", mode);
+  const probe = mode === "probe";
+  model.set("raster_similarity_enabled", probe);
+  if (!probe && model.get("raster_query_bin") >= 0) {
+    model.set("raster_query_bin", -1);
+  }
   model.save_changes();
 }
 

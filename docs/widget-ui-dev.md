@@ -76,4 +76,4 @@ frontend/dev/
 └── export-fixture.py   regenerate fixture.json
 ```
 
-Design authority: `DESIGN.md`, `PRODUCT.md`. Gallery has no harness yet.
+Design authority: `frontend/DESIGN.md`, `frontend/PRODUCT.md`. Gallery has no harness yet.

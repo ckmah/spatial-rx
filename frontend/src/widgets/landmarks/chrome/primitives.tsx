@@ -13,6 +13,7 @@ import {
   EyeIcon,
   EyeOffIcon,
   LassoIcon,
+  LocateIcon,
   MousePointer2Icon,
   MoveIcon,
   PencilIcon,
@@ -47,6 +48,7 @@ function FilledCircleIcon(props: LucideProps) {
 const MODE_ICONS: Record<string, ComponentType<LucideProps>> = {
   pointer: MousePointer2Icon,
   move: MoveIcon,
+  probe: LocateIcon,
   selection: LassoIcon,
   lasso: LassoIcon,
   polygon: PentagonIcon,
@@ -64,14 +66,14 @@ export function modeIcon(mode: string) {
 
 /** Shared toolbar hit target — top, bottom, and mobile chrome. */
 export const chromeHitClass =
-  "size-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground";
+  "inline-flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground";
 
 export const chromeHitOnClass =
   "bg-foreground text-background hover:bg-foreground hover:text-background";
 
-/** Opaque chrome tooltip surface (portaled into widget so theme tokens apply). */
+/** Inverted chrome tooltip (opposite of theme surface). */
 const chromeTooltipClass =
-  "landmarks-tooltip z-50 w-fit origin-(--radix-tooltip-content-transform-origin) animate-in rounded-md border border-border bg-popover px-2.5 py-1 text-xs font-medium text-balance text-popover-foreground shadow-md fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95";
+  "landmarks-tooltip z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md border border-transparent px-2.5 py-1 text-xs font-medium text-balance shadow-md";
 
 /** Soft float popover — selection dropdown, layer menus, canvas context. */
 export const chromeMenuClass =
@@ -138,11 +140,11 @@ export function ChromeTooltip({
         >
           <span>{label}</span>
           {shortcut ? (
-            <span className="font-normal text-muted-foreground tabular-nums">
+            <span className="landmarks-tooltip-shortcut font-normal tabular-nums">
               {shortcut}
             </span>
           ) : null}
-          <TooltipPrimitive.Arrow className="landmarks-tooltip-arrow z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-popover fill-popover" />
+          <TooltipPrimitive.Arrow className="landmarks-tooltip-arrow z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px]" />
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </Tooltip>
@@ -260,6 +262,7 @@ export function LayerRow({
   swatchFillOpacity,
   label,
   hidden,
+  disabled,
   onSelect,
   onRename,
   onDelete,
@@ -272,6 +275,7 @@ export function LayerRow({
   swatchFillOpacity?: number;
   label: string;
   hidden?: boolean;
+  disabled?: boolean;
   onSelect: () => void;
   onRename?: (next: string) => void;
   onDelete?: () => void;
@@ -283,7 +287,7 @@ export function LayerRow({
   const hasMenu = !!(onRename || onDelete || onToggleHidden);
 
   const startRename = () => {
-    if (!onRename) return;
+    if (!onRename || disabled) return;
     setDraft(label);
     setEditing(true);
   };
@@ -291,14 +295,19 @@ export function LayerRow({
   return (
     <div
       role="listitem"
+      aria-disabled={disabled || undefined}
       className={cn(
-        "landmarks-layer-row cursor-pointer text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "landmarks-layer-row text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        disabled ? "cursor-default opacity-60" : "cursor-pointer",
         active && "landmarks-layer-row--active",
         hidden && "opacity-50",
       )}
-      tabIndex={0}
-      onClick={onSelect}
+      tabIndex={disabled ? -1 : 0}
+      onClick={() => {
+        if (!disabled) onSelect();
+      }}
       onKeyDown={(e) => {
+        if (disabled) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onSelect();
@@ -316,7 +325,7 @@ export function LayerRow({
           <Input
             aria-label="Rename layer"
             value={draft}
-            className="h-6 text-xs"
+            className="h-5 text-[11px]"
             autoFocus
             onClick={(e) => e.stopPropagation()}
             onChange={(e) => setDraft(e.target.value)}
@@ -340,7 +349,7 @@ export function LayerRow({
         ) : (
           <span
             className={cn(
-              "max-w-full truncate text-xs text-foreground",
+              "max-w-full truncate text-[11px] text-foreground",
               active ? "font-medium" : "font-normal",
             )}
             title={label}
@@ -355,9 +364,8 @@ export function LayerRow({
           </span>
         )}
       </div>
-      <div className="landmarks-trail">
-        <span className="landmarks-trail-cell" aria-hidden />
-        {hasMenu ? (
+      {hasMenu ? (
+        <div className="landmarks-trail">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -414,10 +422,8 @@ export function LayerRow({
               ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : (
-          <span className="landmarks-trail-cell" aria-hidden />
-        )}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

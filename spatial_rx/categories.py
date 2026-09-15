@@ -5,23 +5,22 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-# Default categorical when AnnData has no ``{col}_colors``. Okabe–Ito–based
-# (colorblind-safer); deliberately avoids the landmark neon triad / gene triad.
-DEFAULT_CATEGORICAL_PALETTE = [
-    "#e69f00",
-    "#56b4e9",
-    "#009e73",
-    "#cc79a7",
-    "#0072b2",
-    "#d55e00",
-    "#f0e442",
-    "#882255",
-    "#44aa99",
-    "#332288",
-]
+
+def _batlow_categorical_palette() -> list[str]:
+    """cmcrameri batlowS — discrete batlow, 100 unique categorical colors."""
+    from matplotlib.colors import to_hex
+    import cmcrameri.cm as cmc
+
+    cmap = cmc.batlowS
+    return [to_hex(cmap(i)).lower() for i in range(cmap.N)]
+
+
+# Default categorical when AnnData has no ``{col}_colors``. Avoids landmark/gene
+# neon accents by construction (scientific sequential discrete set).
+DEFAULT_CATEGORICAL_PALETTE = _batlow_categorical_palette()
 
 _DEFAULT_PALETTE = DEFAULT_CATEGORICAL_PALETTE
-_MAX_LEVELS = 64
+_MAX_LEVELS = 128
 
 
 def as_polars(frame: Any) -> Any:

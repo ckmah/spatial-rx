@@ -67,7 +67,7 @@ function Slider({
           className={cn(
             "block shrink-0 rounded-full border-0 bg-foreground shadow-none outline-hidden",
             /* Fixed 2px line; height only on hover — never change width */
-            "w-0.5 opacity-35",
+            "w-0.5 opacity-0",
             "data-[orientation=horizontal]:h-2.5",
             "data-[orientation=vertical]:h-0.5 data-[orientation=vertical]:w-2.5",
             "transition-[height,opacity,background-color,box-shadow] duration-150 ease-out",

@@ -1,6 +1,23 @@
 import pandas as pd
 
+from spatial_rx.categories import DEFAULT_CATEGORICAL_PALETTE
 from tests.helpers import adata_xy
+
+
+def test_default_categorical_palette_is_batlow():
+    assert len(DEFAULT_CATEGORICAL_PALETTE) >= 64
+    assert len(set(DEFAULT_CATEGORICAL_PALETTE)) == len(DEFAULT_CATEGORICAL_PALETTE)
+    # Landmark / gene neon accents stay off the scatter default.
+    reserved = {
+        "#00e5ff",
+        "#ff2d95",
+        "#b8ff00",
+        "#ff0099",
+        "#00b7ff",
+    }
+    assert reserved.isdisjoint({c.lower() for c in DEFAULT_CATEGORICAL_PALETTE})
+    # First stop of cmcrameri batlowS.
+    assert DEFAULT_CATEGORICAL_PALETTE[0].lower() == "#011959"
 
 
 def test_constructor_detects_categories():

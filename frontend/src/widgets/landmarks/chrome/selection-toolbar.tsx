@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -24,7 +24,13 @@ import {
   maxBufferWidth,
 } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
-import { ChromeTooltip, ToolbarDivider, chromeHitClass, chromeHitOnClass } from "./primitives";
+import {
+  ChromeTooltip,
+  ColorSwatch,
+  ToolbarDivider,
+  chromeHitClass,
+  chromeHitOnClass,
+} from "./primitives";
 
 const toggleHitClass =
   "size-8 min-w-8 rounded-full border-0 px-0 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground data-[state=on]:bg-foreground data-[state=on]:text-background data-[state=on]:shadow-none data-[spacing=1]:rounded-full";
@@ -110,19 +116,12 @@ function ColorControl({
               e.stopPropagation();
               onChange(c);
             }}
-            className={cn(
-              "inline-flex size-8 items-center justify-center rounded-full",
-              on
-                ? "bg-foreground text-background"
-                : "hover:bg-muted/70",
-            )}
+            className={cn(chromeHitClass, "leading-none", on && chromeHitOnClass)}
           >
-            <span
-              className={cn(
-                "size-4 rounded-full border",
-                on ? "border-2 border-background" : "border-border",
-              )}
-              style={{ background: c }}
+            <ColorSwatch
+              color={c}
+              variant="landmark"
+              className="!size-4 !min-h-4 !min-w-4 shrink-0"
             />
           </button>
         );
@@ -130,23 +129,22 @@ function ColorControl({
       <label
         title="Custom color"
         className={cn(
-          "relative inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full",
-          isCustom
-            ? "bg-foreground text-background"
-            : "hover:bg-muted/70",
+          "relative inline-flex cursor-pointer items-center justify-center leading-none",
+          chromeHitClass,
+          isCustom && chromeHitOnClass,
         )}
       >
-        <span
-          className={cn(
-            "flex size-4 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold",
-            isCustom
-              ? "border-2 border-background text-background"
-              : "border border-dashed border-border bg-muted text-muted-foreground",
-          )}
-          style={isCustom ? { background: color } : undefined}
-        >
-          {!isCustom ? "+" : null}
-        </span>
+        {isCustom ? (
+          <ColorSwatch
+            color={color}
+            variant="landmark"
+            className="!size-4 !min-h-4 !min-w-4 shrink-0"
+          />
+        ) : (
+          <span className="flex size-4 items-center justify-center rounded-full border border-dashed border-border text-[10px] font-semibold leading-none text-muted-foreground">
+            +
+          </span>
+        )}
         <input
           type="color"
           value={color}
@@ -212,7 +210,7 @@ function InlineSlider({
 }
 
 const pillClass =
-  "landmarks-float landmarks-float--toolbar pointer-events-auto flex min-h-10 items-center gap-1 px-1.5 py-1 text-card-foreground";
+  "landmarks-float landmarks-float--toolbar pointer-events-auto flex min-h-10 items-center gap-1 px-1.5 py-0.5 text-card-foreground";
 
 /**
  * Sticky bottom-center context chrome (mirrors Topbar). L2 stacks above L1.
@@ -229,50 +227,14 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
   const showLandmarkBar = isLandmark && (usesBuffer || usesTension || !!selectedLm);
   const showHoodBar = isHood && !!hood;
 
-  const [lmL2, setLmL2] = useState<"width" | "color" | "tension">("width");
-  const leaveTimer = useRef<number | null>(null);
-  const openTimer = useRef<number | null>(null);
+  const [lmL2, setLmL2] = useState<"width" | "color" | "tension" | null>(null);
 
   useEffect(() => {
-    setLmL2("width");
+    setLmL2(null);
   }, [kind, index]);
 
-  useEffect(
-    () => () => {
-      if (leaveTimer.current != null) window.clearTimeout(leaveTimer.current);
-      if (openTimer.current != null) window.clearTimeout(openTimer.current);
-    },
-    [],
-  );
-
-  const clearLeave = () => {
-    if (leaveTimer.current != null) {
-      window.clearTimeout(leaveTimer.current);
-      leaveTimer.current = null;
-    }
-  };
-  const clearOpen = () => {
-    if (openTimer.current != null) {
-      window.clearTimeout(openTimer.current);
-      openTimer.current = null;
-    }
-  };
-  const showL2 = (next: "width" | "color" | "tension") => {
-    clearLeave();
-    clearOpen();
+  const showL2 = (next: "width" | "color" | "tension" | null) => {
     setLmL2(next);
-  };
-  /** Hover peek — match tooltip / dropdown open delay. */
-  const scheduleShowL2 = (next: "width" | "color" | "tension") => {
-    clearLeave();
-    if (lmL2 === next) return;
-    clearOpen();
-    openTimer.current = window.setTimeout(() => setLmL2(next), 400);
-  };
-  const scheduleWidth = () => {
-    clearOpen();
-    clearLeave();
-    leaveTimer.current = window.setTimeout(() => setLmL2("width"), 160);
   };
 
   if (!showLandmarkBar && !showHoodBar) return null;
@@ -291,7 +253,7 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
   const canPromote = hoodMode === "radius" || hoodMode === "knn";
 
   return (
-    <TooltipProvider delayDuration={400} skipDelayDuration={0}>
+    <TooltipProvider delayDuration={80} skipDelayDuration={0}>
     <div
       className="landmarks__chrome-context"
       data-testid="context-selection-toolbar"
@@ -300,13 +262,9 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
       onClick={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
-      <div
-        className="pointer-events-none flex flex-col items-center gap-1.5"
-        onMouseLeave={scheduleWidth}
-        onMouseEnter={clearLeave}
-      >
+      <div className="pointer-events-none flex flex-col items-center gap-1.5">
         {showLandmarkBar && lmL2 === "color" ? (
-          <div className={pillClass} onMouseEnter={() => showL2("color")}>
+          <div className={pillClass}>
             <ColorControl
               color={color}
               onChange={(next) => lm.patchLandmark({ color: next })}
@@ -315,7 +273,7 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
         ) : null}
 
         {showLandmarkBar && lmL2 === "width" && usesBuffer ? (
-          <div className={pillClass} onMouseEnter={() => showL2("width")}>
+          <div className={pillClass}>
             <InlineSlider
               label="Width"
               value={bufferWidth}
@@ -329,7 +287,7 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
         ) : null}
 
         {showLandmarkBar && lmL2 === "tension" && usesTension ? (
-          <div className={pillClass} onMouseEnter={() => showL2("tension")}>
+          <div className={pillClass}>
             <InlineSlider
               label="Tension"
               value={Number(selectedLm?.tension ?? 0)}
@@ -424,15 +382,17 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
                 testId="context-color-toggle"
                 active={lmL2 === "color"}
                 expandable
-                onMouseEnter={() => scheduleShowL2("color")}
                 onClick={() =>
-                  showL2(lmL2 === "color" ? "width" : "color")
+                  showL2(lmL2 === "color" ? null : "color")
                 }
               >
-                <span
-                  className="size-4 rounded-full border border-border"
-                  style={{ background: color }}
-                />
+                <span className="inline-flex size-full items-center justify-center leading-none">
+                  <ColorSwatch
+                    color={color}
+                    variant="landmark"
+                    className="!size-4 !min-h-4 !min-w-4 shrink-0"
+                  />
+                </span>
               </IconBtn>
               {usesTension ? (
                 <IconBtn
@@ -440,9 +400,8 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
                   testId="context-tension-toggle"
                   active={lmL2 === "tension"}
                   expandable
-                  onMouseEnter={() => scheduleShowL2("tension")}
                   onClick={() =>
-                    showL2(lmL2 === "tension" ? "width" : "tension")
+                    showL2(lmL2 === "tension" ? null : "tension")
                   }
                 >
                   <span className="inline-flex size-full items-center justify-center">
@@ -466,7 +425,7 @@ export function SelectionToolbar({ lm }: { lm: LandmarksModel }) {
                       lm.patchLandmark({ buffer_side: next });
                       setLmL2("width");
                     }}
-                    onMouseEnter={() => scheduleShowL2("width")}
+                    onClick={() => setLmL2("width")}
                   >
                     {(
                       [
