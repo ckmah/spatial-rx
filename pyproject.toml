@@ -1,6 +1,6 @@
 [project]
 name = "spatial-rx"
-version = "1.0.0"
+version = "1.0.1"
 description = "Tools for exploring spatial omics data in notebooks"
 readme = "README.md"
 requires-python = ">=3.11"
