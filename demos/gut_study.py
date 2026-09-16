@@ -49,7 +49,6 @@ def _():
     import numpy as np
     import pandas as pd
     import scanpy as sc
-    import squidpy as sq
     from wigglystuff import ApiDoc
     from spatial_rx import (
         GalleryWidget,
@@ -79,7 +78,6 @@ def _():
         np,
         pd,
         sc,
-        sq,
         write_obs,
     )
 

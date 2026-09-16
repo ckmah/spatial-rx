@@ -68,11 +68,6 @@ export function wrapLandmarksModel(raw) {
       raw.save_changes();
     },
 
-    /**
-     * @deprecated Raster features rebuild client-side; kept as no-op for callers.
-     */
-    syncRaster() {},
-
     on(event, fn) {
       const m = typeof event === "string" ? /^change:(.+)$/.exec(event) : null;
       if (m) {

@@ -121,10 +121,6 @@ def _encode_colors(
     return seq, norm, [], vmin, vmax
 
 
-def _obsp_key(key_added: str, kind: str) -> str:
-    return f"{key_added}_{kind}"
-
-
 def _color_maps_from_uns(adata: Any) -> dict[str, dict[str, str]]:
     """scanpy ``uns['<key>_colors']`` lists aligned to ``obs[key].cat.categories``."""
     maps: dict[str, dict[str, str]] = {}
