@@ -20,7 +20,10 @@ def adata_xy(
     names: list[str] | None = None,
     uns: dict | None = None,
 ):
-    """Build a tiny AnnData with ``obsm['spatial']`` and both neighbor graphs."""
+    """Build a tiny AnnData with ``obsm['spatial']``.
+
+    ``knn`` / ``radius`` are ignored (graphs are no longer required).
+    """
     n = len(x)
     index = names if names is not None else [f"c{i}" for i in range(n)]
     obs = pd.DataFrame(index=index)
@@ -39,9 +42,13 @@ def adata_xy(
     adata.obsm["spatial"] = np.column_stack(
         [np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64)]
     )
-    empty = csr_matrix((n, n), dtype=np.float32)
-    adata.obsp["spatial_knn_connectivities"] = knn if knn is not None else empty
-    adata.obsp["spatial_radius_connectivities"] = radius if radius is not None else empty
+    # Optional leftover graphs for older helpers; widget ignores them.
+    if knn is not None or radius is not None:
+        empty = csr_matrix((n, n), dtype=np.float32)
+        adata.obsp["spatial_knn_connectivities"] = knn if knn is not None else empty
+        adata.obsp["spatial_radius_connectivities"] = (
+            radius if radius is not None else empty
+        )
     if uns:
         adata.uns.update(uns)
     return adata

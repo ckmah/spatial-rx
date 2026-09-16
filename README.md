@@ -33,9 +33,9 @@ uv sync --extra demo --group dev
 </picture>
 
 Draw selections and landmarks on tissue coordinates (lasso, rectangle, ellipse; point,
-line, spline, shape). Format data as `AnnData` with `obsm["spatial"]` and squidpy
-neighbor graphs, then `LandmarksWidget(adata, color=..., genes=...)`. Persist
-hits with `get_obs_names`.
+line, spline, shape). Format data as `AnnData` with `obsm["spatial"]`, then
+`LandmarksWidget(adata, color=..., genes=...)`. Neighborhoods expand in the browser.
+Persist hits with `get_obs_names` / `selection_mask`.
 
 ## GalleryWidget
 

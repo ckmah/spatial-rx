@@ -5,10 +5,9 @@ features whose positions fall within ``window_radius`` of the bin center
 (default = ``DEFAULT_WINDOW_RADIUS`` = 24 world units / µm). That softens hard
 Voronoi boundaries and reads as higher effective resolution when bins are small.
 
-deck.gl GPU aggregation layers (``GridLayer`` / ``HeatmapLayer``) collapse to
-1–few channels for display. Similarity needs a multi-d bin×feature matrix for
-client cosine, so we build ``B`` in NumPy (KD-tree / vectorized) and keep hover
-scoring on the JS path — already fast at bin counts (~1k–10k).
+The LandmarksWidget builds ``B`` in the browser (``spatial-raster.js``) from
+eager gene / embedding / category packs. This module remains the Python
+reference implementation and is used by unit tests.
 """
 
 from __future__ import annotations

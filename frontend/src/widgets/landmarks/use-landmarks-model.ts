@@ -59,6 +59,10 @@ export type LandmarksState = {
   points_data: string;
   category_codes: string;
   gene_values: string;
+  gene_format: string;
+  gene_csc_indptr: string;
+  gene_csc_indices: string;
+  gene_csc_data: string;
   embedding_values: string;
   embedding_channel_labels: string[];
   point_size: number;
@@ -102,6 +106,10 @@ const MODEL_KEYS: (keyof LandmarksState)[] = [
   "points_data",
   "category_codes",
   "gene_values",
+  "gene_format",
+  "gene_csc_indptr",
+  "gene_csc_indices",
+  "gene_csc_data",
   "embedding_values",
   "embedding_channel_labels",
   "point_size",

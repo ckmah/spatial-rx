@@ -51,6 +51,10 @@ FIXTURE_KEYS = [
     "default_buffer_width",
     "neighbor_radius_max",
     "neighbor_k_max",
+    "gene_format",
+    "gene_csc_indptr",
+    "gene_csc_indices",
+    "gene_csc_data",
     "x_bounds",
     "y_bounds",
     "point_size",
@@ -58,12 +62,6 @@ FIXTURE_KEYS = [
     "point_palette",
     "category_codes",
     "gene_values",
-    "neighbor_indptr",
-    "neighbor_indices",
-    "neighbor_distances",
-    "radius_indptr",
-    "radius_indices",
-    "radius_distances",
     "color_vmin",
     "color_vmax",
     "render_mode",
@@ -75,6 +73,8 @@ FIXTURE_KEYS = [
     "raster_embedding_dims",
     "embedding_values",
     "embedding_channel_labels",
+    "embedding_matrix",
+    "embedding_matrix_dim",
     "raster_obs_key",
     "raster_gene_mode",
     "raster_origin_x",
@@ -358,12 +358,13 @@ def main() -> None:
     widget.selected_index = -1
     if widget.raster_embedding_keys:
         widget.raster_embedding_dims = [0, 1, 2]
-        # Ensure embedding RGB pack for harness Color → embed.
+        # Ensure embedding RGB + full matrix pack for harness Color → embed / raster.
         if hasattr(widget, "_pack_embedding_values"):
             widget._pack_embedding_values()
-    # Keep gene-basis features packed so Probe → raster works when enabled,
-    # but leave similarity/query off for a clean harness boot.
-    widget.raster_basis = "genes"
+        if hasattr(widget, "_pack_embedding_matrix"):
+            widget._pack_embedding_matrix()
+    # Keep composition basis aligned with categorical points boot.
+    widget.raster_basis = "composition"
     widget.raster_similarity_enabled = False
     widget.raster_query_bin = -1
 
@@ -374,7 +375,7 @@ def main() -> None:
     print(
         f"wrote {out} ({n} points, "
         f"{len(payload.get('raster_embedding_keys') or [])} embeddings, "
-        f"{payload.get('raster_n_bins')} bins, "
+        f"embed_dim={payload.get('embedding_matrix_dim')}, "
         f"{out.stat().st_size / 1e6:.2f} MB)"
     )
     print(

@@ -2,19 +2,19 @@
 
 ## Context
 
-LandmarksWidget subsets precomputed k-NN / radius neighbor graphs from
-`obsp` (see CONTEXT.md). An early GPU overlay drew both modes as
-`PathLayer` seed→neighbor edges. Radius mode looked like dense edge
-spaghetti. The next iteration used per-seed outlined `ScatterplotLayer`
-disks at `neighborhood_radius`; those strokes read as hard rings and
-stacked poorly when many seeds overlapped.
+> **Update:** Neighborhood expand is **client-side** (spatial index over
+> coordinates). No `obsp` CSR sync. Slider caps remain `neighbor_k_max` /
+> `neighbor_radius_max`. Visual decisions below still apply.
+
+An early GPU overlay drew both modes as `PathLayer` seed→neighbor edges.
+Radius mode looked like dense edge spaghetti. The next iteration used
+per-seed outlined `ScatterplotLayer` disks at `neighborhood_radius`; those
+strokes read as hard rings and stacked poorly when many seeds overlapped.
 
 `@deck.gl/extensions` (`DataFilterExtension`, `BrushingExtension`,
-`MaskExtension`, …) can filter or mask layer attributes on the GPU. Our
-neighbor sets already come from CSR subsetting on the CPU (`neighbor_*` /
-`radius_*` traitlets + slider k/r). Re-encoding distances into per-point
-filter attributes would duplicate that work and grow the bundle without
-changing the traitlet contract.
+`MaskExtension`, …) can filter or mask layer attributes on the GPU.
+Re-encoding distances into per-point filter attributes would duplicate
+client expand work and grow the bundle without changing the chrome contract.
 
 ## Decision
 

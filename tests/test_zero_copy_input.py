@@ -1,4 +1,4 @@
-"""M1.5: zero-copy / lazy input for LandmarksWidget construct."""
+"""Eager gene pack + reference semantics for LandmarksWidget construct."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import base64
 import anndata as ad
 import numpy as np
 import pandas as pd
-import pytest
 from scipy.sparse import csr_matrix
 
 from tests.helpers import adata_xy, graph
@@ -38,18 +37,15 @@ def _wide_sparse_adata(*, n_obs: int = 40, n_vars: int = 200):
     return out
 
 
-def test_construct_genes_none_skips_full_expression_frame(monkeypatch):
+def test_construct_eager_gene_pack_prefers_csc_when_sparse():
     from spatial_rx import LandmarksWidget
-    from spatial_rx import landmarks as L
 
-    def boom(*_a, **_k):
-        raise AssertionError("must not densify full expression at construct")
-
-    monkeypatch.setattr(L, "_expr_from_adata", boom)
     adata = _wide_sparse_adata()
     w = LandmarksWidget(adata, color="label")
     assert len(w.gene_columns) == adata.n_vars
     assert w.gene_columns[0]["name"] == "g0"
+    assert w.gene_format == "csc"
+    assert w.gene_csc_indptr and w.gene_csc_indices and w.gene_csc_data
     assert w.gene_values == ""
     assert w.active_genes == []
 
@@ -70,18 +66,15 @@ def test_construct_does_not_obs_copy():
     assert calls == []
 
 
-def test_activate_genes_packs_only_active_columns():
+def test_active_genes_does_not_repack_matrix():
     from spatial_rx import LandmarksWidget
 
     adata = _wide_sparse_adata(n_obs=20, n_vars=80)
     w = LandmarksWidget(adata, color="label")
-    assert w.gene_values == ""
+    assert w.gene_format == "csc"
+    before = w.gene_csc_data
     w.active_genes = ["g0", "g17"]
-    raw = np.frombuffer(base64.b64decode(w.gene_values), dtype=np.float32)
-    assert raw.size == 20 * 2
-    g0 = raw[0:20]
-    assert g0.min() == 0.0
-    assert g0.max() == 1.0
+    assert w.gene_csc_data == before
     meta0 = next(g for g in w.gene_columns if g["name"] == "g0")
     assert meta0["vmax"] > meta0["vmin"]
 
@@ -94,3 +87,5 @@ def test_widget_holds_adata_reference():
     )
     w = LandmarksWidget(adata, color="label", genes=["Apob"])
     assert w._adata is adata
+    raw = np.frombuffer(base64.b64decode(w.gene_values), dtype=np.float32)
+    assert raw.size == 2

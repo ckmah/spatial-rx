@@ -6,11 +6,11 @@
 #     "numpy",
 #     "pandas",
 #     "altair",
-#     "geopandas",
-#     "shapely",
-#     "scipy",
 #     "anndata",
-#     "squidpy",
+#     "scanpy",
+#     "cmcrameri",
+#     "fsspec",
+#     "scipy",
 #     "spatial-rx[demo]",
 #     "wigglystuff>=0.5.32",
 # ]
@@ -45,11 +45,9 @@ def _():
     import fsspec
     import marimo as mo
     import matplotlib
-    import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
     import scanpy as sc
-    import squidpy as sq
     from wigglystuff import ApiDoc
     from spatial_rx import (
         GalleryWidget,
@@ -79,7 +77,6 @@ def _():
         np,
         pd,
         sc,
-        sq,
         write_obs,
     )
 
@@ -166,20 +163,6 @@ def _(ad, b64encode, fsspec):
 def _(adata, sc):
     # Exploratory PCA
     sc.pp.pca(adata)
-    return
-
-
-@app.cell
-def _(adata, np, sq):
-    # Spatial neighbor graphs for the widget (k-max / radius-max supersets).
-    xy = np.asarray(adata.obsm["spatial"], dtype=float)
-    radius = 0.05 * float(np.hypot(np.ptp(xy[:, 0]), np.ptp(xy[:, 1])))
-    sq.gr.spatial_neighbors(
-        adata, coord_type="generic", n_neighs=64, key_added="spatial_knn"
-    )
-    sq.gr.spatial_neighbors(
-        adata, coord_type="generic", radius=radius, key_added="spatial_radius"
-    )
     return
 
 

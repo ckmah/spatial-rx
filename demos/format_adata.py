@@ -14,8 +14,9 @@ def _(mo):
     includes expression, obs, `obsm["spatial"]`, and size-matched tab*
     `cell_type` colors.
 
-    Spatial neighbor graphs and PCA/UMAP are **not** stored — `landmarks.py` /
-    `gut_study.py` compute neighbors (and any embeddings) after load. The
+    Spatial neighbor graphs are **not** stored — LandmarksWidget expands
+    neighborhoods in the browser. PCA/UMAP (if needed) are computed after load.
+    The
     `.h5ad` is committed when under 10 MB.
     """)
     return

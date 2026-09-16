@@ -8,18 +8,23 @@ Point scatter, landmarks, selections, and drafts use deck.gl orthographic
 layers via `LandmarksWidget(adata, color=..., genes=...)`. AnnData is the
 analysis object: coordinates in `obsm["spatial"]`, labels in `obs`,
 expression in `X`. The widget holds a **reference** to the caller’s AnnData
-(and neighbor graphs); it does not `obs.copy()` or densify full `X` at
-construct. Gene names sync as a catalog; expression values encode lazily for
-`active_genes` only (≤ a few channels). Chrome follows the notebook cell width.
-Marker radius is derived from median nearest-neighbor distance; opacity and
-default buffer are fixed or computed from spatial extent.
+(no `obs.copy()`, no full-`X` densify beyond the eager gene pack for the
+browser). Gene names and expression pack at construct for view-only coloring
+(`genes=` restricts the catalog; large matrices warn but still send). Chrome
+follows the notebook cell width. Marker radius is derived from median
+nearest-neighbor distance; opacity and default buffer are fixed or computed
+from spatial extent.
 
-k-NN and radius neighbor graphs are computed **before** the widget with
-`squidpy.gr.spatial_neighbors` (two `key_added` values) as k_max / r_max
-supersets, then ingested from `obsp`. Widget sliders subset those CSRs
-(`neighbor_*` / `radius_*`); they cannot exceed stored neighbors. The widget
-does not build or requery a graph. Persist selections as `obs_names`, not
-positional indices.
+Neighborhood expand (k-NN / radius) runs **in the browser** from coordinates
+(spatial index). No `obsp` neighbor graphs are required or synced. Promote
+freezes membership into selection `point_indices`. Persist selections as
+`obs_names` via `get_obs_names` / `assign_obs_mask` (geometry or
+`point_indices`), not positional indices.
+
+Synced on interaction: `landmarks`, `selections`, and selection focus. Other
+chrome state is client-local; hydrate payloads (points, genes, categories,
+embeddings) cross the wire at construct. Raster bin features and probe scores
+are built entirely in the browser.
 
 ## Language
 

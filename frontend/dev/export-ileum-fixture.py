@@ -11,7 +11,6 @@ from pathlib import Path
 import anndata as ad
 import numpy as np
 import pandas as pd
-import squidpy as sq
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -46,12 +45,10 @@ FIXTURE_KEYS = [
     "point_palette",
     "category_codes",
     "gene_values",
-    "neighbor_indptr",
-    "neighbor_indices",
-    "neighbor_distances",
-    "radius_indptr",
-    "radius_indices",
-    "radius_distances",
+    "gene_format",
+    "gene_csc_indptr",
+    "gene_csc_indices",
+    "gene_csc_data",
     "color_vmin",
     "color_vmax",
     "render_mode",
@@ -61,6 +58,10 @@ FIXTURE_KEYS = [
     "raster_embedding_key",
     "raster_embedding_keys",
     "raster_embedding_dims",
+    "embedding_values",
+    "embedding_channel_labels",
+    "embedding_matrix",
+    "embedding_matrix_dim",
     "raster_obs_key",
     "raster_gene_mode",
     "raster_origin_x",
@@ -81,6 +82,22 @@ FIXTURE_KEYS = [
 ]
 
 
+def _pca_from_expression(X: np.ndarray, n_comps: int = 8) -> np.ndarray:
+    """Cheap PCA via SVD so the harness has an embedding without sklearn."""
+    x = np.asarray(X, dtype=np.float64)
+    if x.ndim != 2 or x.shape[0] < 2 or x.shape[1] < 1:
+        return np.zeros((x.shape[0], n_comps), dtype=np.float32)
+    x = x - x.mean(axis=0, keepdims=True)
+    # Economy SVD; right-multiply by singular values for scores.
+    _u, s, vt = np.linalg.svd(x, full_matrices=False)
+    k = int(min(n_comps, s.shape[0], x.shape[1], x.shape[0]))
+    scores = x @ vt[:k].T
+    if k < n_comps:
+        pad = np.zeros((scores.shape[0], n_comps - k), dtype=np.float64)
+        scores = np.hstack([scores, pad])
+    return scores.astype(np.float32)
+
+
 def main() -> None:
     data = ROOT / "demos" / "data" / "ileum"
     cells = pd.read_csv(data / "cells.csv")
@@ -95,35 +112,31 @@ def main() -> None:
     )
     adata.obsm["spatial"] = cells[["x", "y"]].to_numpy(dtype=float)
     adata.obs[cluster] = pd.Categorical(adata.obs[cluster].astype(str))
+    # Embeddings for Explore → embed chrome (ridge/cloud + raster basis).
+    adata.obsm["X_pca"] = _pca_from_expression(adata.X, n_comps=8)
+    adata.obsm["X_umap"] = adata.obsm["X_pca"][:, :2].copy()
 
     xy = np.asarray(adata.obsm["spatial"], dtype=float)
     span = float(np.hypot(np.ptp(xy[:, 0]), np.ptp(xy[:, 1])))
-    radius = 0.05 * span
-    t0 = time.perf_counter()
-    sq.gr.spatial_neighbors(
-        adata, coord_type="generic", n_neighs=64, key_added="spatial_knn"
-    )
-    sq.gr.spatial_neighbors(
-        adata, coord_type="generic", radius=radius, key_added="spatial_radius"
-    )
-    print(f"neighbors {time.perf_counter() - t0:.1f}s  n={adata.n_obs} genes={adata.n_vars}")
 
-    genes = [str(g) for g in adata.var_names[:6]]
     t1 = time.perf_counter()
-    widget = LandmarksWidget(adata, color=cluster, genes=genes)
-    widget.active_genes = genes
-    widget.set_render_mode("raster")
-    # Pin a mid-body bin if available for similarity demo.
-    if widget.raster_n_bins > 10:
-        widget.raster_query_bin = int(widget.raster_n_bins // 3)
+    widget = LandmarksWidget(adata, color=cluster, genes=list(adata.var_names))
+    # Neutral harness boot: categorical points (genes/embeddings packed for Explore).
+    widget.active_genes = []
+    widget.color_by = "categorical"
+    widget.raster_basis = "composition"
+    widget.set_render_mode("points")
+    widget.raster_similarity_enabled = False
+    widget.raster_query_bin = -1
     print(
         f"widget {time.perf_counter() - t1:.1f}s  "
         f"bin_size={widget.raster_bin_size:.4g}  "
-        f"grid={widget.raster_n_cols}x{widget.raster_n_rows}  "
-        f"nonempty={widget.raster_n_bins}  "
-        f"dim={widget.raster_feature_dim}  "
-        f"status={widget.raster_status}  "
-        f"query={widget.raster_query_bin}"
+        f"gene_format={widget.gene_format}  "
+        f"embed_dim={widget.embedding_matrix_dim}  "
+        f"keys={widget.raster_embedding_keys}  "
+        f"render_mode={widget.render_mode}  "
+        f"basis={widget.raster_basis}  "
+        f"color_by={widget.color_by}"
     )
     x0, x1 = widget.x_bounds
     y0, y1 = widget.y_bounds

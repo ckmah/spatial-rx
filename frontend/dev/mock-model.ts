@@ -1,12 +1,10 @@
 import type { AnyModel } from "@/widgets/landmarks/helpers";
 
-import fixture from "./fixture.json";
-
 type Listener = () => void;
 
 /** Minimal traitlets model for notebook-free dev and Impeccable live. */
 export function createMockModel(
-  initial: Record<string, unknown> = fixture as Record<string, unknown>,
+  initial: Record<string, unknown>,
 ): AnyModel {
   const state: Record<string, unknown> = { ...initial };
   const listeners = new Map<string, Set<Listener>>();
@@ -34,4 +32,19 @@ export function createMockModel(
       listeners.get(event)?.delete(callback);
     },
   };
+}
+
+/**
+ * Load ``/fixture.json`` at runtime so Vite does not transform the multi‑MB
+ * base64 payload into the module graph (slow cold start / HMR after regen).
+ */
+export async function loadFixtureModel(
+  url = "/fixture.json",
+): Promise<AnyModel> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to load harness fixture ${url}: ${res.status}`);
+  }
+  const initial = (await res.json()) as Record<string, unknown>;
+  return createMockModel(initial);
 }

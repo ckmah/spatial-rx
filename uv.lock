@@ -1000,15 +1000,6 @@ wheels = [
 ]
 
 [[package]]
-name = "docrep"
-version = "0.3.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "six" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/44/8e/250fab1cafeea43f4eb11f1d64cd6313f639965ff62cb0d9da3883655781/docrep-0.3.2.tar.gz", hash = "sha256:ed8a17e201abd829ef8da78a0b6f4d51fb99a4cbd0554adbed3309297f964314", size = 33197, upload-time = "2021-02-16T09:01:50.183Z" }
-
-[[package]]
 name = "docutils"
 version = "0.23"
 source = { registry = "https://pypi.org/simple" }
@@ -1052,39 +1043,8 @@ wheels = [
 
 [[package]]
 name = "fast-array-utils"
-version = "1.3.1"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version > '3.11' and python_full_version < '3.12' and sys_platform == 'win32'",
-    "python_full_version > '3.11' and python_full_version < '3.12' and sys_platform == 'emscripten'",
-    "python_full_version > '3.11' and python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-    "python_full_version <= '3.11' and sys_platform == 'win32'",
-    "python_full_version <= '3.11' and sys_platform == 'emscripten'",
-    "python_full_version <= '3.11' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-]
-dependencies = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" } },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/1e/ff/93edc904b05a3260d5a690ac6dcdcd3cce10065b6fb56cdc683f80969456/fast_array_utils-1.3.1.tar.gz", hash = "sha256:34d175a63e9208c6fcbcb3cc18f75480ecdeaeed248759da0e74ab8fbcf55808", size = 330367, upload-time = "2025-11-18T10:20:32.016Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5f/cb/ddcf4ad63ba88df95025837e35faf6ea6862bab1327f836801ba02140a22/fast_array_utils-1.3.1-py3-none-any.whl", hash = "sha256:7617322b29c9f3a8e4c046355ecf653bbee581245787243ea06212a1a56fa611", size = 36518, upload-time = "2025-11-18T10:20:30.777Z" },
-]
-
-[[package]]
-name = "fast-array-utils"
 version = "1.5"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'win32'",
-    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-    "python_full_version == '3.12.*' and sys_platform == 'win32'",
-    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-]
 dependencies = [
     { name = "array-api-compat" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" } },
@@ -1414,25 +1374,6 @@ wheels = [
 ]
 
 [[package]]
-name = "imagecodecs"
-version = "2025.11.11"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/bf/7f/5842fd3e5bb8195d3b3af12af82a5c1d3280611cb01ffd02edec57e55b9e/imagecodecs-2025.11.11.tar.gz", hash = "sha256:a836d329f91c890d17b9dc3f3a2bba944a198ae741592c3cb0c4b9b097d10d34", size = 9505589, upload-time = "2025-11-10T04:20:51.636Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/61/4017d04559736e903cb972bfaac0dc464b2d7bd945d9070cfa2526b7596e/imagecodecs-2025.11.11-cp311-abi3-macosx_10_15_x86_64.whl", hash = "sha256:f5d01cc85ca2fe354302b3650f4848e8f1d3174200277b7cb2624abed4d02ea5", size = 12148485, upload-time = "2025-11-10T04:20:03.786Z" },
-    { url = "https://files.pythonhosted.org/packages/8f/27/0494b31c65a4dbb09206962f7a056ff9df5388ab13e1dddc27ecf47238df/imagecodecs-2025.11.11-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:45a865690275a3a8893c4c54377c678a7b361ebe13dd3a9e22c66443a96b1c2a", size = 10151325, upload-time = "2025-11-10T04:20:07.407Z" },
-    { url = "https://files.pythonhosted.org/packages/ca/5e/d98ce5608a48efff8f07139b11e4e76f7a05471dc327fb28e696afa7504c/imagecodecs-2025.11.11-cp311-abi3-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:be6e2f4b6601b57cfc9fba2382da7e02ad43c44e3b037adbf275a11f688b231f", size = 22366018, upload-time = "2025-11-10T04:20:11.015Z" },
-    { url = "https://files.pythonhosted.org/packages/a8/ac/fde1f9f99ebe7d8b989bb0005883b69f35abd6ac2d677e0a0caf23f29961/imagecodecs-2025.11.11-cp311-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d4a3894b62ca6ad0c4d75cb0a0aac2a525c4a5c4a2a60defc5d7fb716a4bb355", size = 23200222, upload-time = "2025-11-10T04:20:14.651Z" },
-    { url = "https://files.pythonhosted.org/packages/30/fe/ea18b0514128a60830c4909e23add385f8e799ff9719bc0b5de82673baa1/imagecodecs-2025.11.11-cp311-abi3-win32.whl", hash = "sha256:3735ea088321b0685e593c5d44fc1d146a84fcf6645c52ed136fa576e16c3572", size = 14847479, upload-time = "2025-11-10T04:20:17.502Z" },
-    { url = "https://files.pythonhosted.org/packages/01/b8/287a2d64f746e3bdf44693d2013b5fb7440eafe1dca08a35a0fd30458d33/imagecodecs-2025.11.11-cp311-abi3-win_amd64.whl", hash = "sha256:4252b15f5ba55bc7d7aacf621f6bb6e73fd70e66d56277a1f26563198b2cd576", size = 19052271, upload-time = "2025-11-10T04:20:21.441Z" },
-    { url = "https://files.pythonhosted.org/packages/a3/c8/413154b6014d9e1ee2b717bfdfa6617e81557b44487e2fb2a88ca3da125b/imagecodecs-2025.11.11-cp311-abi3-win_arm64.whl", hash = "sha256:f4480973fcf2d826ba6806b7ac6f4d9bd72eeb557cfd3687ac885939d130ec47", size = 14529653, upload-time = "2025-11-10T04:20:24.675Z" },
-]
-
-[[package]]
 name = "imageio"
 version = "2.37.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1456,19 +1397,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/6f/7e/1e7e8dc30634b93ebb3d58a3dea569ad146e656218d3960ab04f62047b29/importlib_metadata-9.0.1.tar.gz", hash = "sha256:ab830580bc0ef3db61ce8fae716389e5462b67e033018bab6d8f80ef17172f99", size = 59124, upload-time = "2026-08-28T15:30:34.646Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/55/ecca97ae19075f1fac62def77731e7f535e6c1fb8f92ff08160c5e6dade8/importlib_metadata-9.0.1-py3-none-any.whl", hash = "sha256:bba5600596a7e21f3eef53281cf28d6a5195634d2f2b78ff9501a3272c6eaab0", size = 27920, upload-time = "2026-08-28T15:30:33.433Z" },
-]
-
-[[package]]
-name = "inflect"
-version = "7.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "more-itertools" },
-    { name = "typeguard" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/78/c6/943357d44a21fd995723d07ccaddd78023eace03c1846049a2645d4324a3/inflect-7.5.0.tar.gz", hash = "sha256:faf19801c3742ed5a05a8ce388e0d8fe1a07f8d095c82201eb904f5d27ad571f", size = 73751, upload-time = "2024-12-28T17:11:18.897Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8a/eb/427ed2b20a38a4ee29f24dbe4ae2dafab198674fe9a85e3d6adf9e5f5f41/inflect-7.5.0-py3-none-any.whl", hash = "sha256:2aea70e5e70c35d8350b8097396ec155ffd68def678c7ff97f51aa69c1d92344", size = 35197, upload-time = "2024-12-28T17:11:15.931Z" },
 ]
 
 [[package]]
@@ -2076,18 +2004,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/bd/c0/9f7c9a46090390368a4d7bcb76bb87a4a36c421e4c0792cdb53486ffac7a/matplotlib_inline-0.2.2.tar.gz", hash = "sha256:72f3fe8fce36b70d4a5b612f899090cd0401deddc4ea90e1572b9f4bfb058c79", size = 8150, upload-time = "2026-05-08T17:33:33.49Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/09/5b161152e2d90f7b87f781c2e1267494aef9c32498df793f73ad0a0a494a/matplotlib_inline-0.2.2-py3-none-any.whl", hash = "sha256:3c821cf1c209f59fb2d2d64abbf5b23b67bcb2210d663f9918dd851c6da1fcf6", size = 9534, upload-time = "2026-05-08T17:33:32.055Z" },
-]
-
-[[package]]
-name = "matplotlib-scalebar"
-version = "0.9.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "matplotlib" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/c5/3d/e76e0e48c96e43b656446c35990824f20136de21940a7436020ab757a54d/matplotlib_scalebar-0.9.0.tar.gz", hash = "sha256:f91adc5e4e67ac920a8fa98a55f904d56e5c2da4d56286748c31ec62146362be", size = 1180588, upload-time = "2025-01-17T22:10:59.349Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/c0/2dfab7b319dabe23f5a7b515a797c74b501d15c72e7a03837cf0cf779b9e/matplotlib_scalebar-0.9.0-py3-none-any.whl", hash = "sha256:5140525cd4e0c60bcade541b86571dabaf446fa69192530bd82d60b54601aa79", size = 16411, upload-time = "2025-01-17T22:10:57.319Z" },
 ]
 
 [[package]]
@@ -2733,28 +2649,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3d/e7/c37b8896a24eabc76d6a5e7855f722792de5bdf3f5ccc562001738be4f7e/ome_zarr_models-1.6.tar.gz", hash = "sha256:00735ad939d2b5f6a4f583cc19af1e8a5247fa1e93f1f08191143cd913b9633a", size = 106913, upload-time = "2026-03-10T10:14:28.369Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5b/fc/7650df09dce0edfbaa1f2898c5eb0e0523ae5964dadb83855beb52166505/ome_zarr_models-1.6-py3-none-any.whl", hash = "sha256:d855a6fe885aa2613f64cd124ff8453d75854531bb3282eeaa916e976c7bcf66", size = 64251, upload-time = "2026-03-10T10:14:27.177Z" },
-]
-
-[[package]]
-name = "omnipath"
-version = "1.0.12"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "attrs" },
-    { name = "docrep" },
-    { name = "inflect" },
-    { name = "packaging" },
-    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "requests" },
-    { name = "tqdm" },
-    { name = "typing-extensions" },
-    { name = "urllib3" },
-    { name = "wrapt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/04/b8/f504706093c149092925c1679aa96aced48af4bde1f73620cc2a6edc7f79/omnipath-1.0.12.tar.gz", hash = "sha256:37e33fd0ab4924a5345deab46868fdc472955c2be136c97ccc8dc5b5ea0ecfb8", size = 2058935, upload-time = "2025-06-26T22:00:09.513Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d7/ba/704f9e56ae80ef66cf0534e23dac22ada34845f86b5e5b8b3294649d96b6/omnipath-1.0.12-py3-none-any.whl", hash = "sha256:28b85360f2f566e3c1e146560f8d3a5c133e221ce93c63ef62b3c71be9a6b003", size = 51621, upload-time = "2025-06-26T22:00:07.452Z" },
 ]
 
 [[package]]
@@ -4110,7 +4004,7 @@ resolution-markers = [
 dependencies = [
     { name = "anndata", version = "0.13.3.post0", source = { registry = "https://pypi.org/simple" } },
     { name = "certifi" },
-    { name = "fast-array-utils", version = "1.5", source = { registry = "https://pypi.org/simple" }, extra = ["accel", "sparse"] },
+    { name = "fast-array-utils", extra = ["accel", "sparse"] },
     { name = "h5py" },
     { name = "joblib" },
     { name = "legacy-api-wrap" },
@@ -4632,7 +4526,7 @@ wheels = [
 
 [[package]]
 name = "spatial-rx"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "anndata", version = "0.12.19", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -4657,13 +4551,10 @@ dependencies = [
 demo = [
     { name = "altair" },
     { name = "cmcrameri" },
+    { name = "fsspec" },
     { name = "marimo" },
     { name = "scanpy", version = "1.11.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "scanpy", version = "1.12.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "squidpy", version = "1.8.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "squidpy", version = "1.8.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "tifffile", version = "2026.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "tifffile", version = "2026.8.23", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 test = [
     { name = "geopandas" },
@@ -4690,6 +4581,7 @@ requires-dist = [
     { name = "anndata", specifier = ">=0.10" },
     { name = "anywidget", specifier = ">=0.9.2" },
     { name = "cmcrameri", marker = "extra == 'demo'", specifier = ">=1.10" },
+    { name = "fsspec", marker = "extra == 'demo'", specifier = ">=2024.0" },
     { name = "geopandas", specifier = ">=1.1.4" },
     { name = "geopandas", marker = "extra == 'test'", specifier = ">=1.1.4" },
     { name = "marimo", marker = "extra == 'demo'", specifier = ">=0.24.0" },
@@ -4705,8 +4597,6 @@ requires-dist = [
     { name = "shapely", specifier = ">=2.1.2" },
     { name = "shapely", marker = "extra == 'test'", specifier = ">=2.1.2" },
     { name = "spatialdata", marker = "extra == 'test'", specifier = ">=0.2" },
-    { name = "squidpy", marker = "extra == 'demo'", specifier = ">=1.6" },
-    { name = "tifffile", marker = "extra == 'demo'", specifier = ">=2026.3.3" },
     { name = "traitlets", specifier = ">=5.0" },
     { name = "wigglystuff", specifier = ">=0.5.32" },
 ]
@@ -4816,158 +4706,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b7/70/e575bc26b0410cf1349f5115b55d8d119edd6b2cf18e32ab84e222ee17e3/spatialdata-0.8.0.tar.gz", hash = "sha256:14143788a1de83302f8e83a29dd723b2d4e82f5b130d840409822fbf3a778e25", size = 369880, upload-time = "2026-07-02T20:42:20.597Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cf/08/f5cac3e58d1bb092bfb6015104e6cce925bbe10a2cae44428c790d4e5d06/spatialdata-0.8.0-py3-none-any.whl", hash = "sha256:75139b0df0e27c4573141a8dbe6b3301b47231571505926ad6a633c046ec1010", size = 202596, upload-time = "2026-07-02T20:42:19.268Z" },
-]
-
-[[package]]
-name = "spatialdata-plot"
-version = "0.4.0"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version > '3.11' and python_full_version < '3.12' and sys_platform == 'win32'",
-    "python_full_version > '3.11' and python_full_version < '3.12' and sys_platform == 'emscripten'",
-    "python_full_version > '3.11' and python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-    "python_full_version <= '3.11' and sys_platform == 'win32'",
-    "python_full_version <= '3.11' and sys_platform == 'emscripten'",
-    "python_full_version <= '3.11' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-]
-dependencies = [
-    { name = "matplotlib" },
-    { name = "matplotlib-scalebar" },
-    { name = "scanpy", version = "1.11.5", source = { registry = "https://pypi.org/simple" } },
-    { name = "scikit-learn" },
-    { name = "spatialdata", version = "0.7.3", source = { registry = "https://pypi.org/simple" } },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b0/4c/cf5b141a624d09f6dbcae67d4fac611824a8c922834a5afb5d31b236dbdc/spatialdata_plot-0.4.0.tar.gz", hash = "sha256:2f92664fdfe7b6e91d1d1563a5468a78fd980e3369e85ae7dd8bd812ab16e0ed", size = 18971339, upload-time = "2026-05-27T15:19:45.291Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/b8/ab2141c09b5eda2b13c727d8ddaff56f364f41a2127f30260199629c65dc/spatialdata_plot-0.4.0-py3-none-any.whl", hash = "sha256:e64b713e97d05caf84516007002739c38b84bbd59450424f0c2d83593179b1ed", size = 114794, upload-time = "2026-05-27T15:19:43.436Z" },
-]
-
-[[package]]
-name = "spatialdata-plot"
-version = "0.4.2"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'win32'",
-    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-    "python_full_version == '3.12.*' and sys_platform == 'win32'",
-    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-]
-dependencies = [
-    { name = "matplotlib" },
-    { name = "matplotlib-scalebar" },
-    { name = "scanpy", version = "1.12.4", source = { registry = "https://pypi.org/simple" } },
-    { name = "scikit-learn" },
-    { name = "spatialdata", version = "0.8.0", source = { registry = "https://pypi.org/simple" } },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/be/3a/d3a594b42963a8efa16a84ba295913e097460c854ea73874e1c0b4267fc7/spatialdata_plot-0.4.2.tar.gz", hash = "sha256:2fe8e85ff66942067b341dd7f0004a3bee9f976da52d9dba20a97a206538979e", size = 19718172, upload-time = "2026-08-27T13:40:31.718Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/48/4f/e8662e55ce2dd27c665b2d13a66f5c9808fc74c560d21ab06876b7ceb224/spatialdata_plot-0.4.2-py3-none-any.whl", hash = "sha256:633ffbbbe5a9815e54c1e8b690d22fe738ae00376779d95115a456875c88092d", size = 153283, upload-time = "2026-08-27T13:40:29.345Z" },
-]
-
-[[package]]
-name = "squidpy"
-version = "1.8.2"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version > '3.11' and python_full_version < '3.12' and sys_platform == 'win32'",
-    "python_full_version > '3.11' and python_full_version < '3.12' and sys_platform == 'emscripten'",
-    "python_full_version > '3.11' and python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-    "python_full_version <= '3.11' and sys_platform == 'win32'",
-    "python_full_version <= '3.11' and sys_platform == 'emscripten'",
-    "python_full_version <= '3.11' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-]
-dependencies = [
-    { name = "aiohttp" },
-    { name = "anndata", version = "0.12.19", source = { registry = "https://pypi.org/simple" } },
-    { name = "cycler" },
-    { name = "dask", version = "2026.1.1", source = { registry = "https://pypi.org/simple" }, extra = ["array"] },
-    { name = "dask-image" },
-    { name = "docrep" },
-    { name = "fast-array-utils", version = "1.3.1", source = { registry = "https://pypi.org/simple" } },
-    { name = "fsspec" },
-    { name = "imagecodecs" },
-    { name = "matplotlib" },
-    { name = "matplotlib-scalebar" },
-    { name = "networkx" },
-    { name = "numba" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" } },
-    { name = "omnipath" },
-    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" } },
-    { name = "pillow" },
-    { name = "pooch" },
-    { name = "pyyaml" },
-    { name = "scanpy", version = "1.11.5", source = { registry = "https://pypi.org/simple" } },
-    { name = "scikit-image" },
-    { name = "scikit-learn" },
-    { name = "spatialdata", version = "0.7.3", source = { registry = "https://pypi.org/simple" } },
-    { name = "spatialdata-plot", version = "0.4.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "statsmodels" },
-    { name = "tifffile", version = "2026.3.3", source = { registry = "https://pypi.org/simple" } },
-    { name = "tqdm" },
-    { name = "validators" },
-    { name = "xarray" },
-    { name = "zarr", version = "3.1.6", source = { registry = "https://pypi.org/simple" } },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9d/58/22f4cdd9a213cb22253206b59d932f0bf7c0487cadb73d05fd2592cd65b0/squidpy-1.8.2.tar.gz", hash = "sha256:6c79c95dea9f812c6aee39cab5740b034e8a90e74e84b0a9e9f0c6c5a6956a64", size = 6100852, upload-time = "2026-06-19T16:00:28.379Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/c0/cb3cfa46b060961131f2ad7768478b9ba7f45cf46a8a85c860c4d98e5428/squidpy-1.8.2-py3-none-any.whl", hash = "sha256:b4ef6fce4f253ae9f8e1e5429c19eda0ce5d67d3a8263989ed2fde0897ee6233", size = 272327, upload-time = "2026-06-19T16:00:26.326Z" },
-]
-
-[[package]]
-name = "squidpy"
-version = "1.8.3"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'win32'",
-    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'win32'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-    "python_full_version == '3.12.*' and sys_platform == 'win32'",
-    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
-]
-dependencies = [
-    { name = "aiohttp" },
-    { name = "anndata", version = "0.13.3.post0", source = { registry = "https://pypi.org/simple" } },
-    { name = "cycler" },
-    { name = "dask", version = "2026.8.0", source = { registry = "https://pypi.org/simple" }, extra = ["array"] },
-    { name = "dask-image" },
-    { name = "docrep" },
-    { name = "fast-array-utils", version = "1.5", source = { registry = "https://pypi.org/simple" } },
-    { name = "fsspec" },
-    { name = "imagecodecs" },
-    { name = "matplotlib" },
-    { name = "matplotlib-scalebar" },
-    { name = "networkx" },
-    { name = "numba" },
-    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" } },
-    { name = "omnipath" },
-    { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" } },
-    { name = "pillow" },
-    { name = "pooch" },
-    { name = "pyyaml" },
-    { name = "scanpy", version = "1.12.4", source = { registry = "https://pypi.org/simple" } },
-    { name = "scikit-image" },
-    { name = "scikit-learn" },
-    { name = "spatialdata", version = "0.8.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "spatialdata-plot", version = "0.4.2", source = { registry = "https://pypi.org/simple" } },
-    { name = "statsmodels" },
-    { name = "tifffile", version = "2026.8.23", source = { registry = "https://pypi.org/simple" } },
-    { name = "tqdm" },
-    { name = "validators" },
-    { name = "xarray" },
-    { name = "zarr", version = "3.3.0", source = { registry = "https://pypi.org/simple" } },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a7/d8/e635e473e4a7605bfcb7ff5f0e5ee977beadde7c388d147e002cd7b86a85/squidpy-1.8.3.tar.gz", hash = "sha256:66d90f47193707a872de0e700645f57ddd5c5bcb60c5b64b5a58648043231ede", size = 6115213, upload-time = "2026-06-29T11:52:53.612Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2b/5c/3c5e524ee2aa8acdd05b298dd285ef7abbbdb3333b15e29738d34e0372bc/squidpy-1.8.3-py3-none-any.whl", hash = "sha256:05fd5da00db697e6d0dbb91ff543ff5b27d0046666ce5a7348548076b3310efc", size = 280536, upload-time = "2026-06-29T11:52:51.973Z" },
 ]
 
 [[package]]
@@ -5182,18 +4920,6 @@ wheels = [
 ]
 
 [[package]]
-name = "typeguard"
-version = "4.6.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b4/de/4420db493fa8fc0856d5e5c1b159c63a323d2de2317babe36b01568928e8/typeguard-4.6.0.tar.gz", hash = "sha256:e7414f09111317de3e335de92cd397c5c0ca00b1cc1676de12e1d444a79b3f21", size = 82330, upload-time = "2026-07-26T08:40:23.207Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/eb/461d5f167b6f5c7d97696f397c82f82e3480e003fce3f0a1cd1dd26e2eb2/typeguard-4.6.0-py3-none-any.whl", hash = "sha256:79878165bb86f2cf5d41d159a0ff1792a796cf496882d2fe1b1c6c7049b9cdd7", size = 36884, upload-time = "2026-07-26T08:40:21.868Z" },
-]
-
-[[package]]
 name = "typing-extensions"
 version = "4.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -5275,15 +5001,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f2/0f/3f86e61397dd33bf2ccf28188c40db6a740658aeebbbf6e7dbc101a1f487/uvicorn-0.52.4.tar.gz", hash = "sha256:73acfee47a0b133c5de13d219492d62d8a31e935f4fe6e41a232451a15379f86", size = 100627, upload-time = "2026-08-19T06:27:41.821Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/79/4a20b54ab0491485ccd8c077db2d39187c7f12b3e15485d38a7be37c81b4/uvicorn-0.52.4-py3-none-any.whl", hash = "sha256:f86e41a149d7d05a9969337e3946a9c171c06a5d42680896daaba624aeac8da1", size = 79871, upload-time = "2026-08-19T06:27:40.36Z" },
-]
-
-[[package]]
-name = "validators"
-version = "0.35.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/53/66/a435d9ae49850b2f071f7ebd8119dd4e84872b01630d6736761e6e7fd847/validators-0.35.0.tar.gz", hash = "sha256:992d6c48a4e77c81f1b4daba10d16c3a9bb0dbb79b3a19ea847ff0928e70497a", size = 73399, upload-time = "2025-05-01T05:42:06.7Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/6e/3e955517e22cbdd565f2f8b2e73d52528b14b8bcfdb04f62466b071de847/validators-0.35.0-py3-none-any.whl", hash = "sha256:e8c947097eae7892cb3d26868d637f79f47b4a0554bc6b80065dfe5aac3705dd", size = 44712, upload-time = "2025-05-01T05:42:04.203Z" },
 ]
 
 [[package]]
