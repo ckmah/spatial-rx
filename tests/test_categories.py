@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 from spatial_rx.categories import (
@@ -69,4 +70,8 @@ def test_constructor_detects_categories():
     assert w.legend_labels == ["Epi", "Imm", "Fib"]
     assert w.point_palette == ["#111111", "#222222", "#333333"]
     assert w.category_codes
-    assert set(w.get_type_indices("Epi", expand=False).tolist()) == {0, 2}
+    labels = w._data_label_arrays["cell_class"]
+    assert set(np.flatnonzero(np.asarray(labels).astype(str) == "Epi").tolist()) == {
+        0,
+        2,
+    }

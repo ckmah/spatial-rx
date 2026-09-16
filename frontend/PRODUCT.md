@@ -28,7 +28,7 @@ Notebook-native toolkit: best-in-class marimo/Jupyter widgets for spatial omics,
 ## Operating Context
 
 - **Environment:** marimo (primary) and Jupyter notebooks; widgets render in the browser within notebook cells.
-- **Data model:** AnnData with coordinates in `obsm["spatial"]`, labels in `obs`, expression in `X`. Neighbor graphs are precomputed with squidpy and ingested from `obsp`; widgets subset stored CSRs rather than rebuilding graphs.
+- **Data model:** AnnData with coordinates in `obsm["spatial"]`, labels in `obs`, expression in `X`. Neighborhood expand runs client-side from coordinates (no required `obsp` graphs). Gene expression packs eagerly for view-only coloring. Interaction sync is landmarks/selections; other chrome state is client-local.
 - **Widget types:** React/shadcn widgets (bundled ahead of time) and vanilla JavaScript widgets (shipped as source). Canvas drawing for landmarks uses deck.gl orthographic layers via `mountEngine`.
 - **Development:** Widget authors work in `frontend/` and rebuild bundles; widget consumers install the published package only.
 - **Demos:** `demos/landmarks.py`, `demos/gallery.py`, `demos/gut_study.py` with molab badges for remote execution.
@@ -43,7 +43,7 @@ Notebook-native toolkit: best-in-class marimo/Jupyter widgets for spatial omics,
 **Technical constraints**
 
 - Widget consumers must never need a frontend build toolchain; React bundles ship inside the installed package (`spatial_rx/static/`).
-- k-NN and radius neighbor graphs must be computed before the widget; sliders cannot exceed stored neighbor counts.
+- k-NN / radius neighborhood expand is client-side; no precomputed `obsp` graphs required.
 - Selections persist as `obs_names`, not positional indices.
 - Chrome follows notebook cell width; marker radius derives from median nearest-neighbor distance.
 

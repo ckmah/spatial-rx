@@ -965,6 +965,25 @@
 
 .landmarks__chrome-dock--right {
   right: var(--lm-chrome-inset);
+  /* Same definite height budget as left (minimap lives bottom-left only). */
+  height: min(
+    max-content,
+    calc(
+      100% - var(--lm-chrome-band) - (2 * var(--lm-chrome-gap)) - var(--lm-chrome-inset)
+    )
+  );
+  max-height: calc(
+    100% - var(--lm-chrome-band) - (2 * var(--lm-chrome-gap)) - var(--lm-chrome-inset)
+  );
+}
+
+/* Float shell must fill the dock so inner overlay-scroll can resolve height. */
+.landmarks__chrome-dock--right > [data-testid="info-explore-stack"] {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
 }
 
 /* Layers fills remaining dock height; ScrollArea overlays inside the clip. */

@@ -201,3 +201,89 @@ def encode_gene_bundle(
         cols.append(norm)
     packed = np.column_stack(cols).ravel(order="F")
     return meta, base64.b64encode(packed.tobytes()).decode("ascii")
+
+
+# Warn when eager gene payload exceeds this many raw float32 bytes (~25 MiB).
+GENE_MATRIX_WARN_BYTES = 25 * 1024 * 1024
+# Prefer CSC when nonzero density is below this (and matrix is non-empty).
+_GENE_SPARSE_DENSITY = 0.25
+
+
+def pack_eager_gene_matrix(
+    adata: Any,
+    names: list[str],
+    n_points: int,
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Eager-pack all catalog genes for the browser (view-only).
+
+    Returns ``(meta, payload)`` where ``payload`` is either::
+
+        {"gene_format": "dense", "gene_values": <b64 float32 col-major>}
+
+    or::
+
+        {
+          "gene_format": "csc",
+          "gene_csc_indptr": <b64 int32>,
+          "gene_csc_indices": <b64 int32>,
+          "gene_csc_data": <b64 float32>,
+        }
+
+    Emits a :class:`UserWarning` when the dense float32 footprint exceeds
+    :data:`GENE_MATRIX_WARN_BYTES`, but still packs the matrix.
+    """
+    import warnings
+
+    import numpy as np
+    from scipy import sparse
+
+    if not names:
+        return [], {"gene_format": "dense", "gene_values": ""}
+
+    meta: list[dict[str, Any]] = []
+    cols: list[np.ndarray] = []
+    for name in names:
+        vals = _column_vector(adata, name)
+        if vals.shape[0] != n_points:
+            raise ValueError(f"expr rows {vals.shape[0]} != n_points {n_points}")
+        norm, vmin, vmax = _normalize_column(vals)
+        meta.append({"name": str(name), "vmin": vmin, "vmax": vmax})
+        cols.append(norm)
+
+    mat = np.column_stack(cols).astype(np.float32, copy=False)
+    n_obs, n_vars = int(mat.shape[0]), int(mat.shape[1])
+    dense_bytes = int(mat.nbytes)
+    if dense_bytes > GENE_MATRIX_WARN_BYTES:
+        warnings.warn(
+            f"LandmarksWidget eager gene matrix is {dense_bytes / (1024 ** 2):.1f} MiB "
+            f"({n_obs} cells × {n_vars} genes). Pass genes= to restrict the catalog; "
+            "sending anyway.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    nnz = int(np.count_nonzero(mat))
+    density = nnz / float(mat.size) if mat.size else 1.0
+    if density < _GENE_SPARSE_DENSITY and nnz > 0:
+        csc = sparse.csc_matrix(mat)
+        return meta, {
+            "gene_format": "csc",
+            "gene_values": "",
+            "gene_csc_indptr": base64.b64encode(
+                np.asarray(csc.indptr, dtype=np.int32).tobytes()
+            ).decode("ascii"),
+            "gene_csc_indices": base64.b64encode(
+                np.asarray(csc.indices, dtype=np.int32).tobytes()
+            ).decode("ascii"),
+            "gene_csc_data": base64.b64encode(
+                np.asarray(csc.data, dtype=np.float32).tobytes()
+            ).decode("ascii"),
+        }
+
+    return meta, {
+        "gene_format": "dense",
+        "gene_values": base64.b64encode(mat.ravel(order="F").tobytes()).decode("ascii"),
+        "gene_csc_indptr": "",
+        "gene_csc_indices": "",
+        "gene_csc_data": "",
+    }

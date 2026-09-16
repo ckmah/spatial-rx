@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { AnyModel } from "@/widgets/landmarks/helpers";
 import { LandmarksView } from "@/widgets/landmarks/LandmarksView";
 
-import { createMockModel } from "./mock-model";
+import { loadFixtureModel } from "./mock-model";
 
 type HarnessTheme = "light" | "dark";
 
@@ -33,11 +34,28 @@ function devShellHeight() {
 export function HarnessShell() {
   const [theme, setTheme] = useState<HarnessTheme>(() => readStoredTheme());
   const [hostEl, setHostEl] = useState<HTMLElement | null>(null);
-  const modelRef = useRef(createMockModel());
+  const [model, setModel] = useState<AnyModel | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     applyHarnessTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadFixtureModel()
+      .then((m) => {
+        if (!cancelled) setModel(m);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : String(err));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="harness-shell">
@@ -62,15 +80,21 @@ export function HarnessShell() {
         </div>
       </div>
       <div className="harness-cell-output">
-        <div ref={setHostEl} className="w-full min-w-0">
-          {hostEl ? (
-            <LandmarksView
-              model={modelRef.current}
-              hostEl={hostEl}
-              defaultHeight={devShellHeight()}
-            />
-          ) : null}
-        </div>
+        {loadError ? (
+          <p className="p-4 text-sm text-destructive">{loadError}</p>
+        ) : (
+          <div ref={setHostEl} className="w-full min-w-0">
+            {hostEl && model ? (
+              <LandmarksView
+                model={model}
+                hostEl={hostEl}
+                defaultHeight={devShellHeight()}
+              />
+            ) : (
+              <p className="p-4 text-sm text-muted-foreground">Loading fixture…</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -23,6 +23,12 @@ import {
   withHood,
   setLandmarks,
 } from "./landmarks_state.js";
+import { buildSpatialIndex, queryNeighbors } from "../../frontend/src/widgets/landmarks/spatial-neighbors.js";
+import {
+  DEFAULT_BIN_SIZE,
+  buildRaster,
+  defaultWindowRadius,
+} from "../../frontend/src/widgets/landmarks/spatial-raster.js";
 
 /** Pinned with frontend package.json (@deck.gl/*@9.1.14); bundled by Vite. */
 const DECK_MODULES = {
@@ -429,10 +435,14 @@ export function mountEngine({ model, host }) {
   let resetZoom = () => { };
   let zoomInterpolator = null;
   let categoryCodes = null;
-  let geneValues = null;
+  let geneValues = null; // dense Float32Array col-major (all catalog genes) or null
+  let geneCsc = null; // { indptr, indices, data, nObs } or null
+  /** Lazily densified CSC → col-major Float32Array (nObs × nGenes), same layout as gene_values. */
+  let geneDenseFromCsc = null;
+  let spatialIndex = null;
   let embeddingValues = null;
-  let knnGraph = null;
-  let radiusGraph = null;
+  let embeddingMatrix = null; // Float32Array row-major n×d raw
+  let embeddingMatrixDim = 0;
   let rasterCache = {
     key: "",
     rows: null,
@@ -443,6 +453,8 @@ export function mountEngine({ model, host }) {
   };
   let rasterScores = null; // Float32Array | null
   let rasterScoreKey = "";
+  let clientRasterKey = "";
+  let rasterRebuildDepth = 0;
   let hoverBinIndex = -1;
   let hoverPointIndex = -1;
 
@@ -453,10 +465,48 @@ export function mountEngine({ model, host }) {
   refreshCategoryCodes();
 
   function refreshGeneValues() {
+    const fmt = model.get("gene_format") || "dense";
+    geneValues = null;
+    geneCsc = null;
+    geneDenseFromCsc = null;
+    if (fmt === "csc") {
+      const indptr = decodeI32Base64(model.get("gene_csc_indptr") || "");
+      const indices = decodeI32Base64(model.get("gene_csc_indices") || "");
+      const data = decodeF32Base64(model.get("gene_csc_data") || "");
+      if (indptr.length) geneCsc = { indptr, indices, data };
+      return;
+    }
     const b64 = model.get("gene_values") || "";
     geneValues = b64 ? decodeF32Base64(b64) : null;
   }
   refreshGeneValues();
+
+  /** One-time CSC → dense for O(1) point lookups (coloring + raster). */
+  function ensureGeneDenseFromCsc() {
+    if (!geneCsc) return null;
+    const { indptr, indices, data } = geneCsc;
+    const nGenes = Math.max(0, (indptr.length | 0) - 1);
+    const n = getPointsData().length;
+    if (!nGenes || !n) {
+      geneDenseFromCsc = new Float32Array(0);
+      return geneDenseFromCsc;
+    }
+    if (geneDenseFromCsc && geneDenseFromCsc.length === n * nGenes) {
+      return geneDenseFromCsc;
+    }
+    const dense = new Float32Array(n * nGenes);
+    for (let g = 0; g < nGenes; g++) {
+      const start = indptr[g] | 0;
+      const end = indptr[g + 1] | 0;
+      const col = g * n;
+      for (let p = start; p < end; p++) {
+        const i = indices[p] | 0;
+        if (i >= 0 && i < n) dense[col + i] = data[p] || 0;
+      }
+    }
+    geneDenseFromCsc = dense;
+    return dense;
+  }
 
   function refreshEmbeddingValues() {
     const b64 = model.get("embedding_values") || "";
@@ -464,26 +514,16 @@ export function mountEngine({ model, host }) {
   }
   refreshEmbeddingValues();
 
-  function refreshNeighborGraph() {
-    knnGraph = decodeNeighborCsr(
-      model.get("neighbor_indptr") || "",
-      model.get("neighbor_indices") || "",
-      model.get("neighbor_distances") || "",
-    );
-    radiusGraph = decodeNeighborCsr(
-      model.get("radius_indptr") || "",
-      model.get("radius_indices") || "",
-      model.get("radius_distances") || "",
-    );
+  function refreshEmbeddingMatrix() {
+    const b64 = model.get("embedding_matrix") || "";
+    embeddingMatrix = b64 ? decodeF32Base64(b64) : null;
+    embeddingMatrixDim = model.get("embedding_matrix_dim") | 0;
   }
-  function decodeNeighborCsr(indptrB64, indicesB64, distancesB64) {
-    const indptr = decodeI32Base64(indptrB64);
-    const indices = decodeI32Base64(indicesB64);
-    const distances = decodeF32Base64(distancesB64);
-    if (!indptr.length) return null;
-    return { indptr, indices, distances };
+  refreshEmbeddingMatrix();
+
+  function refreshSpatialIndex() {
+    spatialIndex = buildSpatialIndex(getPointsData());
   }
-  refreshNeighborGraph();
 
   function isRasterMode() {
     return (model.get("render_mode") || "points") === "raster";
@@ -529,56 +569,210 @@ export function mountEngine({ model, host }) {
     return !(model.get("active_genes") || []).length;
   }
 
-  function refreshRasterArrays() {
-    const rowsB64 = model.get("raster_bin_rows") || "";
-    const colsB64 = model.get("raster_bin_cols") || "";
-    const countsB64 = model.get("raster_bin_counts") || "";
-    const featB64 = model.get("raster_features") || "";
-    const nBins = model.get("raster_n_bins") | 0;
-    const dim = model.get("raster_feature_dim") | 0;
-    const key = [
-      rowsB64.length,
-      colsB64.length,
-      countsB64.length,
-      featB64.length,
-      nBins,
-      dim,
-      model.get("raster_origin_x"),
-      model.get("raster_origin_y"),
-      model.get("raster_bin_size"),
-      model.get("raster_n_cols"),
-      model.get("raster_n_rows"),
-      rowsB64.slice(0, 24),
-      featB64.slice(0, 24),
-    ].join(":");
-    if (key === rasterCache.key) return rasterCache;
-    const rows = rowsB64 ? decodeI32Base64(rowsB64) : new Int32Array(0);
-    const cols = colsB64 ? decodeI32Base64(colsB64) : new Int32Array(0);
-    const counts = countsB64 ? decodeI32Base64(countsB64) : new Int32Array(0);
-    const features = featB64 ? decodeF32Base64(featB64) : new Float32Array(0);
-    const nCols = model.get("raster_n_cols") | 0;
-    const nRows = model.get("raster_n_rows") | 0;
-    const flatToCompact = new Int32Array(Math.max(0, nCols * nRows));
-    flatToCompact.fill(-1);
-    const n = Math.min(nBins, rows.length, cols.length, counts.length);
-    for (let i = 0; i < n; i++) {
-      const flat = (cols[i] | 0) + nCols * (rows[i] | 0);
-      if (flat >= 0 && flat < flatToCompact.length) flatToCompact[flat] = i;
+  function shouldMaintainClientRaster() {
+    return (
+      isRasterMode() ||
+      probeModeOn() ||
+      !!model.get("raster_similarity_enabled") ||
+      (model.get("raster_n_bins") | 0) > 0
+    );
+  }
+
+  /** Build gene feature matrix row-major (n × active_genes). */
+  function geneFeatureMatrix(n) {
+    const active = model.get("active_genes") || [];
+    const dim = active.length | 0;
+    if (!dim) return { features: null, dim: 0, labels: [] };
+    if (!geneValues?.length && !geneCsc) return { features: null, dim: 0, labels: [] };
+    const denseCsc = geneCsc ? ensureGeneDenseFromCsc() : null;
+    const features = new Float32Array(n * dim);
+    for (let g = 0; g < dim; g++) {
+      const gi = geneColumnIndex(active[g]);
+      if (gi < 0) continue;
+      if (denseCsc) {
+        const col = gi * n;
+        for (let i = 0; i < n; i++) {
+          features[i * dim + g] = denseCsc[col + i] || 0;
+        }
+      } else {
+        for (let i = 0; i < n; i++) {
+          features[i * dim + g] = genePackedAt(i, gi) || 0;
+        }
+      }
     }
+    return { features, dim, labels: active.map(String) };
+  }
+
+  /** Active-category codes as Int32Array length n. */
+  function compositionCodeVector(n) {
+    const cols = model.get("category_columns") || [];
+    const ci = activeCategoryIndex();
+    const col = ci >= 0 ? cols[ci] : null;
+    const labels = col?.labels || [];
+    const nLabels = labels.length | 0;
+    if (!nLabels || !categoryCodes) {
+      return { codes: null, nCats: 0, labels: [] };
+    }
+    const codes = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+      codes[i] = categoryCodes[ci * n + i] | 0;
+    }
+    return { codes, nCats: nLabels, labels: labels.map(String) };
+  }
+
+  /**
+   * Client-side bin assignment + windowed multi-d aggregation.
+   * Writes scalar meta onto the model facade; TypedArrays stay in rasterCache.
+   */
+  function ensureClientRaster() {
+    if (!shouldMaintainClientRaster()) {
+      return null;
+    }
+    if (rasterRebuildDepth) return rasterCache.key ? rasterCache : null;
+    const pts = getPointsData();
+    const n = pts.length;
+    let binSize = Number(model.get("raster_bin_size")) || 0;
+    if (!(binSize > 0)) {
+      binSize = DEFAULT_BIN_SIZE;
+      model.set("raster_bin_size", binSize);
+    }
+    let windowRadius = Number(model.get("raster_window_radius"));
+    if (!(windowRadius > 0) || !Number.isFinite(windowRadius)) {
+      windowRadius = defaultWindowRadius(binSize);
+      model.set("raster_window_radius", windowRadius);
+    }
+    const basis = model.get("raster_basis") || "composition";
+    const genes = (model.get("active_genes") || []).join(",");
+    const embKey = model.get("raster_embedding_key") || "";
+    const cat = model.get("active_category") || "";
+    const key = [
+      pointsCache.key,
+      n,
+      binSize,
+      windowRadius,
+      basis,
+      genes,
+      embKey,
+      cat,
+      embeddingMatrix ? embeddingMatrix.length : 0,
+      embeddingMatrixDim,
+      geneValues ? geneValues.length : 0,
+      geneCsc ? geneCsc.indptr.length : 0,
+      categoryCodes ? categoryCodes.length : 0,
+    ].join("|");
+    if (
+      key === clientRasterKey &&
+      rasterCache.features != null &&
+      (rasterCache.nBins | 0) >= 0
+    ) {
+      return rasterCache;
+    }
+
+    rasterRebuildDepth += 1;
+    try {
+      if (!spatialIndex) refreshSpatialIndex();
+
+      let built;
+      if (basis === "genes") {
+        const gm = geneFeatureMatrix(n);
+        built = buildRaster({
+          xy: pts,
+          binSize,
+          windowRadius,
+          tree: spatialIndex,
+          basis: "genes",
+          features: gm.features,
+          featureDim: gm.dim,
+          featureLabels: gm.labels,
+        });
+      } else if (basis === "embedding") {
+        const dim = embeddingMatrixDim | 0;
+        const ok =
+          dim > 0 && embeddingMatrix && embeddingMatrix.length >= n * dim;
+        const labels = ok
+          ? Array.from({ length: dim }, (_, i) => String(i))
+          : [];
+        built = buildRaster({
+          xy: pts,
+          binSize,
+          windowRadius,
+          tree: spatialIndex,
+          basis: "embedding",
+          features: ok ? embeddingMatrix : null,
+          featureDim: ok ? dim : 0,
+          featureLabels: labels,
+        });
+      } else {
+        const comp = compositionCodeVector(n);
+        built = buildRaster({
+          xy: pts,
+          binSize,
+          windowRadius,
+          tree: spatialIndex,
+          basis: "composition",
+          codes: comp.codes,
+          nCats: comp.nCats,
+          catLabels: comp.labels,
+        });
+      }
+
+      // Publish cache before model meta so nested onChange sees a complete build.
+      rasterCache = {
+        key,
+        rows: built.rows,
+        cols: built.cols,
+        counts: built.counts,
+        features: built.features,
+        flatToCompact: built.flatToCompact,
+        nBins: built.n_bins,
+        dim: built.feature_dim,
+        normed: null,
+      };
+      clientRasterKey = key;
+      rasterScores = null;
+      rasterScoreKey = "";
+      rasterImageCache = { key: "", image: null, bounds: null };
+      pointBinCache = { key: "", bins: null };
+
+      if ((model.get("raster_query_bin") ?? -1) >= 0) {
+        model.set("raster_query_bin", -1);
+      }
+      model.set("raster_origin_x", built.origin_x);
+      model.set("raster_origin_y", built.origin_y);
+      model.set("raster_bin_size", built.bin_size);
+      model.set("raster_window_radius", built.window_radius);
+      model.set("raster_n_cols", built.n_cols);
+      model.set("raster_n_rows", built.n_rows);
+      model.set("raster_n_bins", built.n_bins);
+      model.set("raster_feature_dim", built.feature_dim);
+      model.set("raster_feature_labels", built.feature_labels);
+      model.set("raster_status", "ready");
+      return rasterCache;
+    } catch (err) {
+      model.set("raster_status", `error:${err?.message || err}`);
+      clientRasterKey = "";
+      return null;
+    } finally {
+      rasterRebuildDepth -= 1;
+    }
+  }
+
+  function refreshRasterArrays() {
+    const built = ensureClientRaster();
+    if (built) return built;
+    if (rasterCache.key === "empty") return rasterCache;
     rasterCache = {
-      key,
-      rows,
-      cols,
-      counts,
-      features,
-      flatToCompact,
-      nBins: n,
-      dim,
+      key: "empty",
+      rows: new Int32Array(0),
+      cols: new Int32Array(0),
+      counts: new Int32Array(0),
+      features: new Float32Array(0),
+      flatToCompact: new Int32Array(0),
+      nBins: 0,
+      dim: 0,
       normed: null,
     };
-    rasterScores = null;
-    rasterScoreKey = "";
-    rasterImageCache = { key: "", image: null, bounds: null };
+    clientRasterKey = "";
     return rasterCache;
   }
 
@@ -869,6 +1063,7 @@ export function mountEngine({ model, host }) {
   /**
    * Cursor-aligned raster probe: nearest packed (nonempty) bin center within R.
    * Packed bins are nonempty by construction — no grid-cell-under-cursor snap.
+   * Searches only grid cells overlapping the disk (not all nBins).
    */
   function nearestNonemptyBinWithinRadius(x, y) {
     const cache = refreshRasterArrays();
@@ -877,22 +1072,36 @@ export function mountEngine({ model, host }) {
     const size = Number(model.get("raster_bin_size")) || 0;
     if (!(size > 0)) return -1;
     const R = probeWindowRadius();
+    if (!(R > 0)) return -1;
     const R2 = R * R;
     const ox = Number(model.get("raster_origin_x")) || 0;
     const oy = Number(model.get("raster_origin_y")) || 0;
-    const cols = cache.cols;
-    const rows = cache.rows;
+    const nCols = model.get("raster_n_cols") | 0;
+    const nRows = model.get("raster_n_rows") | 0;
+    const flatToCompact = cache.flatToCompact;
+    if (!flatToCompact || nCols <= 0 || nRows <= 0) return -1;
+    const span = Math.ceil(R / size) + 1;
+    const c0 = Math.floor((x - ox) / size);
+    const r0 = Math.floor((y - oy) / size);
     let best = -1;
     let bestD = Infinity;
-    for (let i = 0; i < n; i++) {
-      const cx = ox + ((cols[i] | 0) + 0.5) * size;
-      const cy = oy + ((rows[i] | 0) + 0.5) * size;
-      const dx = cx - x;
-      const dy = cy - y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 <= R2 && d2 < bestD) {
-        bestD = d2;
-        best = i;
+    for (let dc = -span; dc <= span; dc++) {
+      const col = c0 + dc;
+      if (col < 0 || col >= nCols) continue;
+      for (let dr = -span; dr <= span; dr++) {
+        const row = r0 + dr;
+        if (row < 0 || row >= nRows) continue;
+        const compact = flatToCompact[col + nCols * row];
+        if (compact == null || compact < 0) continue;
+        const cx = ox + (col + 0.5) * size;
+        const cy = oy + (row + 0.5) * size;
+        const dx = cx - x;
+        const dy = cy - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 <= R2 && d2 < bestD) {
+          bestD = d2;
+          best = compact | 0;
+        }
       }
     }
     return best;
@@ -994,28 +1203,38 @@ export function mountEngine({ model, host }) {
   /** Row-L2-normalized point features for fallback cosine. */
   let pointNormCache = { key: "", features: null, dim: 0, n: 0 };
 
+  let rawPointFeatCache = { key: "", features: null, dim: 0, n: 0 };
+
   /** Per-cell observation matrix for the active raster_basis / color signal. */
   function rawPointFeatureMatrix(n) {
     const basis = model.get("raster_basis") || "composition";
     const colorBy = model.get("color_by") || "categorical";
+    const key = [
+      pointsCache.key,
+      n,
+      basis,
+      colorBy,
+      (model.get("active_genes") || []).join(","),
+      model.get("raster_embedding_key") || "",
+      model.get("active_category") || "",
+      geneValues ? geneValues.length : 0,
+      embeddingValues ? embeddingValues.length : 0,
+      categoryCodes ? categoryCodes.length : 0,
+    ].join("|");
+    if (rawPointFeatCache.key === key && rawPointFeatCache.n === n) {
+      return rawPointFeatCache;
+    }
     if (basis === "genes" || colorBy === "continuous") {
-      const active = model.get("active_genes") || [];
-      const dim = active.length | 0;
-      if (!dim || !geneValues || !geneValues.length) return { features: null, dim: 0 };
-      const features = new Float32Array(n * dim);
-      for (let g = 0; g < dim; g++) {
-        const off = g * n;
-        for (let i = 0; i < n; i++) {
-          features[i * dim + g] = geneValues[off + i] || 0;
-        }
-      }
-      return { features, dim };
+      const gm = geneFeatureMatrix(n);
+      rawPointFeatCache = { key, features: gm.features, dim: gm.dim, n };
+      return rawPointFeatCache;
     }
     if (basis === "embedding" || colorBy === "embedding") {
       const labels = model.get("embedding_channel_labels") || [];
       const dim = labels.length | 0;
       if (!dim || !embeddingValues || embeddingValues.length < n * dim) {
-        return { features: null, dim: 0 };
+        rawPointFeatCache = { key, features: null, dim: 0, n };
+        return rawPointFeatCache;
       }
       const features = new Float32Array(n * dim);
       for (let c = 0; c < dim; c++) {
@@ -1024,20 +1243,25 @@ export function mountEngine({ model, host }) {
           features[i * dim + c] = embeddingValues[off + i] || 0;
         }
       }
-      return { features, dim };
+      rawPointFeatCache = { key, features, dim, n };
+      return rawPointFeatCache;
     }
     // Composition: one-hot of active category codes.
     const cols = model.get("category_columns") || [];
     const ci = activeCategoryIndex();
     const col = ci >= 0 ? cols[ci] : null;
     const nLabels = (col?.labels || []).length | 0;
-    if (!nLabels || !categoryCodes) return { features: null, dim: 0 };
+    if (!nLabels || !categoryCodes) {
+      rawPointFeatCache = { key, features: null, dim: 0, n };
+      return rawPointFeatCache;
+    }
     const features = new Float32Array(n * nLabels);
     for (let i = 0; i < n; i++) {
       const code = categoryCodes[ci * n + i] | 0;
       if (code >= 0 && code < nLabels) features[i * nLabels + code] = 1;
     }
-    return { features, dim: nLabels };
+    rawPointFeatCache = { key, features, dim: nLabels, n };
+    return rawPointFeatCache;
   }
 
   /** Window-mean features around each point (radius graph, distance ≤ window). */
@@ -1610,21 +1834,18 @@ export function mountEngine({ model, host }) {
     return bins;
   }
 
-  function similarityRgbaForPoint(i, opacity) {
-    // Bin-backed points probe: query = nearest nonempty bin within R; color by
-    // that bin's cosine field mapped through each point's home bin.
-    if (binBackedPointsProbeOn()) {
+  /**
+   * Point→score vector for the active probe query. Computed once per scrub /
+   * pin — never from inside per-point getFillColor (that was O(n²) on fallback).
+   */
+  function activePointProbeScores() {
+    if (binBackedPointsProbeOn() || rasterSimilarityOn()) {
       const queryIdx = activeQueryBin();
       if (queryIdx < 0) return null;
       const scores = cosineScoresForQuery(queryIdx);
       if (!scores) return null;
-      const bins = pointBinIndices();
-      const bin = bins[i] | 0;
-      if (bin < 0 || bin >= scores.length) return null;
-      const [r, g, b] = sampleSimilarityColor(scores[bin]);
-      return [r, g, b, Math.round(Math.max(0, Math.min(1, opacity)) * 255)];
+      return { mode: "bin", scores, bins: pointBinIndices() };
     }
-    // Fallback points probe (no packed bins): quantized disk mean + point cosine.
     if (pointSimilarityOn()) {
       const world = activeProbeWorld();
       if (!world) return null;
@@ -1632,19 +1853,25 @@ export function mountEngine({ model, host }) {
       const mean = meanRawFeaturesInDisk(q.x, q.y);
       if (!mean) return null;
       const scores = cosineScoresForFeatureVector(mean.vector, mean.dim, q.x, q.y);
-      if (!scores || i < 0 || i >= scores.length) return null;
-      const [r, g, b] = sampleSimilarityColor(scores[i]);
-      return [r, g, b, Math.round(Math.max(0, Math.min(1, opacity)) * 255)];
+      if (!scores) return null;
+      return { mode: "point", scores, bins: null };
     }
-    if (!rasterSimilarityOn()) return null;
-    const queryIdx = activeQueryBin();
-    if (queryIdx < 0) return null;
-    const scores = cosineScoresForQuery(queryIdx);
-    if (!scores) return null;
-    const bins = pointBinIndices();
-    const bin = bins[i] | 0;
-    if (bin < 0 || bin >= scores.length) return null;
-    const [r, g, b] = sampleSimilarityColor(scores[bin]);
+    return null;
+  }
+
+  function similarityRgbaForPoint(i, opacity, probeField) {
+    const field = probeField || activePointProbeScores();
+    if (!field || !field.scores) return null;
+    let t;
+    if (field.mode === "bin") {
+      const bin = field.bins[i] | 0;
+      if (bin < 0 || bin >= field.scores.length) return null;
+      t = field.scores[bin];
+    } else {
+      if (i < 0 || i >= field.scores.length) return null;
+      t = field.scores[i];
+    }
+    const [r, g, b] = sampleSimilarityColor(t);
     return [r, g, b, Math.round(Math.max(0, Math.min(1, opacity)) * 255)];
   }
 
@@ -1798,7 +2025,8 @@ export function mountEngine({ model, host }) {
         id: "raster-bins",
         image: baked.image,
         bounds: baked.bounds,
-        pickable: probeModeOn(),
+        // Probe click pins via unproject, not GPU pick.
+        pickable: false,
         textureParameters: {
           minFilter: "nearest",
           magFilter: "nearest",
@@ -1813,11 +2041,13 @@ export function mountEngine({ model, host }) {
     ];
   }
 
-  /** True once raster mode has a drawable bitmap (not computing / empty). */
+  /** True once raster mode has a drawable bitmap (not computing / empty grid). */
   function rasterBitmapReady() {
     if (!isRasterMode()) return false;
     if ((model.get("raster_status") || "") === "computing") return false;
-    if (!hasRasterFeatures()) return false;
+    // Bins alone are enough — empty-gene raster is a grey field and must still
+    // hide the point layer.
+    if ((model.get("raster_n_bins") | 0) <= 0) return false;
     return !!buildRasterTexture()?.image;
   }
 
@@ -1845,12 +2075,41 @@ export function mountEngine({ model, host }) {
     return genes.find((g) => g.name === geneName) || null;
   }
 
-  function geneValueAt(i, geneName) {
-    const active = model.get("active_genes") || [];
-    const gi = active.indexOf(geneName);
+  function geneColumnIndex(geneName) {
+    const genes = model.get("gene_columns") || [];
+    return genes.findIndex((g) => g.name === geneName);
+  }
+
+  /** Dense [0,1] value for point i, catalog gene column gi. */
+  function genePackedAt(i, gi) {
     const pts = getPointsData();
-    if (gi < 0 || !geneValues || !geneValues.length || !pts.length) return null;
-    return geneValues[gi * pts.length + i];
+    const n = pts.length;
+    if (gi < 0 || i < 0 || i >= n) return null;
+    if (geneCsc) {
+      const dense = ensureGeneDenseFromCsc();
+      if (!dense) return 0;
+      const nGenes = Math.max(0, (geneCsc.indptr.length | 0) - 1);
+      if (gi >= nGenes) return null;
+      return dense[gi * n + i] || 0;
+    }
+    if (!geneValues || !geneValues.length) return null;
+    const nGenes = (model.get("gene_columns") || []).length || 0;
+    if (!nGenes || geneValues.length < n * nGenes) {
+      // Legacy layout: columns = active_genes only.
+      const active = model.get("active_genes") || [];
+      if (geneValues.length === n * active.length) {
+        const ai = active.indexOf((model.get("gene_columns") || [])[gi]?.name);
+        if (ai < 0) return null;
+        return geneValues[ai * n + i];
+      }
+    }
+    return geneValues[gi * n + i];
+  }
+
+  function geneValueAt(i, geneName) {
+    const gi = geneColumnIndex(geneName);
+    if (gi < 0) return null;
+    return genePackedAt(i, gi);
   }
 
   /** Data-space gene value (pre-log1p) from packed [0, 1]. */
@@ -2167,9 +2426,9 @@ export function mountEngine({ model, host }) {
     };
   }
 
-  function fillColorForPoint(d) {
+  function fillColorForPoint(d, probeField) {
     const opacity = POINT_OPACITY;
-    const sim = similarityRgbaForPoint(d.i, opacity);
+    const sim = similarityRgbaForPoint(d.i, opacity, probeField);
     if (sim) {
       if (!pointRoleMode || !pointRoles) return sim;
       const role = pointRoles[d.i] || 0;
@@ -2318,6 +2577,7 @@ export function mountEngine({ model, host }) {
       };
     }
     pointsCache = { key, data };
+    spatialIndex = buildSpatialIndex(data);
     return data;
   }
 
@@ -2350,7 +2610,10 @@ export function mountEngine({ model, host }) {
       model.get("gene_log1p"),
       model.get("embedding_values"),
       model.get("embedding_channel_labels"),
-      model.get("raster_features"),
+      model.get("embedding_matrix"),
+      clientRasterKey,
+      model.get("raster_n_bins"),
+      model.get("raster_feature_dim"),
       model.get("raster_query_bin"),
       model.get("raster_similarity_enabled"),
       model.get("raster_embedding_dims"),
@@ -2364,16 +2627,23 @@ export function mountEngine({ model, host }) {
       currentMode,
       ...roleTrigger,
     ];
-    const pointerHoverPick = currentMode === "pointer" || probeModeOn();
+    // Probe scrub uses DOM mousemove + unproject — GPU picking here only
+    // stalls hover (20k+ points). Pointer mode still picks for landmark tips.
+    const pointerHoverPick = currentMode === "pointer";
     const pickData = pointerHoverPick
       ? data.map((d) => ({ ...d, kind: "molecule", index: d.i }))
       : data;
+    // Hoist probe field once; getFillColor must stay O(1) per point.
+    const probeField =
+      pointSimilarityOn() || rasterSimilarityOn()
+        ? activePointProbeScores()
+        : null;
     return [
       new ScatterplotLayer({
         id: "landmarks-points",
         data: pickData,
         getPosition: (d) => [d.x, d.y, 0],
-        getFillColor: (d) => fillColorForPoint(d),
+        getFillColor: (d) => fillColorForPoint(d, probeField),
         getRadius: (d) => radiusForPoint(d),
         radiusUnits: "common",
         radiusMinPixels: 1.5,
@@ -2802,44 +3072,8 @@ export function mountEngine({ model, host }) {
   }
 
   function lookupGraphNeighbors(graph, pts, seedIdxs, opts) {
-    const edges = [];
-    const neighbors = [];
-    if (!graph || !seedIdxs.length) return { edges, neighbors };
-    const mode = opts?.mode || "knn";
-    const takeK = Math.max(0, opts?.k | 0);
-    const radius = Number(opts?.radius) || 0;
-    // Radius mode uses outlined disks, not edge spaghetti — skip path building.
-    const wantEdges = opts?.edges === true || (opts?.edges !== false && mode === "knn");
-    if (mode === "knn" && takeK <= 0) return { edges, neighbors };
-    if (mode === "radius" && !(radius > 0)) return { edges, neighbors };
-    const { indptr, indices, distances } = graph;
-    const seen = new Set();
-    for (const si of seedIdxs) {
-      const start = indptr[si] | 0;
-      const end = indptr[si + 1] | 0;
-      const s = pts[si];
-      const stop = mode === "knn" ? Math.min(end, start + takeK) : end;
-      for (let p = start; p < stop; p++) {
-        if (mode === "radius") {
-          const d = distances && distances.length ? distances[p] : 0;
-          if (d > radius) break;
-        }
-        const j = indices[p] | 0;
-        if (!seen.has(j)) {
-          seen.add(j);
-          neighbors.push(j);
-        }
-        if (wantEdges) {
-          edges.push({
-            path: [
-              [s.x, s.y],
-              [pts[j].x, pts[j].y],
-            ],
-          });
-        }
-      }
-    }
-    return { edges, neighbors };
+    // graph unused — client KD-tree replaces CSR sync.
+    return queryNeighbors(spatialIndex || buildSpatialIndex(pts), pts, seedIdxs, opts);
   }
 
   function buildNeighborhoodLayers() {
@@ -3705,6 +3939,51 @@ export function mountEngine({ model, host }) {
     return [];
   }
 
+  /** Client-side promote: freeze seed∪neighbors into a points selection. */
+  function promoteNeighborhoodClient() {
+    const focus = cellLayerFocus();
+    if (!focus) return;
+    const hood = neighborhoodFor(focus);
+    if (!hood || hood.neighborhood === "off") return;
+    const pts = getPointsData();
+    const seeds = seedIndicesFor(focus);
+    if (!seeds.length) return;
+    if (!spatialIndex) refreshSpatialIndex();
+    const k = Math.min(Number(hood.neighborhood_k) || 12, maxNeighborhoodK());
+    let r = Number(hood.neighborhood_radius) || 0;
+    const rMax = maxNeighborhoodRadius();
+    if (rMax > 0) r = Math.min(r, rMax);
+    const result = queryNeighbors(spatialIndex, pts, seeds, {
+      mode: hood.neighborhood,
+      k,
+      radius: r,
+      edges: false,
+    });
+    const seen = new Set(seeds);
+    for (const j of result.neighbors) seen.add(j);
+    const point_indices = Array.from(seen).sort((a, b) => a - b);
+    if (!point_indices.length) return;
+    const selections = [...(model.get("selections") || [])];
+    const label =
+      focus.kind === "type"
+        ? String((model.get("legend_labels") || [])[focus.index] || "type")
+        : String(selections[focus.index]?.id || "selection");
+    selections.push(
+      withHood({
+        id: nextSelectionId(selections),
+        type: "points",
+        point_indices,
+        neighborhood: "off",
+        label: `neighborhood:${label}`,
+      }),
+    );
+    model.set("selections", selections);
+    model.set("selected_kind", "selection");
+    model.set("selected_index", selections.length - 1);
+    model.save_changes();
+    setDeckLayers();
+  }
+
   function pointInRing(p, ring) {
     let inside = false;
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -3889,12 +4168,13 @@ export function mountEngine({ model, host }) {
       hoodRadiusGradient = null;
       return;
     }
-    const graph = hood.neighborhood === "radius" ? radiusGraph : knnGraph;
+    const graph = null;
     if (hood.neighborhood === "radius" || hood.neighborhood === "knn") {
       const k = Math.min(Number(hood.neighborhood_k) || 12, maxNeighborhoodK());
       let r = Number(hood.neighborhood_radius) || 0;
       const rMax = maxNeighborhoodRadius();
       if (rMax > 0) r = Math.min(r, rMax);
+      if (!spatialIndex) refreshSpatialIndex();
       const result = lookupGraphNeighbors(graph, pts, seeds, {
         mode: hood.neighborhood,
         k,
@@ -4828,12 +5108,16 @@ export function mountEngine({ model, host }) {
       hoverPointIndex = -1;
       pinnedPointIndex = -1;
     }
+    clientRasterKey = "";
     resetDraft();
     syncInteractionMode();
     setDeckLayers();
   });
   onChange("points_data", () => {
     pointsCache = { key: "", data: [] };
+    geneDenseFromCsc = null;
+    refreshSpatialIndex();
+    clientRasterKey = "";
     if (!deckgl) {
       initDeck();
     } else {
@@ -4853,11 +5137,20 @@ export function mountEngine({ model, host }) {
   });
   onChange("category_codes", () => {
     refreshCategoryCodes();
+    clientRasterKey = "";
     setDeckLayers();
   });
   onChange("gene_values", () => {
     refreshGeneValues();
+    clientRasterKey = "";
     setDeckLayers();
+  });
+  ["gene_format", "gene_csc_indptr", "gene_csc_indices", "gene_csc_data"].forEach((k) => {
+    onChange(k, () => {
+      refreshGeneValues();
+      clientRasterKey = "";
+      setDeckLayers();
+    });
   });
   onChange("embedding_values", () => {
     refreshEmbeddingValues();
@@ -4868,21 +5161,32 @@ export function mountEngine({ model, host }) {
     setDeckLayers();
     updatePointLegend();
   });
-  ["neighbor_indptr", "neighbor_indices", "neighbor_distances", "radius_indptr", "radius_indices", "radius_distances"].forEach((k) => {
-    onChange(k, () => {
-      refreshNeighborGraph();
-      if (deckgl) setDeckLayers();
-    });
+  onChange("embedding_matrix", () => {
+    refreshEmbeddingMatrix();
+    clientRasterKey = "";
+    setDeckLayers();
+  });
+  onChange("embedding_matrix_dim", () => {
+    refreshEmbeddingMatrix();
+    clientRasterKey = "";
+    setDeckLayers();
+  });
+  onChange("promote_tick", () => {
+    promoteNeighborhoodClient();
   });
   ["category_columns", "active_category"].forEach((k) => {
     onChange(k, () => {
+      clientRasterKey = "";
       updateUI();
       setDeckLayers();
     });
   });
   ["gene_columns", "active_genes", "gene_scale_mode", "gene_log1p", "gene_expression_logged"].forEach((k) => {
     onChange(k, () => {
-      if (k === "active_genes" && genesProbeHoverInert()) clearProbeHover();
+      if (k === "active_genes") {
+        clientRasterKey = "";
+        if (genesProbeHoverInert()) clearProbeHover();
+      }
       updateUI();
       updatePointLegend();
       setDeckLayers();
@@ -4890,10 +5194,6 @@ export function mountEngine({ model, host }) {
   });
   [
     "render_mode",
-    "raster_bin_rows",
-    "raster_bin_cols",
-    "raster_bin_counts",
-    "raster_features",
     "raster_feature_dim",
     "raster_n_bins",
     "raster_n_cols",
@@ -4912,20 +5212,18 @@ export function mountEngine({ model, host }) {
     "raster_feature_labels",
   ].forEach((k) => {
     onChange(k, () => {
+      // Ignore meta writes from ensureClientRaster (depth > 0); those must not
+      // wipe clientRasterKey or we rebuild on every layer pass.
       if (
-        k === "raster_bin_rows" ||
-        k === "raster_bin_cols" ||
-        k === "raster_bin_counts" ||
-        k === "raster_features" ||
-        k === "raster_feature_dim" ||
-        k === "raster_n_bins" ||
-        k === "raster_n_cols" ||
-        k === "raster_n_rows" ||
-        k === "raster_origin_x" ||
-        k === "raster_origin_y" ||
-        k === "raster_bin_size"
+        !rasterRebuildDepth &&
+        (k === "render_mode" ||
+          k === "raster_bin_size" ||
+          k === "raster_window_radius" ||
+          k === "raster_basis" ||
+          k === "raster_embedding_key" ||
+          k === "raster_similarity_enabled")
       ) {
-        rasterCache.key = "";
+        clientRasterKey = "";
         rasterScores = null;
         rasterScoreKey = "";
         rasterImageCache = { key: "", image: null, bounds: null };
@@ -4937,6 +5235,7 @@ export function mountEngine({ model, host }) {
         pendingViewPulse = true;
         if (genesProbeHoverInert()) clearProbeHover();
       }
+      if (rasterRebuildDepth) return;
       if (deckgl) setDeckLayers();
       updatePointLegend();
     });

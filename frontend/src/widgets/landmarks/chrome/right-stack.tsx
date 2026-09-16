@@ -58,48 +58,56 @@ export function RightChromeStack({
     <div
       className={cn(
         EMBEDDED_PANEL,
-        "landmarks__explore-panel flex max-h-full w-full flex-col",
+        "landmarks__explore-panel flex h-full min-h-0 w-full flex-1 flex-col",
       )}
       data-testid="info-explore-stack"
     >
       <div
         className={cn(
-          "landmarks__chrome-stack landmarks-float-clip flex max-h-full w-full flex-col overflow-hidden",
-          // Top inset on the stack; matching bottom inset is a shrink-0 spacer
-          // so it never steals height from the controls scrollport.
-          "px-2.5 pt-1.5",
+          "landmarks__chrome-stack landmarks-float-clip flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden",
+          // Top inset on the stack; bottom inset is a shrink-0 spacer below the
+          // scrollport so it never steals height from the controls.
+          "pt-1.5",
         )}
       >
         <Tabs
           value={colorBy}
           onValueChange={onColorBy}
-          className="flex min-h-0 flex-col gap-2"
+          className="flex min-h-0 flex-1 flex-col gap-2"
           data-testid="explore-color-by"
         >
-          <SoftFloatSlidingTabsList value={colorBy} aria-label="Color">
-            {(lm.category_columns?.length ?? 0) > 0 ? (
-              <TabsTrigger value="categories" className={PILL_TABS_TRIGGER}>
-                category
+          <div className="shrink-0 px-2.5">
+            <SoftFloatSlidingTabsList value={colorBy} aria-label="Color">
+              {(lm.category_columns?.length ?? 0) > 0 ? (
+                <TabsTrigger value="categories" className={PILL_TABS_TRIGGER}>
+                  category
+                </TabsTrigger>
+              ) : null}
+              <TabsTrigger value="genes" className={PILL_TABS_TRIGGER}>
+                genes
               </TabsTrigger>
-            ) : null}
-            <TabsTrigger value="genes" className={PILL_TABS_TRIGGER}>
-              genes
-            </TabsTrigger>
-            <TabsTrigger value="embedding" className={PILL_TABS_TRIGGER}>
-              embed
-            </TabsTrigger>
-          </SoftFloatSlidingTabsList>
+              <TabsTrigger value="embedding" className={PILL_TABS_TRIGGER}>
+                embed
+              </TabsTrigger>
+            </SoftFloatSlidingTabsList>
+          </div>
           <span className="sr-only absolute" data-testid="explore-coloring-by">
             {detail}
           </span>
 
-          <div className="shrink-0">
+          <div className="shrink-0 px-2.5">
             <InfoPanel lm={lm} engine={engine} embedded bare />
           </div>
 
-          <RasterSection lm={lm} />
+          <div className="shrink-0 px-2.5">
+            <RasterSection lm={lm} />
+          </div>
 
-          <div className="w-full shrink-0" data-testid="explore-panel">
+          {/* Match left Layers: overlay-scroll owns inline pad + scrollbar lane. */}
+          <div
+            className="landmarks-overlay-scroll min-h-0 flex-1"
+            data-testid="explore-panel"
+          >
             <div data-testid="explore-color-controls">
               <TabsContent value="categories" className="m-0 flex-none">
                 <CategoriesControls lm={lm} signal={colorBy} />

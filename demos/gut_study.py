@@ -170,20 +170,6 @@ def _(adata, sc):
 
 
 @app.cell
-def _(adata, np, sq):
-    # Spatial neighbor graphs for the widget (k-max / radius-max supersets).
-    xy = np.asarray(adata.obsm["spatial"], dtype=float)
-    radius = 0.05 * float(np.hypot(np.ptp(xy[:, 0]), np.ptp(xy[:, 1])))
-    sq.gr.spatial_neighbors(
-        adata, coord_type="generic", n_neighs=64, key_added="spatial_knn"
-    )
-    sq.gr.spatial_neighbors(
-        adata, coord_type="generic", radius=radius, key_added="spatial_radius"
-    )
-    return
-
-
-@app.cell
 def _():
     RECIPE_SPECS = [
         {

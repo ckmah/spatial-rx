@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useNotebookTheme } from "@/hooks/use-notebook-theme";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ import {
   LANDMARK_MODE_IDS,
   type AnyModel,
 } from "./helpers";
+import { wrapLandmarksModel } from "./model";
 import { useLandmarksModel } from "./use-landmarks-model";
 import { useWidgetFullscreen } from "./use-widget-fullscreen";
 
@@ -44,7 +45,8 @@ export function LandmarksView({
   defaultHeight?: number;
 }) {
   const dark = useNotebookTheme(hostEl.parentElement);
-  const lm = useLandmarksModel(model);
+  const facade = useMemo(() => wrapLandmarksModel(model), [model]);
+  const lm = useLandmarksModel(facade);
   const plotHostRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const [rootEl, setRootEl] = useState<HTMLElement | null>(null);
@@ -110,7 +112,7 @@ export function LandmarksView({
   useEffect(() => {
     const host = plotHostRef.current;
     if (!host) return;
-    const engine = mountEngine({ model, host });
+    const engine = mountEngine({ model: facade, host });
     engineRef.current = engine;
     setEngine(engine);
     return () => {
@@ -119,7 +121,7 @@ export function LandmarksView({
       setEngine(null);
     };
     // Remount when Vite HMR replaces mountEngine (landmarks.js changes).
-  }, [model, mountEngine]);
+  }, [facade, mountEngine]);
 
   const onResizePointerDown = useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -224,7 +226,10 @@ export function LandmarksView({
             onWheel={(e) => e.stopPropagation()}
           >
             <div
-              className={cn(FLOAT_PANEL, "flex h-full min-h-0 flex-1 flex-col")}
+              className={cn(
+                FLOAT_PANEL,
+                "flex h-full min-h-0 max-h-full flex-1 flex-col",
+              )}
               data-testid="info-explore-stack"
             >
               <RightChromeStack lm={lm} engine={engine} />
@@ -246,7 +251,10 @@ export function LandmarksView({
               onWheel={(e) => e.stopPropagation()}
             >
               <div
-                className={cn(FLOAT_PANEL, "flex max-h-full w-full flex-col")}
+                className={cn(
+                  FLOAT_PANEL,
+                  "flex h-full min-h-0 max-h-full w-full flex-1 flex-col",
+                )}
                 data-testid="info-explore-stack"
               >
                 <RightChromeStack lm={lm} engine={engine} />

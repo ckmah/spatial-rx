@@ -1,4 +1,4 @@
-/** Shared traitlet write recipes for the landmarks widget (engine + React chrome). */
+/** Shared write recipes for the landmarks widget (engine + React chrome). */
 
 export const DEFAULT_HOOD = {
   neighborhood: "off",
@@ -13,9 +13,13 @@ export function withHood(item) {
   return { ...DEFAULT_HOOD, ...item };
 }
 
-/** Replace landmarks on the model. */
+/** Replace landmarks on the model (notebook sync). */
 export function setLandmarks(model, landmarks) {
   model.set("landmarks", landmarks);
+}
+
+function flushNotebook(model) {
+  model.save_changes();
 }
 
 export function applyActiveCategory(model, col) {
@@ -26,7 +30,6 @@ export function applyActiveCategory(model, col) {
   model.set("legend_title", col.name || "");
   model.set("color_by", "categorical");
   model.set("raster_basis", "composition");
-  model.save_changes();
 }
 
 export function setActiveGenes(model, names) {
@@ -40,11 +43,9 @@ export function setActiveGenes(model, names) {
   }
   model.set("active_genes", next);
   if (!next.length) {
-    // Stay in the genes observation family — empty selection, not categories.
     model.set("color_by", "continuous");
     model.set("raster_basis", "genes");
     model.set("legend_title", "");
-    model.save_changes();
     return;
   }
   model.set("color_by", "continuous");
@@ -57,22 +58,18 @@ export function setActiveGenes(model, names) {
     model.set("legend_title", next.join(", "));
   }
   model.set("raster_basis", "genes");
-  model.save_changes();
 }
 
 export function setGeneScaleMode(model, mode) {
   model.set("gene_scale_mode", mode === "shared" ? "shared" : "independent");
-  model.save_changes();
 }
 
 export function setGeneLog1p(model, enabled) {
   if (model.get("gene_expression_logged")) {
     model.set("gene_log1p", false);
-    model.save_changes();
     return;
   }
   model.set("gene_log1p", !!enabled);
-  model.save_changes();
 }
 
 export function setRenderMode(model, mode) {
@@ -86,7 +83,6 @@ export function setRenderMode(model, mode) {
   const embedIntent =
     (basis === "embedding" || colorBy === "embedding") && !!embKey;
   if (next === "raster") {
-    // Keep the active observation when flipping geometry, including empty genes.
     if (geneIntent) {
       model.set("raster_basis", "genes");
       model.set("color_by", "continuous");
@@ -97,36 +93,31 @@ export function setRenderMode(model, mode) {
       model.set("raster_basis", "composition");
       model.set("color_by", "categorical");
     }
+  } else if (geneIntent) {
+    model.set("color_by", "continuous");
+  } else if (basis === "embedding" || colorBy === "embedding") {
+    model.set("color_by", "embedding");
   } else {
-    // Points: keep the same observation family that raster was showing.
-    if (geneIntent) {
-      model.set("color_by", "continuous");
-    } else if (basis === "embedding" || colorBy === "embedding") {
-      model.set("color_by", "embedding");
-    } else {
-      model.set("color_by", "categorical");
-    }
+    model.set("color_by", "categorical");
   }
   model.set("render_mode", next);
   if (next === "raster" && model.get("selected_kind") === "type") {
     model.set("selected_kind", "");
     model.set("selected_index", -1);
+    flushNotebook(model);
   }
-  model.save_changes();
 }
 
 export function setRasterBinSize(model, size) {
   const v = Number(size);
   if (!Number.isFinite(v) || v <= 0) return;
   model.set("raster_bin_size", v);
-  model.save_changes();
 }
 
 export function setRasterBasis(model, basis) {
   const allowed = new Set(["genes", "embedding", "composition"]);
   if (!allowed.has(basis)) return;
   model.set("raster_basis", basis);
-  // Align point color_by with the exclusive observation signal.
   if (basis === "genes") {
     model.set("color_by", "continuous");
   } else if (basis === "embedding") {
@@ -135,16 +126,13 @@ export function setRasterBasis(model, basis) {
   } else if (basis === "composition") {
     model.set("color_by", "categorical");
   }
-  model.save_changes();
 }
 
 export function setRasterEmbeddingKey(model, key) {
   model.set("raster_embedding_key", String(key || ""));
-  // Embedding is an exclusive coloring signal — drop gene continuous color.
   model.set("active_genes", []);
   model.set("color_by", "embedding");
   model.set("raster_basis", "embedding");
-  model.save_changes();
 }
 
 /** Empty array = all embedding dims. */
@@ -152,7 +140,6 @@ export function setRasterEmbeddingDims(model, dims) {
   const arr = Array.isArray(dims)
     ? dims.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0)
     : [];
-  // Dedupe, keep order.
   const seen = new Set();
   const ordered = [];
   for (const d of arr) {
@@ -162,19 +149,16 @@ export function setRasterEmbeddingDims(model, dims) {
     }
   }
   model.set("raster_embedding_dims", ordered);
-  model.save_changes();
 }
 
 export function setRasterThreshold(model, value) {
   const v = Number(value);
   if (!Number.isFinite(v)) return;
   model.set("raster_threshold", Math.max(0, Math.min(1, v)));
-  model.save_changes();
 }
 
 export function clearRasterQuery(model) {
   model.set("raster_query_bin", -1);
-  model.save_changes();
 }
 
 export function neighborhoodFor(
@@ -217,7 +201,7 @@ export function patchNeighborhood(
         i === index ? { ...DEFAULT_HOOD, ...sel, ...patch } : sel,
       ),
     );
-    model.save_changes();
+    flushNotebook(model);
     return;
   }
   if (kind !== "type") return;
@@ -237,18 +221,17 @@ export function patchNeighborhood(
   if (i >= 0) rows[i] = nextRow;
   else rows.push(nextRow);
   model.set("type_neighborhoods", rows);
-  model.save_changes();
 }
 
 export function patchLandmark(model, index, patch, landmarks) {
   setLandmarks(model, landmarks.map((lm, i) => (i === index ? { ...lm, ...patch } : lm)));
-  model.save_changes();
+  flushNotebook(model);
 }
 
 export function setSelected(model, kind, index) {
   model.set("selected_kind", kind || "");
   model.set("selected_index", index);
-  model.save_changes();
+  flushNotebook(model);
 }
 
 export function setMode(model, mode) {
@@ -258,7 +241,6 @@ export function setMode(model, mode) {
   if (!probe && model.get("raster_query_bin") >= 0) {
     model.set("raster_query_bin", -1);
   }
-  model.save_changes();
 }
 
 export function removeAt(items, index) {
@@ -283,7 +265,7 @@ export function deleteSelection(
   model.set("selections", removeAt(selections, index));
   model.set("selected_kind", next.kind);
   model.set("selected_index", next.index);
-  model.save_changes();
+  flushNotebook(model);
 }
 
 export function deleteLandmark(
@@ -297,7 +279,7 @@ export function deleteLandmark(
   setLandmarks(model, removeAt(landmarks, index));
   model.set("selected_kind", next.kind);
   model.set("selected_index", next.index);
-  model.save_changes();
+  flushNotebook(model);
 }
 
 function cloneJson(value) {
@@ -341,7 +323,7 @@ export function duplicateLandmark(model, index, landmarks) {
   setLandmarks(model, next);
   model.set("selected_kind", "landmark");
   model.set("selected_index", next.length - 1);
-  model.save_changes();
+  flushNotebook(model);
 }
 
 export function renameSelection(model, index, name, selections) {
@@ -351,7 +333,7 @@ export function renameSelection(model, index, name, selections) {
     "selections",
     selections.map((sel, i) => (i === index ? { ...sel, id: next } : sel)),
   );
-  model.save_changes();
+  flushNotebook(model);
 }
 
 export function renameLandmark(model, index, name, landmarks) {
@@ -361,7 +343,7 @@ export function renameLandmark(model, index, name, landmarks) {
     model,
     landmarks.map((lm, i) => (i === index ? { ...lm, id: next } : lm)),
   );
-  model.save_changes();
+  flushNotebook(model);
 }
 
 export function toggleLandmarkHidden(model, index, landmarks) {
@@ -371,7 +353,7 @@ export function toggleLandmarkHidden(model, index, landmarks) {
       i === index ? { ...lm, hidden: !lm.hidden } : lm,
     ),
   );
-  model.save_changes();
+  flushNotebook(model);
 }
 
 export function toggleSelectionHidden(model, index, selections) {
@@ -381,12 +363,11 @@ export function toggleSelectionHidden(model, index, selections) {
       i === index ? { ...sel, hidden: !sel.hidden } : sel,
     ),
   );
-  model.save_changes();
+  flushNotebook(model);
 }
 
-/** Ask Python to freeze the active neighborhood into a selection. */
+/** Client-side promote signal (engine listens; no kernel round-trip). */
 export function promoteNeighborhoodToSelection(model) {
   const tick = Number(model.get("promote_tick") || 0) + 1;
   model.set("promote_tick", tick);
-  model.save_changes();
 }

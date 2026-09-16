@@ -26,27 +26,17 @@ def _adata(n=4):
         : len(obs["cell_type"].cat.categories)
     ]
     adata.uns["cell_class_colors"] = ["#aaaaaa", "#bbbbbb"]
-    pairs = [(i, i + 1) for i in range(n - 1)] + [(i + 1, i) for i in range(n - 1)]
-    rows, cols = zip(*pairs)
-    conn = csr_matrix((np.ones(len(rows)), (rows, cols)), shape=(n, n))
-    radius = csr_matrix((np.ones(2), ([0, 1], [1, 0])), shape=(n, n))
-    adata.obsp["spatial_knn_connectivities"] = conn
-    adata.obsp["spatial_radius_connectivities"] = radius
     return adata
 
 
-def test_constructor_requires_graphs():
+def test_constructor_no_graphs_required():
     from spatial_rx import LandmarksWidget
 
     adata = _adata()
-    del adata.obsp["spatial_knn_connectivities"]
-    with pytest.raises(ValueError, match="spatial_knn_connectivities"):
-        LandmarksWidget(adata, color="cell_type")
-
-    adata = _adata()
-    del adata.obsp["spatial_radius_connectivities"]
-    with pytest.raises(ValueError, match="spatial_radius_connectivities"):
-        LandmarksWidget(adata, color="cell_type")
+    w = LandmarksWidget(adata, color="cell_type")
+    assert not hasattr(w, "neighbor_indptr") or not getattr(w, "neighbor_indptr", None)
+    assert w.neighbor_k_max >= 1
+    assert w.neighbor_radius_max > 0
 
 
 def test_constructor_packs_obs_palette_and_genes():
@@ -58,26 +48,13 @@ def test_constructor_packs_obs_palette_and_genes():
     assert w.legend_labels == ["a", "b", "c"]
     assert w.point_palette[0].lower() == "#111111"
     assert [g["name"] for g in w.gene_columns] == ["g1"]
-    assert w.neighbor_indptr
-    assert w.radius_indptr
+    assert w.gene_format == "dense"
+    assert w.gene_values  # eager pack
     assert w.neighbor_k_max >= 1
     assert w.neighbor_radius_max > 0
-    assert w._knn_index is not None
-    assert w._radius_index is not None
-    assert w._knn_index.n == 4
     assert len(w._data_x) == 4
     assert w.mode == "pointer"
     assert w.point_size == pytest.approx(0.4)
-
-
-def test_empty_graphs_do_not_build_neighbors():
-    from spatial_rx import LandmarksWidget
-
-    adata = adata_xy([0.0, 1.0, 2.0], [0.0, 0.0, 0.0])
-    w = LandmarksWidget(adata)
-    assert w._knn_index.n == 3
-    assert int(w._knn_index.indptr[-1]) == 0
-    assert int(w._radius_index.indptr[-1]) == 0
 
 
 def test_chrome_kwargs_rejected():
@@ -92,6 +69,7 @@ def test_chrome_kwargs_rejected():
 
 def test_get_obs_names_and_subset_join():
     from spatial_rx import LandmarksWidget, write_obs
+    from spatial_rx.selection import selection_mask
 
     adata = _adata()
     w = LandmarksWidget(adata, color="cell_type")
@@ -104,12 +82,13 @@ def test_get_obs_names_and_subset_join():
     ]
     names = w.get_obs_names(adata, selection_id="selection 1")
     assert list(names) == ["c0"]
-    idx = w.get_indices(
+    mask = selection_mask(
+        list(w.selections),
         adata.obsm["spatial"][:, 0],
         adata.obsm["spatial"][:, 1],
-        selection_id="selection 1",
+        "selection 1",
     )
-    assert list(idx) == [0]
+    assert list(np.flatnonzero(mask)) == [0]
 
     w.assign_obs_mask(adata, "in_sel", selection_id="selection 1")
     assert bool(adata.obs.loc["c0", "in_sel"]) is True
@@ -129,49 +108,11 @@ def test_get_obs_names_and_subset_join():
     assert joined.loc[str(sub2.obs_names[0]), "s"] == pytest.approx(0.9)
 
 
-def test_expand_knn_vs_radius_graphs():
-    from spatial_rx import LandmarksWidget
-
-    adata = _adata()
-    w = LandmarksWidget(adata, color="cell_type")
-    x = adata.obsm["spatial"][:, 0]
-    y = adata.obsm["spatial"][:, 1]
-    box = {
-        "id": "selection 1",
-        "type": "polygon",
-        "vertices": [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]],
-    }
-    w.selections = [{**box, "neighborhood": "knn"}]
-    # knn chain 0-1-2-3; seed 0 expands to 1 (k default 12)
-    assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {0, 1}
-    w.selections = [{**box, "neighborhood": "radius", "neighborhood_radius": 1.5}]
-    # radius graph is only 0-1; same seed expands to 1
-    assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {0, 1}
-
-    box2 = {
-        "id": "selection 1",
-        "type": "polygon",
-        "vertices": [[1.5, -0.5], [2.5, -0.5], [2.5, 0.5], [1.5, 0.5]],
-    }
-    w.selections = [{**box2, "neighborhood": "knn", "neighborhood_k": 1}]
-    # seed cell 2 (x=2); k=1 keeps nearer of 1 (d=1) and 3 (d=1) — both d=1, one neighbor
-    knn1 = set(w.get_indices(x, y, selection_id="selection 1").tolist())
-    assert 2 in knn1 and len(knn1) == 2
-    w.selections = [{**box2, "neighborhood": "knn", "neighborhood_k": 2}]
-    # seed cell 2 has knn neighbors 1 and 3
-    assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {1, 2, 3}
-    w.selections = [{**box2, "neighborhood": "radius", "neighborhood_radius": 1.5}]
-    # radius graph has no edge at cell 2
-    assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {2}
-    w.selections = [{**box, "neighborhood": "off"}]
-    assert set(w.get_indices(x, y, selection_id="selection 1").tolist()) == {0}
-
-
-def test_n_obs_mismatch_set_neighbor_graphs():
+def test_set_neighbor_graphs_removed():
     from spatial_rx import LandmarksWidget
 
     adata = _adata()
     w = LandmarksWidget(adata, color="cell_type")
     bad = csr_matrix((2, 2))
-    with pytest.raises(ValueError, match="connectivities n"):
+    with pytest.raises(RuntimeError, match="set_neighbor_graphs was removed"):
         w.set_neighbor_graphs(bad, bad)

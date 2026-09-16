@@ -27,6 +27,7 @@
     "@deck.gl/layers": "9.1.14",
     "@deck.gl/widgets": "9.1.14",
     "@radix-ui/react-slot": "^1.2.3",
+    "@thi.ng/geom-accel": "^4.2.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.2.6",

@@ -5,7 +5,7 @@ import numpy as np
 from tests.helpers import adata_xy
 
 
-def test_constructor_gene_catalog_is_lazy():
+def test_constructor_gene_catalog_is_eager():
     from spatial_rx import LandmarksWidget
 
     adata = adata_xy(
@@ -19,24 +19,27 @@ def test_constructor_gene_catalog_is_lazy():
     names = [g["name"] for g in w.gene_columns]
     assert names == ["Apob", "Lgr5"]
     assert w.active_genes == []
-    assert w.gene_values == ""
-    assert w.color_by == "categorical"
-    w.active_genes = ["Apob", "Lgr5"]
+    assert w.gene_format == "dense"
+    assert w.gene_values
     raw = np.frombuffer(base64.b64decode(w.gene_values), dtype=np.float32)
     assert raw.size == 4 * 2
     apob = raw[0:4]
     assert apob.min() == 0.0
     assert apob.max() == 1.0
+    assert w.color_by == "categorical"
+    w.active_genes = ["Apob", "Lgr5"]
+    # Eager pack unchanged by view-only active_genes.
+    raw2 = np.frombuffer(base64.b64decode(w.gene_values), dtype=np.float32)
+    assert raw2.size == 4 * 2
     assert w.point_palette
     assert w.gene_scale_mode == "independent"
     assert w.gene_log1p is False
     assert w.gene_expression_logged is False
     w.set_expression({"Lgr5": [0.0, 0.0, 0.5, 1.0]})
     assert [g["name"] for g in w.gene_columns] == ["Lgr5"]
-    # Active genes filtered to remaining catalog; values re-packed.
     assert w.active_genes == ["Lgr5"]
-    raw2 = np.frombuffer(base64.b64decode(w.gene_values), dtype=np.float32)
-    assert raw2.size == 4
+    raw3 = np.frombuffer(base64.b64decode(w.gene_values), dtype=np.float32)
+    assert raw3.size == 4
 
 
 def test_genes_none_loads_all_var_names():
@@ -51,6 +54,7 @@ def test_genes_none_loads_all_var_names():
     )
     w = LandmarksWidget(adata, color="cell_class")
     assert [g["name"] for g in w.gene_columns] == ["Apob", "Lgr5"]
+    assert w.gene_values
 
 
 def test_genes_str_loads_single_name():

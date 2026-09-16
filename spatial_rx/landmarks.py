@@ -19,30 +19,16 @@ from .categories import (
 )
 from .genes import (
     _normalize_column,
-    _column_vector,
-    encode_gene_bundle,
-    encode_genes_from_adata,
     expression_is_log_scaled,
-    gene_catalog,
     gene_names_from_adata,
-    genes_look_log_scaled,
+    pack_eager_gene_matrix,
 )
-from .neighbors import DEFAULT_K_MAX, NeighborhoodIndex
+from .neighbors import DEFAULT_K_MAX
 from .raster import (
     DEFAULT_WINDOW_RADIUS,
-    aggregate_mean_window,
-    assign_bins,
-    build_grid,
-    composition_hist_window,
     default_bin_size,
-    default_window_radius,
-    pack_bin_arrays,
-    pack_features,
 )
 from .selection import (
-    neighborhood_expand,
-    neighborhood_params,
-    next_numbered_id,
     selection_mask,
 )
 
@@ -176,35 +162,32 @@ def _expr_from_adata(adata: Any, genes: str | list[str] | None) -> Any:
     return pd.DataFrame(np.asarray(X), columns=wanted)
 
 
-def _index_for_method(widget: "LandmarksWidget", method: str) -> NeighborhoodIndex | None:
-    if method == "knn":
-        return getattr(widget, "_knn_index", None)
-    if method == "radius":
-        return getattr(widget, "_radius_index", None)
-    return None
-
-
 _NN_RADIUS_FRAC = 0.4
+# Default neighborhood radius cap as a fraction of spatial diagonal.
+_DEFAULT_RADIUS_MAX_FRAC = 0.05
 
 
-def _median_nn_distance(knn: NeighborhoodIndex | None) -> float | None:
-    """Median first-neighbor distance from a distance-sorted k-NN CSR."""
-    if knn is None or knn.n == 0 or int(knn.indptr[-1]) == 0:
-        return None
+def _median_nn_distance(x_arr: "np.ndarray", y_arr: "np.ndarray") -> float | None:
+    """Median nearest-neighbor distance via ``cKDTree`` (construct-time only)."""
     import numpy as np
 
-    first: list[float] = []
-    for i in range(int(knn.n)):
-        start = int(knn.indptr[i])
-        end = int(knn.indptr[i + 1])
-        if end <= start:
-            continue
-        dist = float(knn.distances[start])
-        if math.isfinite(dist) and dist > 0.0:
-            first.append(dist)
-    if not first:
+    n = int(x_arr.shape[0])
+    if n < 2:
         return None
-    return float(np.median(np.asarray(first, dtype=np.float64)))
+    pts = np.column_stack(
+        [np.asarray(x_arr, dtype=np.float64), np.asarray(y_arr, dtype=np.float64)]
+    )
+    try:
+        from scipy.spatial import cKDTree
+
+        dist, _ = cKDTree(pts).query(pts, k=2)
+        first = np.asarray(dist[:, 1], dtype=np.float64)
+        first = first[np.isfinite(first) & (first > 0)]
+        if first.size == 0:
+            return None
+        return float(np.median(first))
+    except Exception:
+        return None
 
 
 _SPATIAL_OBSM_SKIP = frozenset(
@@ -266,12 +249,11 @@ def _pick_default_embedding_key(keys: list[str]) -> str:
 def _spatial_metrics(
     x_arr: "np.ndarray",
     y_arr: "np.ndarray",
-    knn: NeighborhoodIndex | None = None,
 ):
     """Padded bounds, marker radius, and default landmark buffer from xy extent.
 
     Marker radius is ``0.4 * median`` nearest-neighbor distance so disks do not
-    cover neighbors at fit zoom. Empty graphs fall back to ``0.01 * diagonal``.
+    cover neighbors at fit zoom. Falls back to ``0.01 * diagonal``.
     """
     xmin, xmax = float(x_arr.min()), float(x_arr.max())
     ymin, ymax = float(y_arr.min()), float(y_arr.max())
@@ -282,7 +264,7 @@ def _spatial_metrics(
     diag = math.hypot(xmax - xmin, ymax - ymin)
     pad_x = 0.02 * (xmax - xmin)
     pad_y = 0.02 * (ymax - ymin)
-    nn = _median_nn_distance(knn)
+    nn = _median_nn_distance(x_arr, y_arr)
     point_size = _NN_RADIUS_FRAC * nn if nn is not None else 0.01 * diag
     return (
         xmin - pad_x,
@@ -298,18 +280,20 @@ class LandmarksWidget(AnyWidget):
     """Draw selections and landmarks on AnnData spatial coordinates.
 
     ``LandmarksWidget(adata, color=..., genes=...)`` is the only constructor.
-    Put coordinates in ``obsm["spatial"]`` and k-max / radius-max graphs in
-    ``obsp`` (``spatial_knn_*`` / ``spatial_radius_*``) before constructing.
-    The widget keeps a reference to ``adata`` (no ``obs.copy()``, no full-``X``
-    densify). ``genes=None`` (default) loads every ``var_name`` into the picker;
-    pass a gene name or list to restrict. Expression values encode when
-    ``active_genes`` is set. Chrome follows the notebook cell width;
-    height starts at 550px and is resizable. Marker radius comes from median
-    nearest-neighbor distance.
+    Put coordinates in ``obsm["spatial"]``. Neighbor expand runs in the browser
+    (spatial index); no ``obsp`` graphs are required or synced. The widget keeps
+    a reference to ``adata`` (no ``obs.copy()``, no full-``X`` densify at
+    construct beyond the eager gene pack). ``genes=None`` (default) packs every
+    ``var_name`` for view-only coloring; pass a name or list to restrict.
+    Chrome follows the notebook cell width; height starts at 550px and is
+    resizable. Marker radius comes from median nearest-neighbor distance.
 
-    Notebook API (synced): ``landmarks``, ``selections``, ``selected_kind``,
-    ``selected_index``, ``active_category``, ``active_genes``. Persist hits with
-    ``get_obs_names`` / ``assign_obs_mask``, not positional indices.
+    Notebook API (synced on every edit): ``landmarks``, ``selections``,
+    ``selected_kind``, ``selected_index``. UI chrome state (mode, genes, color,
+    neighborhoods) stays in the browser; raster bin features and probe scores
+    are built client-side from the eager gene / embedding / category packs.
+    Persist hits with ``get_obs_names`` / ``assign_obs_mask`` (via
+    ``selection_mask`` / ``point_indices``), not positional indices.
     """
 
     _esm = widget_esm("landmarks")
@@ -321,6 +305,7 @@ class LandmarksWidget(AnyWidget):
     selected_kind = traitlets.Unicode("").tag(sync=True)
     selected_index = traitlets.Int(-1).tag(sync=True)
     active_category = traitlets.Unicode("").tag(sync=True)
+    # View-only gene selection (chrome ↔ engine); not a notebook analysis API.
     active_genes = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
 
     # --- Internal plumbing (synced, not notebook API) ---
@@ -344,7 +329,12 @@ class LandmarksWidget(AnyWidget):
     category_columns = traitlets.List(traitlets.Dict(), default_value=[]).tag(sync=True)
     category_codes = traitlets.Unicode("").tag(sync=True)  # base64 int32, col-major
     gene_columns = traitlets.List(traitlets.Dict(), default_value=[]).tag(sync=True)
-    gene_values = traitlets.Unicode("").tag(sync=True)  # base64 float32, col-major [0, 1]
+    # Eager expression pack (all catalog genes). Format: dense | csc.
+    gene_format = traitlets.Unicode("dense").tag(sync=True)
+    gene_values = traitlets.Unicode("").tag(sync=True)  # dense: base64 float32 col-major
+    gene_csc_indptr = traitlets.Unicode("").tag(sync=True)
+    gene_csc_indices = traitlets.Unicode("").tag(sync=True)
+    gene_csc_data = traitlets.Unicode("").tag(sync=True)
     # independent: each gene uses its own vmax; shared: all use max vmax among selected.
     gene_scale_mode = traitlets.Enum(
         ["independent", "shared"], default_value="independent"
@@ -357,19 +347,15 @@ class LandmarksWidget(AnyWidget):
     embedding_channel_labels = traitlets.List(traitlets.Unicode(), default_value=[]).tag(
         sync=True
     )
+    # Full raw embedding for client raster (row-major float32 ``n × d``).
+    embedding_matrix = traitlets.Unicode("").tag(sync=True)
+    embedding_matrix_dim = traitlets.Int(0).tag(sync=True)
 
-    # Precomputed k-NN graph (from adata.obsp) for client-side expand lookup.
-    neighbor_indptr = traitlets.Unicode("").tag(sync=True)  # base64 int32
-    neighbor_indices = traitlets.Unicode("").tag(sync=True)  # base64 int32
-    neighbor_distances = traitlets.Unicode("").tag(sync=True)  # base64 float32
+    # Slider caps for client-side neighborhood queries (no CSR sync).
     neighbor_radius_max = traitlets.Float(0.0).tag(sync=True)
     neighbor_k_max = traitlets.Int(DEFAULT_K_MAX).tag(sync=True)
-    # Precomputed radius graph (from adata.obsp).
-    radius_indptr = traitlets.Unicode("").tag(sync=True)
-    radius_indices = traitlets.Unicode("").tag(sync=True)
-    radius_distances = traitlets.Unicode("").tag(sync=True)
 
-    # Chrome bumps this to request promote_neighborhood_to_selection().
+    # Chrome bumps this; engine promotes neighborhood → selection client-side.
     promote_tick = traitlets.Int(0).tag(sync=True)
 
     # --- Raster bins + similarity query ---
@@ -411,40 +397,27 @@ class LandmarksWidget(AnyWidget):
         adata: AnnData,
         *,
         spatial_key: str = "spatial",
-        knn_key: str = "spatial_knn",
-        radius_key: str = "spatial_radius",
         color: str | None = None,
         genes: str | list[str] | None = None,
     ) -> None:
-        """Build from AnnData. Requires k-NN and radius graphs already in ``obsp``.
+        """Build from AnnData.
 
-        Run ``squidpy.gr.spatial_neighbors`` twice first (k_max and r_max
-        supersets; widget sliders subset)::
+        Coordinates in ``obsm[spatial_key]``. Neighborhood expand is client-side
+        (no ``obsp`` graphs). Expression for the gene picker is packed eagerly::
 
-            sq.gr.spatial_neighbors(adata, coord_type="generic", n_neighs=64, key_added="spatial_knn")
-            sq.gr.spatial_neighbors(adata, coord_type="generic", radius=r_max, key_added="spatial_radius")
-            w = LandmarksWidget(adata, color="celltype_mapped_refined")  # all genes
-            w = LandmarksWidget(adata, color="celltype_mapped_refined", genes=["GeneA"])
+            w = LandmarksWidget(adata, color="cell_type")
+            w = LandmarksWidget(adata, color="cell_type", genes=["GeneA", "GeneB"])
         """
         import numpy as np
 
         if not isinstance(adata, AnnData):
             raise TypeError("LandmarksWidget(adata) requires an AnnData")
 
-        knn_conn = _obsp_key(knn_key, "connectivities")
-        radius_conn = _obsp_key(radius_key, "connectivities")
-        obsp = getattr(adata, "obsp", None)
-        if obsp is None or knn_conn not in obsp or radius_conn not in obsp:
-            raise ValueError(
-                "LandmarksWidget requires "
-                f"adata.obsp[{knn_conn!r}] and adata.obsp[{radius_conn!r}]; "
-                "run squidpy.gr.spatial_neighbors for k-NN and radius first"
-            )
         if spatial_key not in adata.obsm:
             raise ValueError(f"adata.obsm[{spatial_key!r}] is required")
         xy = np.asarray(adata.obsm[spatial_key], dtype=np.float64, copy=False)
         if xy.ndim != 2 or xy.shape[1] < 2:
-            raise ValueError(f"adata.obsm[{spatial_key!r}] must be (n, 2)")
+            raise ValueError(f"adata.obsm[{spatial_key!r}] must be (n, ≥2)")
         if xy.shape[0] != adata.n_obs:
             raise ValueError("spatial coords length must match adata.n_obs")
         n = int(xy.shape[0])
@@ -453,24 +426,11 @@ class LandmarksWidget(AnyWidget):
 
         x_arr = np.asarray(xy[:, 0], dtype=np.float64, copy=False)
         y_arr = np.asarray(xy[:, 1], dtype=np.float64, copy=False)
-        knn_dist = _obsp_key(knn_key, "distances")
-        radius_dist = _obsp_key(radius_key, "distances")
-        pts = np.column_stack([x_arr, y_arr])
-        knn_idx = NeighborhoodIndex.from_sparse(
-            obsp[knn_conn],
-            obsp[knn_dist] if knn_dist in obsp else None,
-            n=n,
-            points=pts,
-        )
-        radius_idx = NeighborhoodIndex.from_sparse(
-            obsp[radius_conn],
-            obsp[radius_dist] if radius_dist in obsp else None,
-            n=n,
-            points=pts,
-        )
         xmin, xmax, ymin, ymax, point_size, buffer_width = _spatial_metrics(
-            x_arr, y_arr, knn=knn_idx
+            x_arr, y_arr
         )
+        diag = math.hypot(xmax - xmin, ymax - ymin)
+        radius_max = float(_DEFAULT_RADIUS_MAX_FRAC * diag)
         nx = (2.0 * (x_arr - xmin) / (xmax - xmin) - 1.0).astype(np.float32)
         ny = (2.0 * (y_arr - ymin) / (ymax - ymin) - 1.0).astype(np.float32)
 
@@ -540,13 +500,9 @@ class LandmarksWidget(AnyWidget):
         self._y_scale = "linear"
         self._data_x = x_arr
         self._data_y = y_arr
-        self._knn_index = knn_idx
-        self._radius_index = radius_idx
         self._obs_names = adata.obs_names
         self._data_label_arrays = cat_labels
-        self._median_nn = _median_nn_distance(knn_idx)
-        self._raster_assignment = None
-        self._raster_rebuild_depth = 0
+        self._median_nn = _median_nn_distance(x_arr, y_arr)
         active_cat = ""
         if cat_meta and gene_color is None:
             active_cat = active if active in cat_labels else cat_meta[0]["name"]
@@ -560,7 +516,7 @@ class LandmarksWidget(AnyWidget):
         self._data_labels = cat_labels.get(active_cat)
 
         gene_names = gene_names_from_adata(adata, genes)
-        gene_meta = gene_catalog(gene_names)
+        gene_meta, gene_payload = pack_eager_gene_matrix(adata, gene_names, n)
         gene_logged = bool(expression_is_log_scaled(adata)) if gene_names else False
         init_bin_size = default_bin_size(self._median_nn, point_size)
         embedding_keys = _discover_embedding_keys(adata, spatial_key=spatial_key)
@@ -584,12 +540,18 @@ class LandmarksWidget(AnyWidget):
             category_codes=cat_codes,
             active_category=active_cat,
             gene_columns=gene_meta,
-            gene_values="",
+            gene_format=str(gene_payload.get("gene_format") or "dense"),
+            gene_values=str(gene_payload.get("gene_values") or ""),
+            gene_csc_indptr=str(gene_payload.get("gene_csc_indptr") or ""),
+            gene_csc_indices=str(gene_payload.get("gene_csc_indices") or ""),
+            gene_csc_data=str(gene_payload.get("gene_csc_data") or ""),
             active_genes=[],
             gene_log1p=False,
             gene_expression_logged=gene_logged,
             embedding_values="",
             embedding_channel_labels=[],
+            embedding_matrix="",
+            embedding_matrix_dim=0,
             render_mode="points",
             raster_bin_size=float(init_bin_size),
             raster_window_radius=float(DEFAULT_WINDOW_RADIUS),
@@ -598,44 +560,23 @@ class LandmarksWidget(AnyWidget):
             raster_embedding_keys=embedding_keys,
             raster_embedding_dims=[],
             raster_status="",
-            **knn_idx.to_sync(prefix="neighbor"),
-            **radius_idx.to_sync(prefix="radius"),
-            neighbor_radius_max=float(radius_idx.radius_max),
+            neighbor_k_max=int(DEFAULT_K_MAX),
+            neighbor_radius_max=radius_max,
         )
         if gene_color is not None:
             self.set_color(gene_color, legend_title=str(color))
         self._pack_embedding_values()
+        self._pack_embedding_matrix()
 
-    def set_neighbor_graphs(
-        self,
-        knn: Any,
-        radius: Any,
-        *,
-        knn_distances: Any | None = None,
-        radius_distances: Any | None = None,
-    ) -> None:
-        """Ingest k-NN and radius sparse connectivities (squidpy ``obsp``).
+    def set_neighbor_graphs(self, *args: Any, **kwargs: Any) -> None:
+        """Removed: neighborhood expand is client-side.
 
-        Graphs should be k_max / r_max supersets. Widget sliders subset them.
+        Kept as a no-op raising so old notebooks fail clearly.
         """
-        import numpy as np
-
-        n = int(getattr(self, "_data_x").shape[0])
-        pts = np.column_stack(
-            [np.asarray(self._data_x, dtype=np.float64), np.asarray(self._data_y, dtype=np.float64)]
+        raise RuntimeError(
+            "set_neighbor_graphs was removed; LandmarksWidget builds neighborhoods "
+            "in the browser from coordinates (no obsp graphs)"
         )
-        knn_idx = NeighborhoodIndex.from_sparse(knn, knn_distances, n=n, points=pts)
-        radius_idx = NeighborhoodIndex.from_sparse(
-            radius, radius_distances, n=n, points=pts
-        )
-        self._knn_index = knn_idx
-        self._radius_index = radius_idx
-        for key, val in knn_idx.to_sync(prefix="neighbor").items():
-            setattr(self, key, val)
-        for key, val in radius_idx.to_sync(prefix="radius").items():
-            setattr(self, key, val)
-        self.neighbor_k_max = int(knn_idx.k_max)
-        self.neighbor_radius_max = float(radius_idx.radius_max)
 
     def set_points(
         self,
@@ -690,92 +631,72 @@ class LandmarksWidget(AnyWidget):
         self.points_data = _encode_f32(points)
 
     def set_expression(self, expr: Any) -> None:
-        """Register a gene-expression table for the Layers Genes section.
+        """Replace the eager gene catalog/matrix from a table (view-only).
 
-        Catalog metadata syncs immediately; binary ``gene_values`` pack only
-        for ``active_genes`` (lazy encode).
+        Packs all columns immediately for the browser gene picker.
         """
         x = getattr(self, "_data_x", None)
         if x is None:
             raise RuntimeError("internal point cache missing")
         from .categories import as_polars
 
+        import numpy as np
+
         frame = as_polars(expr)
         self._expr_frame = frame
-        meta, _ = encode_gene_bundle(frame, int(x.shape[0]))
-        # Store catalog with real vmin/vmax from the frame; values stay lazy.
-        self.gene_columns = [
-            {"name": m["name"], "vmin": m["vmin"], "vmax": m["vmax"]} for m in meta
-        ]
-        names = {g["name"] for g in meta}
-        self.active_genes = [g for g in (self.active_genes or []) if g in names]
-        # Prefer adata.uns marker; else probe first numeric column of the frame.
+        names = [str(c) for c in frame.columns]
+        n = int(x.shape[0])
+        # Build a tiny AnnData-like pack via dense columns.
+        meta: list[dict[str, Any]] = []
+        cols: list[Any] = []
+        from .genes import _normalize_column
+
+        for name in names:
+            vals = np.asarray(frame[name].to_numpy(), dtype=np.float64).ravel()
+            if vals.shape[0] != n:
+                raise ValueError(f"expr rows {vals.shape[0]} != n_points {n}")
+            norm, vmin, vmax = _normalize_column(vals)
+            meta.append({"name": name, "vmin": vmin, "vmax": vmax})
+            cols.append(norm)
+        if not cols:
+            self.gene_columns = []
+            self.gene_format = "dense"
+            self.gene_values = ""
+            self.gene_csc_indptr = ""
+            self.gene_csc_indices = ""
+            self.gene_csc_data = ""
+            self.active_genes = []
+            return
+        mat = np.column_stack(cols).astype(np.float32, copy=False)
+        self.gene_columns = meta
+        self.gene_format = "dense"
+        self.gene_values = base64.b64encode(mat.ravel(order="F").tobytes()).decode(
+            "ascii"
+        )
+        self.gene_csc_indptr = ""
+        self.gene_csc_indices = ""
+        self.gene_csc_data = ""
+        known = {m["name"] for m in meta}
+        self.active_genes = [g for g in (self.active_genes or []) if g in known]
         logged = expression_is_log_scaled(getattr(self, "_adata", None))
         if not logged and meta:
-            import numpy as np
-
             col0 = frame[meta[0]["name"]].to_numpy()
             logged = expression_is_log_scaled(sample=np.asarray(col0, dtype=np.float64))
         self.gene_expression_logged = bool(logged)
         if logged:
             self.gene_log1p = False
-        self._pack_active_gene_values()
-
-    def _pack_active_gene_values(self) -> None:
-        """Encode ``gene_values`` for ``active_genes`` only (active-genes order)."""
-        names = [str(g) for g in (self.active_genes or [])]
-        n = int(getattr(self, "_data_x").shape[0])
-        if not names:
-            self.gene_values = ""
-            return
-        frame = getattr(self, "_expr_frame", None)
-        if frame is not None:
-            subset = frame.select(names)
-            meta, values = encode_gene_bundle(subset, n)
-        else:
-            adata = getattr(self, "_adata", None)
-            if adata is None:
-                self.gene_values = ""
-                return
-            meta, values = encode_genes_from_adata(adata, names, n)
-        by_name = {m["name"]: m for m in meta}
-        cols = list(self.gene_columns or [])
-        for i, row in enumerate(cols):
-            upd = by_name.get(str(row.get("name")))
-            if upd:
-                cols[i] = {
-                    "name": upd["name"],
-                    "vmin": upd["vmin"],
-                    "vmax": upd["vmax"],
-                }
-        self.gene_columns = cols
-        self.gene_values = values
-        # Re-probe active genes only when every sampled column looks logged.
-        if names and not self.gene_expression_logged:
-            if genes_look_log_scaled(getattr(self, "_adata", None), names):
-                self.gene_expression_logged = True
-                self.gene_log1p = False
 
     @traitlets.observe("active_genes")
     def _on_active_genes(self, change: dict) -> None:
         if change.get("new") == change.get("old"):
             return
-        self._pack_active_gene_values()
         genes = list(self.active_genes or [])
         # Genes are an exclusive observation signal — keep point color_by aligned.
         if genes and self.color_by != "continuous":
             self.color_by = "continuous"
-        if not self._should_maintain_raster_features():
-            return
-        # Selected genes own the observation signal in bins mode.
-        if genes:
-            if self.raster_basis != "genes":
-                # Basis observer rebuilds; avoid a double rebuild here.
-                self.raster_basis = "genes"
-                return
-            self._rebuild_raster()
-        elif self.raster_basis == "genes":
-            self._rebuild_raster()
+        # Selected genes own the observation signal in bins mode (client rebuilds).
+        if genes and self.raster_basis != "genes":
+            self.raster_basis = "genes"
 
     def set_render_mode(self, mode: str) -> None:
         """Switch canvas between point scatter and spatial raster bins."""
@@ -824,6 +745,8 @@ class LandmarksWidget(AnyWidget):
 
         Pathway / ``obs`` score columns are deferred (plan slice A); use
         ``raster_obs_key`` later via the same mean-into-bin path.
+
+        Bin feature matrices are built in the browser; this only updates traits.
         """
         chosen = sum(x is not None for x in (genes, embedding, composition))
         if chosen != 1:
@@ -844,92 +767,10 @@ class LandmarksWidget(AnyWidget):
             self.raster_basis = "composition"
             if composition:
                 self.active_category = str(composition)
-        if self._should_maintain_raster_features():
-            self._rebuild_raster()
-
-    def _should_maintain_raster_features(self) -> bool:
-        """Keep / rebuild bin features for raster view or probe (points or raster)."""
-        return (
-            self.render_mode == "raster"
-            or self.mode == "probe"
-            or bool(self.raster_similarity_enabled)
-            or int(self.raster_n_bins or 0) > 0
-        )
 
     def clear_raster_query(self) -> None:
         """Clear the pinned similarity query bin."""
         self.raster_query_bin = -1
-
-    def _clear_raster_sync(self, *, status: str = "") -> None:
-        self.raster_origin_x = 0.0
-        self.raster_origin_y = 0.0
-        self.raster_n_cols = 0
-        self.raster_n_rows = 0
-        self.raster_n_bins = 0
-        self.raster_bin_rows = ""
-        self.raster_bin_cols = ""
-        self.raster_bin_counts = ""
-        self.raster_features = ""
-        self.raster_feature_dim = 0
-        self.raster_feature_labels = []
-        self.raster_query_bin = -1
-        self.raster_status = status
-        self._raster_assignment = None
-
-    def _gene_feature_matrix(self) -> tuple["np.ndarray", list[str]]:
-        """Active-gene columns for bin means, in ``active_genes`` order.
-
-        Prefer display-normalized ``gene_values`` (same [0, 1] packing as point
-        coloring) so bins track the selected genes the user sees on points.
-        Fall back to raw expression only when the packed buffer is missing.
-        """
-        import base64
-        import numpy as np
-
-        names = [str(g) for g in (self.active_genes or [])]
-        n = int(self._data_x.shape[0])
-        if not names:
-            return np.zeros((n, 0), dtype=np.float64), []
-
-        packed = str(self.gene_values or "")
-        if packed:
-            try:
-                buf = np.frombuffer(base64.b64decode(packed), dtype=np.float32)
-            except Exception:
-                buf = np.zeros(0, dtype=np.float32)
-            n_genes = len(names)
-            if buf.size == n * n_genes:
-                # Column-major pack from encode_gene_bundle / encode_genes_from_adata.
-                mat = np.asarray(buf, dtype=np.float64).reshape((n, n_genes), order="F")
-                return mat, list(names)
-
-        frame = getattr(self, "_expr_frame", None)
-        cols: list[Any] = []
-        used: list[str] = []
-        if frame is not None:
-            available = set(map(str, frame.columns))
-            for name in names:
-                if name not in available:
-                    continue
-                vals = np.asarray(frame[name].to_numpy(), dtype=np.float64).ravel()
-                if vals.shape[0] != n:
-                    raise ValueError(f"expr rows {vals.shape[0]} != n_points {n}")
-                cols.append(vals)
-                used.append(name)
-        else:
-            adata = getattr(self, "_adata", None)
-            if adata is None:
-                return np.zeros((n, 0), dtype=np.float64), []
-            for name in names:
-                try:
-                    cols.append(_column_vector(adata, name))
-                    used.append(name)
-                except Exception:
-                    continue
-        if not cols:
-            return np.zeros((n, 0), dtype=np.float64), []
-        return np.column_stack(cols), used
-
 
     def _embedding_rgb_dims(self, n_dims: int) -> list[int]:
         """Dims mapped to RGB for point coloring (≤3). Empty trait → first three."""
@@ -984,173 +825,38 @@ class LandmarksWidget(AnyWidget):
         self.embedding_values = base64.b64encode(packed.tobytes()).decode("ascii")
         self.embedding_channel_labels = labels
 
-    def _embedding_feature_matrix(self) -> tuple["np.ndarray", list[str]]:
+    def _pack_embedding_matrix(self) -> None:
+        """Pack full raw ``obsm[key]`` for client-side raster aggregation."""
+        import base64
         import numpy as np
 
         adata = getattr(self, "_adata", None)
         key = str(self.raster_embedding_key or "")
-        n = int(self._data_x.shape[0])
+        n = int(getattr(self, "_data_x").shape[0])
         if adata is None or not key or key not in getattr(adata, "obsm", {}):
-            return np.zeros((n, 0), dtype=np.float64), []
-        mat = np.asarray(adata.obsm[key], dtype=np.float64)
+            self.embedding_matrix = ""
+            self.embedding_matrix_dim = 0
+            return
+        mat = np.asarray(adata.obsm[key], dtype=np.float32)
         if mat.ndim == 1:
             mat = mat.reshape(-1, 1)
         if mat.shape[0] != n:
-            raise ValueError(f"obsm[{key!r}] rows {mat.shape[0]} != n_obs {n}")
-        # Pack all dims; the engine masks with ``raster_embedding_dims`` for
-        # rest-state RGB and cosine (empty = all).
-        labels = [str(i) for i in range(mat.shape[1])]
-        return mat, labels
-
-    def _composition_codes(self) -> tuple["np.ndarray", list[str]]:
-        import numpy as np
-
-        col = str(self.active_category or "")
-        n = int(self._data_x.shape[0])
-        meta = next(
-            (c for c in (self.category_columns or []) if c.get("name") == col),
-            None,
-        )
-        labels_arr = getattr(self, "_data_label_arrays", {}).get(col)
-        if meta is None or labels_arr is None:
-            return np.full(n, -1, dtype=np.int32), []
-        label_list = [str(x) for x in (meta.get("labels") or [])]
-        to_i = {lab: i for i, lab in enumerate(label_list)}
-        codes = np.array(
-            [to_i.get(str(v), -1) for v in np.asarray(labels_arr).tolist()],
-            dtype=np.int32,
-        )
-        return codes, label_list
-
-    def _rebuild_raster(self) -> None:
-        """Assign bins and rebuild feature matrix ``B`` for the current basis."""
-        import numpy as np
-
-        if self._raster_rebuild_depth:
+            self.embedding_matrix = ""
+            self.embedding_matrix_dim = 0
             return
-        self._raster_rebuild_depth += 1
-        try:
-            self.raster_status = "computing"
-            self.raster_query_bin = -1
-            xy = np.column_stack(
-                [
-                    np.asarray(self._data_x, dtype=np.float64),
-                    np.asarray(self._data_y, dtype=np.float64),
-                ]
-            )
-            size = float(self.raster_bin_size)
-            if not np.isfinite(size) or size <= 0:
-                size = default_bin_size(self._median_nn, float(self.point_size))
-                self.raster_bin_size = float(size)
-            grid = build_grid(xy, size)
-            assignment = assign_bins(xy, grid)
-            n_bins = int(assignment.counts.shape[0])
-            # Soft neighborhood mean around each bin center (fixed µm default).
-            window_radius = default_window_radius(size)
-            if (
-                float(self.raster_window_radius) > 0
-                and np.isfinite(float(self.raster_window_radius))
-            ):
-                window_radius = float(self.raster_window_radius)
-            self.raster_window_radius = float(window_radius)
-            basis = str(self.raster_basis or "composition")
-            labels: list[str] = []
-            B = np.zeros((n_bins, 0), dtype=np.float32)
-            try:
-                if basis == "genes":
-                    feats, labels = self._gene_feature_matrix()
-                    if feats.shape[1]:
-                        B = aggregate_mean_window(
-                            xy, feats, assignment, window_radius=window_radius
-                        )
-                elif basis == "embedding":
-                    feats, labels = self._embedding_feature_matrix()
-                    if feats.shape[1]:
-                        B = aggregate_mean_window(
-                            xy, feats, assignment, window_radius=window_radius
-                        )
-                elif basis == "composition":
-                    codes, labels = self._composition_codes()
-                    if labels:
-                        B = composition_hist_window(
-                            xy,
-                            codes,
-                            assignment,
-                            len(labels),
-                            window_radius=window_radius,
-                        )
-                else:
-                    self._clear_raster_sync(status=f"error:unknown basis {basis}")
-                    return
-            except Exception as exc:  # noqa: BLE001 — surface to chrome status
-                self._clear_raster_sync(status=f"error:{exc}")
-                return
-
-            # Keep raw bin means for rest-state observation coloring; the engine
-            # L2-normalizes rows when scoring cosine similarity.
-            if B.shape[1] > 0:
-                B = np.asarray(B, dtype=np.float32)
-
-            packs = pack_bin_arrays(assignment.rows, assignment.cols, assignment.counts)
-            self.raster_origin_x = float(grid.origin_x)
-            self.raster_origin_y = float(grid.origin_y)
-            self.raster_n_cols = int(grid.n_cols)
-            self.raster_n_rows = int(grid.n_rows)
-            self.raster_n_bins = n_bins
-            self.raster_bin_rows = packs["raster_bin_rows"]
-            self.raster_bin_cols = packs["raster_bin_cols"]
-            self.raster_bin_counts = packs["raster_bin_counts"]
-            self.raster_features = pack_features(B) if B.size else ""
-            self.raster_feature_dim = int(B.shape[1])
-            self.raster_feature_labels = list(labels)
-            self._raster_assignment = assignment
-            self.raster_status = "ready"
-        finally:
-            self._raster_rebuild_depth -= 1
-
+        packed = np.ascontiguousarray(mat, dtype=np.float32)
+        self.embedding_matrix = base64.b64encode(packed.ravel(order="C").tobytes()).decode(
+            "ascii"
+        )
+        self.embedding_matrix_dim = int(packed.shape[1])
 
     @traitlets.observe("raster_embedding_key", "raster_embedding_dims")
     def _on_embedding_pack_params(self, change: dict) -> None:
         if change.get("new") == change.get("old"):
             return
         self._pack_embedding_values()
-
-    @traitlets.observe("mode", "raster_similarity_enabled")
-    def _on_probe_traits(self, change: dict) -> None:
-        if change.get("new") == change.get("old"):
-            return
-        if (
-            (self.mode == "probe" or bool(self.raster_similarity_enabled))
-            and int(self.raster_n_bins or 0) <= 0
-        ):
-            self._rebuild_raster()
-
-    @traitlets.observe("render_mode")
-    def _on_render_mode(self, change: dict) -> None:
-        if change.get("new") == change.get("old"):
-            return
-        mode = str(change.get("new") or "points")
-        if mode == "raster":
-            self._rebuild_raster()
-        # Points: retain bin features so probe works without revisiting raster.
-
-    @traitlets.observe(
-        "raster_bin_size",
-        "raster_window_radius",
-        "raster_basis",
-        "raster_embedding_key",
-        "raster_gene_mode",
-        "active_category",
-    )
-    def _on_raster_params(self, change: dict) -> None:
-        if change.get("new") == change.get("old"):
-            return
-        if not self._should_maintain_raster_features():
-            return
-        # active_category only affects composition basis
-        if change.get("name") == "active_category" and self.raster_basis != "composition":
-            return
-        self._rebuild_raster()
+        if change.get("name") == "raster_embedding_key":
+            self._pack_embedding_matrix()
 
     def set_color(
         self,
@@ -1186,210 +892,9 @@ class LandmarksWidget(AnyWidget):
             self.selected_kind = ""
             self.selected_index = -1
 
-    @traitlets.observe("promote_tick")
-    def _on_promote_tick(self, change: dict) -> None:
-        if change.get("new") == change.get("old"):
-            return
-        try:
-            self.promote_neighborhood_to_selection()
-        except ValueError:
-            pass
-
-    def promote_neighborhood_to_selection(self) -> str:
-        """Freeze the active type/selection neighborhood into a new polygon selection.
-
-        Membership is the exact neighborhood point set (``point_indices``), not a
-        convex hull. Hull vertices are kept only as optional display geometry.
-        The new selection has ``neighborhood: off``. Returns the new selection id.
-        """
-        import numpy as np
-
-        x = getattr(self, "_data_x", None)
-        y = getattr(self, "_data_y", None)
-        if x is None or y is None:
-            raise ValueError("widget has no spatial coordinates")
-
-        kind = str(self.selected_kind or "")
-        index = int(self.selected_index)
-        if kind == "selection" and index >= 0 and index < len(self.selections):
-            sel = dict(self.selections[index])
-            method, _, _ = neighborhood_params(sel)
-            if method == "off":
-                raise ValueError("active selection neighborhood is off")
-            sid = str(sel.get("id"))
-            mask = self.get_mask(x, y, selection_id=sid, expand=True)
-            label = sid
-        elif kind == "type" and index >= 0 and index < len(self.legend_labels):
-            type_label = str(self.legend_labels[index])
-            col = str(self.active_category or "")
-            row = next(
-                (
-                    item
-                    for item in (self.type_neighborhoods or [])
-                    if str(item.get("id")) == type_label
-                    and (
-                        not item.get("column")
-                        or str(item.get("column")) == col
-                    )
-                ),
-                None,
-            )
-            method, _, _ = neighborhood_params(row)
-            if method == "off":
-                raise ValueError("active type neighborhood is off")
-            mask = self.get_type_mask(type_label, expand=True, column=col or None)
-            label = type_label
-        else:
-            raise ValueError("select a type or selection with an active neighborhood")
-
-        mask_arr = np.asarray(mask, dtype=bool).ravel()
-        point_indices = [int(i) for i in np.flatnonzero(mask_arr)]
-        if not point_indices:
-            raise ValueError("neighborhood is empty")
-        new_id = next_numbered_id("selection", list(self.selections))
-        new_sel = {
-            "id": new_id,
-            "type": "points",
-            "point_indices": point_indices,
-            "neighborhood": "off",
-            "label": f"neighborhood:{label}",
-        }
-        self.selections = list(self.selections) + [new_sel]
-        self.selected_kind = "selection"
-        self.selected_index = len(self.selections) - 1
-        return new_id
-
     def clear(self) -> None:
         self.clear_selections()
         self.clear_landmarks()
-
-    def _expand_index(self, method: str) -> NeighborhoodIndex | None:
-        idx = _index_for_method(self, method)
-        if idx is None or idx.n == 0 or int(idx.indptr[-1]) == 0:
-            return None
-        return idx
-
-    def get_mask(
-        self,
-        x_arr: Any,
-        y_arr: Any,
-        selection_id: str | None = "all",
-        *,
-        expand: bool = True,
-    ) -> "np.ndarray":
-        """Boolean mask for points inside ``selection_id`` (all-True for ``\"all\"``/None).
-
-        When ``expand`` is true and the selection has ``neighborhood`` ``radius``
-        or ``knn``, neighbors of the seed cells are included.
-        """
-        mask = selection_mask(
-            list(self.selections),
-            x_arr,
-            y_arr,
-            selection_id,
-            x_scale=self._x_scale,
-            y_scale=self._y_scale,
-        )
-        if not expand or selection_id is None or selection_id == "all":
-            return mask
-        from .selection import selection_by_id
-
-        sel = selection_by_id(list(self.selections), str(selection_id))
-        method, radius, k = neighborhood_params(sel)
-        if method == "off":
-            return mask
-        index = self._expand_index(method)
-        if index is None:
-            return mask
-        return mask | neighborhood_expand(
-            mask,
-            x_arr,
-            y_arr,
-            method,
-            radius=radius,
-            k=k,
-            index=index,
-        )
-
-    def get_indices(
-        self,
-        x_arr: Any,
-        y_arr: Any,
-        selection_id: str | None = "all",
-        *,
-        expand: bool = True,
-    ) -> "np.ndarray":
-        """Indices of points inside ``selection_id`` (all indices for ``\"all\"``/None)."""
-        import numpy as np
-
-        return np.where(
-            self.get_mask(x_arr, y_arr, selection_id=selection_id, expand=expand)
-        )[0]
-
-    def get_type_mask(
-        self,
-        type_label: str,
-        *,
-        expand: bool = True,
-        column: str | None = None,
-    ) -> "np.ndarray":
-        """Boolean mask for a categorical label (optional neighborhood)."""
-        import numpy as np
-
-        arrays = getattr(self, "_data_label_arrays", None) or {}
-        col = column or self.active_category or ""
-        labels = arrays.get(col)
-        if labels is None:
-            labels = getattr(self, "_data_labels", None)
-        if labels is None:
-            raise RuntimeError(
-                "no categorical columns; pass color= an obs column when constructing"
-            )
-        seed = np.asarray(labels).astype(str) == str(type_label)
-        if not expand:
-            return seed
-        row = next(
-            (
-                item
-                for item in (self.type_neighborhoods or [])
-                if str(item.get("id")) == str(type_label)
-                and (
-                    not item.get("column")
-                    or str(item.get("column")) == str(col)
-                )
-            ),
-            None,
-        )
-        method, radius, k = neighborhood_params(row)
-        if method == "off":
-            return seed
-        x = getattr(self, "_data_x", None)
-        y = getattr(self, "_data_y", None)
-        if x is None or y is None:
-            raise RuntimeError("internal point cache missing; call set_points first")
-        index = self._expand_index(method)
-        if index is None:
-            return seed
-        return seed | neighborhood_expand(
-            seed,
-            x,
-            y,
-            method,
-            radius=radius,
-            k=k,
-            index=index,
-        )
-
-    def get_type_indices(
-        self,
-        type_label: str,
-        *,
-        expand: bool = True,
-    ) -> "np.ndarray":
-        """Indices for a categorical color label (optional neighborhood)."""
-        import numpy as np
-
-        return np.where(self.get_type_mask(type_label, expand=expand))[0]
 
     def get_obs_names(
         self,
@@ -1397,9 +902,13 @@ class LandmarksWidget(AnyWidget):
         selection_id: str | None = "all",
         *,
         spatial_key: str = "spatial",
-        expand: bool = True,
     ) -> "np.ndarray":
-        """``obs_names`` of cells inside ``selection_id`` (durable join key)."""
+        """``obs_names`` of cells inside ``selection_id`` (durable join key).
+
+        Uses :func:`selection_mask` (geometry or stored ``point_indices``).
+        Neighborhood expand is client-side; promote freezes membership into
+        ``point_indices`` before syncing.
+        """
         import numpy as np
 
         xy = np.asarray(adata.obsm[spatial_key], dtype=np.float64)
@@ -1408,10 +917,15 @@ class LandmarksWidget(AnyWidget):
             raise ValueError(
                 "adata row count != widget points; rebuild the widget after filtering"
             )
-        idx = self.get_indices(
-            xy[:, 0], xy[:, 1], selection_id=selection_id, expand=expand
+        mask = selection_mask(
+            list(self.selections),
+            xy[:, 0],
+            xy[:, 1],
+            selection_id,
+            x_scale=self._x_scale,
+            y_scale=self._y_scale,
         )
-        return np.asarray(adata.obs_names.astype(str))[idx]
+        return np.asarray(adata.obs_names.astype(str))[np.asarray(mask, dtype=bool)]
 
     def assign_obs_mask(
         self,
@@ -1420,12 +934,11 @@ class LandmarksWidget(AnyWidget):
         selection_id: str | None = "all",
         *,
         spatial_key: str = "spatial",
-        expand: bool = True,
     ) -> None:
         """Write a boolean column on ``adata.obs`` for the current selection."""
         names = set(
             self.get_obs_names(
-                adata, selection_id, spatial_key=spatial_key, expand=expand
+                adata, selection_id, spatial_key=spatial_key
             ).tolist()
         )
         adata.obs[key] = [str(n) in names for n in adata.obs_names.astype(str)]
