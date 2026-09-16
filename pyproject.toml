@@ -35,10 +35,9 @@ dependencies = [
 demo = [
     "altair>=6.2.2",
     "cmcrameri>=1.10",
+    "fsspec>=2024.0",
     "marimo>=0.24.0",
     "scanpy>=1.10",
-    "squidpy>=1.6",
-    "tifffile>=2026.3.3",
 ]
 test = [
     "geopandas>=1.1.4",

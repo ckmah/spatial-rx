@@ -6,11 +6,11 @@
 #     "numpy",
 #     "pandas",
 #     "altair",
-#     "geopandas",
-#     "shapely",
-#     "scipy",
 #     "anndata",
-#     "squidpy",
+#     "scanpy",
+#     "cmcrameri",
+#     "fsspec",
+#     "scipy",
 #     "spatial-rx[demo]",
 #     "wigglystuff>=0.5.32",
 # ]
@@ -45,7 +45,6 @@ def _():
     import fsspec
     import marimo as mo
     import matplotlib
-    import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
     import scanpy as sc
