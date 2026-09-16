@@ -16,3 +16,6 @@ frontend/dev/fixture-ileum.json
 /ileum.h5ad
 spatial_rx/static/bundled/
 .playwright-mcp/
+# GitHub Pages assemble output (landing + Zensical)
+/site/
+website/dist/

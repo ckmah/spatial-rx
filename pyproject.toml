@@ -59,6 +59,7 @@ dev = [
     "pyyaml>=6.0",
     "shapely>=2.1.2",
     "watchfiles>=1.2.0",
+    "zensical>=0.0.62",
 ]
 
 [build-system]
