@@ -487,7 +487,7 @@ export function convertLandmarkType(model, index, landmarks, nextType) {
 
 export function insertLandmarkVertex(model, index, landmarks, atIndex, xy) {
   const lm = landmarks[index];
-  if (!lm || lm.locked) return;
+  if (!lm) return;
   const verts = (lm.vertices || []).slice();
   const i = Math.max(0, Math.min(verts.length, atIndex));
   verts.splice(i, 0, [xy[0], xy[1]]);
@@ -496,7 +496,7 @@ export function insertLandmarkVertex(model, index, landmarks, atIndex, xy) {
 
 export function deleteLandmarkVertex(model, index, landmarks, vertexIndex) {
   const lm = landmarks[index];
-  if (!lm || lm.locked) return false;
+  if (!lm) return false;
   const verts = (lm.vertices || []).slice();
   if (vertexIndex < 0 || vertexIndex >= verts.length) return false;
   const minV =

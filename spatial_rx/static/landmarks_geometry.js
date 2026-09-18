@@ -3,7 +3,6 @@
 export const BUFFERABLE = ["point", "line", "spline", "shape"];
 export const TENSION_TYPES = ["spline", "shape"];
 export const NODE_EDITABLE = ["line", "spline", "shape"];
-export const EXTENDABLE = ["line", "spline"];
 export const LINE_BUFFER_SIDES = ["left", "both", "right"];
 export const SHAPE_BUFFER_SIDES = ["out", "both", "in"];
 
@@ -35,10 +34,24 @@ export function offsetPathData(points, width) {
   });
 }
 
-/** Simple closed-ring offset (outward positive). Vertices as {x,y}. */
+/**
+ * Simple closed-ring offset with Shapely `buffer()` sign semantics: positive
+ * `width` always dilates the exterior, negative always erodes, independent
+ * of the ring's vertex winding order. Vertices as {x,y}.
+ */
 export function offsetRingData(points, width) {
   const n = points.length;
   if (n < 3) return points.slice();
+  let signedArea2 = 0;
+  for (let i = 0; i < n; i++) {
+    const p = points[i];
+    const q = points[(i + 1) % n];
+    signedArea2 += p.x * q.y - q.x * p.y;
+  }
+  // The per-vertex "left normal" below points outward for a CW ring and
+  // inward for a CCW ring; flip the effective width so +width always
+  // dilates regardless of winding.
+  const effWidth = signedArea2 < 0 ? width : -width;
   const out = [];
   for (let i = 0; i < n; i++) {
     const prev = points[(i - 1 + n) % n];
@@ -59,14 +72,7 @@ export function offsetRingData(points, width) {
     const nl = Math.hypot(nx, ny) || 1;
     nx /= nl;
     ny /= nl;
-    // Keep outward for CCW rings; flip if inward product with edge normal is wrong.
-    const midNx = n1x;
-    const midNy = n1y;
-    if (nx * midNx + ny * midNy < 0) {
-      nx = -nx;
-      ny = -ny;
-    }
-    out.push({ x: curr.x + nx * width, y: curr.y + ny * width });
+    out.push({ x: curr.x + nx * effWidth, y: curr.y + ny * effWidth });
   }
   return out;
 }

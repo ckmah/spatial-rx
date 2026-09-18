@@ -31,7 +31,6 @@ import {
   BUFFERABLE,
   TENSION_TYPES,
   NODE_EDITABLE,
-  EXTENDABLE,
   circlePolygon,
   offsetPathData,
   offsetRingData,
@@ -2281,11 +2280,13 @@ export function mountEngine({ model, host }) {
   let vertexDragLandmarkIndex = -1;
   /** Vertex index selected within the focused landmark (pointer mode); -1 = none. */
   let activeVertexIndex = -1;
+  /** Hovered existing vertex of the focused landmark (pointer mode); -1 = none. */
+  let hoverVertexIndex = -1;
+  /** Hover-ghost insertion point on the focused landmark's nearest edge, or null. */
+  let hoverInsert = null;
   /** Snapshots of `landmarks` for Mod+Z; capped so memory stays bounded. */
   let landmarkUndoStack = [];
   const LANDMARK_UNDO_MAX = 40;
-  /** Landmark index currently accepting appended vertices (line/spline); -1 = off. */
-  let extendingLandmarkIndex = -1;
   let isLassoing = false;
   let lassoPath = [];
   let isBoxing = false;
@@ -2798,26 +2799,25 @@ export function mountEngine({ model, host }) {
             ...pick,
           });
         }
-        (lm.vertices || []).forEach(([x, y]) => {
+        (lm.vertices || []).forEach(([x, y], vidx) => {
+          const hoveredVertex = selected && vidx === hoverVertexIndex;
           markers.push({
             position: [x, y, 0],
             fill: line,
             line,
-            lineWidth: 0,
-            radius: selected ? 5 : 4,
+            lineWidth: hoveredVertex ? 1.5 : 0,
+            radius: hoveredVertex ? (selected ? 7 : 5) : selected ? 5 : 4,
             ...pick,
           });
         });
-        if (selected) {
-          midpointGhostMarkers(lm).forEach(([x, y]) => {
-            markers.push({
-              position: [x, y, 0],
-              fill: scaleRgbaAlpha(hexToRgbaBytes(hex, 0.6), alphaScale),
-              line,
-              lineWidth: 1,
-              radius: 3,
-              ...pick,
-            });
+        if (selected && hoverInsert && hoverInsert.landmarkIdx === i) {
+          markers.push({
+            position: [hoverInsert.x, hoverInsert.y, 0],
+            fill: scaleRgbaAlpha(hexToRgbaBytes(hex, 0.55), alphaScale),
+            line,
+            lineWidth: 1,
+            radius: 3,
+            ...pick,
           });
         }
         const anchor = landmarkLabelAnchor(lm, pathPts);
@@ -2855,26 +2855,25 @@ export function mountEngine({ model, host }) {
           const head = arrowHeadPolygon(path, arrowWorld);
           if (head) arrows.push({ polygon: head, fill: line, line, width: 1, ...pick });
         }
-        (lm.vertices || []).forEach(([x, y]) => {
+        (lm.vertices || []).forEach(([x, y], vidx) => {
+          const hoveredVertex = selected && vidx === hoverVertexIndex;
           markers.push({
             position: [x, y, 0],
             fill: line,
             line,
-            lineWidth: 0,
-            radius: selected ? 5 : 4,
+            lineWidth: hoveredVertex ? 1.5 : 0,
+            radius: hoveredVertex ? (selected ? 7 : 5) : selected ? 5 : 4,
             ...pick,
           });
         });
-        if (selected) {
-          midpointGhostMarkers(lm).forEach(([x, y]) => {
-            markers.push({
-              position: [x, y, 0],
-              fill: scaleRgbaAlpha(hexToRgbaBytes(hex, 0.6), alphaScale),
-              line,
-              lineWidth: 1,
-              radius: 3,
-              ...pick,
-            });
+        if (selected && hoverInsert && hoverInsert.landmarkIdx === i) {
+          markers.push({
+            position: [hoverInsert.x, hoverInsert.y, 0],
+            fill: scaleRgbaAlpha(hexToRgbaBytes(hex, 0.55), alphaScale),
+            line,
+            lineWidth: 1,
+            radius: 3,
+            ...pick,
           });
         }
         const anchor = landmarkLabelAnchor(lm, pathPts);
@@ -3872,7 +3871,8 @@ export function mountEngine({ model, host }) {
    * Buffer polygon for a landmark, by type:
    * - point: disk of radius buffer_width.
    * - line/spline: offset corridor along the (possibly tension-sampled) path.
-   * - shape: offset corridor along the closed ring, side out/in/both.
+   * - shape: offset corridor along the closed ring, side left/right/both
+   *   (unified with line/spline; legacy "in"/"out" map onto left/right).
    */
   function bufferPolygonData(lm) {
     const width = Number(lm.buffer_width || 0);
@@ -3885,34 +3885,28 @@ export function mountEngine({ model, host }) {
     const points = landmarkPathData(lm);
     if (lm.type === "shape") {
       if (points.length < 3) return null;
-      // Legacy left/right buffer_side (pre-shape-buffer) reads as both.
+      // left = inside/erosion corridor, right = outside/dilation corridor.
       let side = lm.buffer_side || "both";
-      if (side === "left" || side === "right") side = "both";
-      if (side === "out") return [...points, ...offsetRingData(points, width).reverse()];
-      if (side === "in") return [...points, ...offsetRingData(points, -width).reverse()];
-      return [...offsetRingData(points, width), ...offsetRingData(points, -width).reverse()];
+      if (side === "in") side = "left";
+      else if (side === "out") side = "right";
+      if (side !== "left" && side !== "right") side = "both";
+      if (side === "right") {
+        const outer = offsetRingData(points, width);
+        return [...outer, ...points.slice().reverse()];
+      }
+      if (side === "left") {
+        const inner = offsetRingData(points, -width);
+        return [...points, ...inner.slice().reverse()];
+      }
+      const outer = offsetRingData(points, width);
+      const inner = offsetRingData(points, -width);
+      return [...outer, ...inner.slice().reverse()];
     }
     if (points.length < 2) return null;
     const side = lm.buffer_side || "both";
     if (side === "left") return [...points, ...offsetPathData(points, width).reverse()];
     if (side === "right") return [...points, ...offsetPathData(points, -width).reverse()];
     return [...offsetPathData(points, width), ...offsetPathData(points, -width).reverse()];
-  }
-
-  /** Segment midpoints of a node-editable landmark's *control* vertices (not the densified path). */
-  function midpointGhostMarkers(lm) {
-    if (!NODE_EDITABLE.includes(lm.type) || lm.locked) return [];
-    const verts = lm.vertices || [];
-    const n = verts.length;
-    if (n < 2) return [];
-    const segCount = lm.type === "shape" ? n : n - 1;
-    const out = [];
-    for (let i = 0; i < segCount; i++) {
-      const a = verts[i];
-      const b = verts[(i + 1) % n];
-      out.push([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
-    }
-    return out;
   }
 
   function cellLayerFocus() {
@@ -4103,6 +4097,7 @@ export function mountEngine({ model, host }) {
       }
     }
     if (!point_indices.length) return;
+    pushLandmarkUndo();
     const selections = [...(model.get("selections") || [])];
     selections.push(
       withHood({
@@ -4114,6 +4109,12 @@ export function mountEngine({ model, host }) {
       }),
     );
     model.set("selections", selections);
+    // The buffer has been promoted to a selection; reset it so the source
+    // landmark's corridor doesn't linger as a duplicate visual.
+    setLandmarks(
+      model,
+      landmarks.map((item, i) => (i === focus.index ? { ...item, buffer_width: 0 } : item)),
+    );
     model.set("selected_kind", "selection");
     model.set("selected_index", selections.length - 1);
     model.save_changes();
@@ -4427,11 +4428,6 @@ export function mountEngine({ model, host }) {
   }
 
   function finishVertexDraft() {
-    if (extendingLandmarkIndex >= 0) {
-      extendingLandmarkIndex = -1;
-      setDeckLayers();
-      return;
-    }
     const vertexModes = ["polygon", "line", "spline", "shape"];
     if (!vertexModes.includes(currentMode)) return;
     const minVerts = currentMode === "line" || currentMode === "spline" ? 2 : 3;
@@ -4498,7 +4494,6 @@ export function mountEngine({ model, host }) {
     const { dx, dy } = pixelDeltaToData(pixelDx, pixelDy);
     if (kind === "landmark") {
       const landmarks = model.get("landmarks") || [];
-      if (landmarks[index]?.locked) return;
       model.set(
         "landmarks",
         landmarks.map((item, i) =>
@@ -4534,7 +4529,7 @@ export function mountEngine({ model, host }) {
     if (!focus) return false;
     const landmarks = model.get("landmarks") || [];
     const lm = landmarks[focus.index];
-    if (!lm || lm.locked) return false;
+    if (!lm) return false;
     const step = 4;
     let pdx = 0;
     let pdy = 0;
@@ -4609,64 +4604,49 @@ export function mountEngine({ model, host }) {
     return true;
   }
 
-  /** Hit-test segment midpoints of the focused landmark's control vertices. */
-  function hitTestMidpoint(pt) {
+  /**
+   * Nearest-edge insertion point of the focused landmark's control vertices,
+   * within ~10px screen distance of `pt`. Unlike a fixed midpoint, this
+   * tracks the cursor continuously along the segment (hover-ghost insert).
+   */
+  function hitTestNearestEdge(pt) {
     const focus = landmarkFocus();
     if (!focus) return null;
     const landmarks = model.get("landmarks") || [];
     const lm = focus.index >= 0 && focus.index < landmarks.length ? landmarks[focus.index] : null;
-    if (!lm || lm.locked || !NODE_EDITABLE.includes(lm.type)) return null;
+    if (!lm || !NODE_EDITABLE.includes(lm.type)) return null;
     const verts = lm.vertices || [];
     const n = verts.length;
     if (n < 2) return null;
     const segCount = lm.type === "shape" ? n : n - 1;
     const viewport = deckgl?.isInitialized ? deckgl.getViewports()[0] : null;
+    let best = null;
     for (let i = 0; i < segCount; i++) {
       const a = verts[i];
       const b = verts[(i + 1) % n];
-      const mx = (a[0] + b[0]) / 2;
-      const my = (a[1] + b[1]) / 2;
       if (viewport) {
-        const [sx, sy] = viewport.project([mx, my]);
-        if (Math.hypot(pt.px - sx, pt.py - sy) <= 8) {
-          return { index: i + 1, landmarkIdx: focus.index };
+        const [ax, ay] = viewport.project([a[0], a[1]]);
+        const [bx, by] = viewport.project([b[0], b[1]]);
+        const { dist, qx, qy } = distPointToSeg(pt.px, pt.py, ax, ay, bx, by);
+        if (dist <= 10 && (!best || dist < best.dist)) {
+          const [wx, wy] = viewport.unproject([qx, qy]);
+          best = { dist, landmarkIdx: focus.index, afterIndex: i + 1, x: wx, y: wy };
         }
-      } else if (Math.hypot(pt.x - mx, pt.y - my) < 5) {
-        return { index: i + 1, landmarkIdx: focus.index };
+      } else {
+        const { dist, qx, qy } = distPointToSeg(pt.x, pt.y, a[0], a[1], b[0], b[1]);
+        if (dist <= 6 && (!best || dist < best.dist)) {
+          best = { dist, landmarkIdx: focus.index, afterIndex: i + 1, x: qx, y: qy };
+        }
       }
     }
-    return null;
+    if (!best) return null;
+    return { landmarkIdx: best.landmarkIdx, afterIndex: best.afterIndex, x: best.x, y: best.y };
   }
 
   function handleMouseDown(event) {
     if (currentMode === "move") return;
     // Right/middle clicks must not preventDefault — that blocks contextmenu.
     if (event.button !== 0) return;
-    if (extendingLandmarkIndex >= 0) {
-      event.preventDefault();
-      webglCanvas.focus();
-      const pt = eventPoint(event);
-      if (!pt) return;
-      const landmarks = model.get("landmarks") || [];
-      const lm = landmarks[extendingLandmarkIndex];
-      if (!lm || lm.locked || !EXTENDABLE.includes(lm.type)) {
-        extendingLandmarkIndex = -1;
-        return;
-      }
-      pushLandmarkUndo();
-      const verts = (lm.vertices || []).slice();
-      verts.push([pt.x, pt.y]);
-      setLandmarks(
-        model,
-        landmarks.map((item, i) => (i === extendingLandmarkIndex ? { ...item, vertices: verts } : item)),
-      );
-      model.save_changes();
-      // Deck's own onClick picking also fires for this click; suppress it so
-      // it does not reselect/deselect and wipe the extend/active-vertex state.
-      suppressClick = true;
-      setDeckLayers();
-      return;
-    }
     if (currentMode === "pointer") {
       event.preventDefault();
       webglCanvas.focus();
@@ -4677,7 +4657,7 @@ export function mountEngine({ model, host }) {
       if (focus) {
         const landmarks = model.get("landmarks") || [];
         const focusedLm = landmarks[focus.index];
-        if (focusedLm && !focusedLm.locked) {
+        if (focusedLm) {
           const vertexHit = hitTestVertex(pt);
           if (vertexHit) {
             activeVertexIndex = vertexHit.index;
@@ -4685,11 +4665,11 @@ export function mountEngine({ model, host }) {
             setDeckLayers();
             return;
           }
-          const midHit = hitTestMidpoint(pt);
-          if (midHit) {
+          if (hoverInsert && hoverInsert.landmarkIdx === focus.index) {
             pushLandmarkUndo();
-            insertLandmarkVertex(model, midHit.landmarkIdx, landmarks, midHit.index, [pt.x, pt.y]);
-            activeVertexIndex = midHit.index;
+            insertLandmarkVertex(model, hoverInsert.landmarkIdx, landmarks, hoverInsert.afterIndex, [pt.x, pt.y]);
+            activeVertexIndex = hoverInsert.afterIndex;
+            hoverInsert = null;
             suppressClick = true;
             setDeckLayers();
             return;
@@ -4700,14 +4680,11 @@ export function mountEngine({ model, host }) {
       if (hit?.kind === "landmark") {
         setSelected("landmark", hit.index);
         activeVertexIndex = -1;
-        const landmarks = model.get("landmarks") || [];
-        if (!landmarks[hit.index]?.locked) {
-          isDragging = true;
-          dragStart = pt;
-          dragKind = "landmark";
-          dragIndex = hit.index;
-          webglCanvas.style.cursor = "grabbing";
-        }
+        isDragging = true;
+        dragStart = pt;
+        dragKind = "landmark";
+        dragIndex = hit.index;
+        webglCanvas.style.cursor = "grabbing";
         return;
       }
       activeVertexIndex = -1;
@@ -4744,11 +4721,8 @@ export function mountEngine({ model, host }) {
       const kind = model.get("selected_kind");
       const selectedIdx = model.get("selected_index");
       if (hit && hit.kind === kind && hit.index === selectedIdx) {
-        const lockedHit = hit.kind === "landmark" && (model.get("landmarks") || [])[hit.index]?.locked;
-        if (!lockedHit) {
-          isDragging = true; dragStart = pt; dragKind = hit.kind; dragIndex = hit.index;
-          webglCanvas.style.cursor = "grabbing";
-        }
+        isDragging = true; dragStart = pt; dragKind = hit.kind; dragIndex = hit.index;
+        webglCanvas.style.cursor = "grabbing";
         return;
       }
       if (hit) { setSelected(hit.kind, hit.index); suppressClick = true; return; }
@@ -4757,11 +4731,8 @@ export function mountEngine({ model, host }) {
 
     const vertexHit = hitTestVertex(pt);
     if (vertexHit && currentMode !== "pointer" && currentMode !== "move" && currentMode !== "probe") {
-      const lm = (model.get("landmarks") || [])[vertexHit.landmarkIdx];
-      if (lm && !lm.locked) {
-        startVertexDrag(vertexHit.index, vertexHit.landmarkIdx);
-        activeVertexIndex = vertexHit.index;
-      }
+      startVertexDrag(vertexHit.index, vertexHit.landmarkIdx);
+      activeVertexIndex = vertexHit.index;
       return;
     }
 
@@ -4810,6 +4781,41 @@ export function mountEngine({ model, host }) {
         setDeckLayers();
       }
       return;
+    }
+
+    // Node hover ghosts: pointer mode + a node-editable landmark focused.
+    if (currentMode === "pointer") {
+      const focus = landmarkFocus();
+      const landmarks = focus ? model.get("landmarks") || [] : [];
+      const focusedLm = focus ? landmarks[focus.index] : null;
+      if (focusedLm && NODE_EDITABLE.includes(focusedLm.type)) {
+        const vertexHit = hitTestVertex(pt);
+        if (vertexHit) {
+          if (hoverVertexIndex !== vertexHit.index || hoverInsert) {
+            hoverVertexIndex = vertexHit.index;
+            hoverInsert = null;
+            webglCanvas.style.cursor = "grab";
+            setDeckLayers();
+          }
+        } else {
+          const edgeHit = hitTestNearestEdge(pt);
+          if (edgeHit) {
+            hoverVertexIndex = -1;
+            hoverInsert = edgeHit;
+            webglCanvas.style.cursor = "copy";
+            setDeckLayers();
+          } else if (hoverVertexIndex >= 0 || hoverInsert) {
+            hoverVertexIndex = -1;
+            hoverInsert = null;
+            webglCanvas.style.cursor = "default";
+            setDeckLayers();
+          }
+        }
+      } else if (hoverVertexIndex >= 0 || hoverInsert) {
+        hoverVertexIndex = -1;
+        hoverInsert = null;
+        setDeckLayers();
+      }
     }
 
     // Rubber-band draft preview from last vertex → cursor (line/spline/shape/polygon).
@@ -4995,6 +5001,11 @@ export function mountEngine({ model, host }) {
       lineStrokeActive = false;
     }
     draftCursor = null;
+    if (hoverVertexIndex >= 0 || hoverInsert) {
+      hoverVertexIndex = -1;
+      hoverInsert = null;
+      setDeckLayers();
+    }
     if (isLassoing) { isLassoing = false; lassoPath = []; setDeckLayers(); }
     if (isBoxing) { isBoxing = false; boxStart = null; boxCurrent = null; setDeckLayers(); }
     else if (draft.length) setDeckLayers();
@@ -5123,7 +5134,7 @@ export function mountEngine({ model, host }) {
     if (kind === "landmark" && index >= 0) {
       const landmarks = model.get("landmarks") || [];
       const lm = landmarks[index];
-      if (lm && !lm.locked && activeVertexIndex >= 0) {
+      if (lm && activeVertexIndex >= 0) {
         pushLandmarkUndo();
         if (deleteLandmarkVertex(model, index, landmarks, activeVertexIndex)) {
           activeVertexIndex = -1;
@@ -5197,7 +5208,8 @@ export function mountEngine({ model, host }) {
       event.stopPropagation();
       resetDraft();
       activeVertexIndex = -1;
-      extendingLandmarkIndex = -1;
+      hoverVertexIndex = -1;
+      hoverInsert = null;
       setSelected("", -1);
       // Reset similarity to observation colors (pin + hover scrub).
       const hadQuery = (model.get("raster_query_bin") ?? -1) >= 0;
@@ -5456,7 +5468,8 @@ export function mountEngine({ model, host }) {
   ["selected_index", "selected_kind"].forEach((k) => {
     onChange(k, () => {
       activeVertexIndex = -1;
-      extendingLandmarkIndex = -1;
+      hoverVertexIndex = -1;
+      hoverInsert = null;
       setDeckLayers();
       updateUI();
     });
@@ -5464,8 +5477,9 @@ export function mountEngine({ model, host }) {
   onChange("mode", () => {
     currentMode = model.get("mode");
     if (currentMode === "select") currentMode = "move";
-    extendingLandmarkIndex = -1;
     hoverTarget = null;
+    hoverVertexIndex = -1;
+    hoverInsert = null;
     if (currentMode !== "probe") {
       hoverBinIndex = -1;
       hoverPointIndex = -1;
@@ -5659,15 +5673,6 @@ export function mountEngine({ model, host }) {
     zoomBy: (d, opts) => zoomBy(d, opts),
     resetZoom: () => resetZoom(),
     resize: () => resizeDeck(),
-    startExtendLandmark: (index) => {
-      const landmarks = model.get("landmarks") || [];
-      const lm = landmarks[index];
-      if (!lm || lm.locked || !EXTENDABLE.includes(lm.type)) return;
-      setSelected("landmark", index);
-      extendingLandmarkIndex = index;
-      activeVertexIndex = -1;
-      setDeckLayers();
-    },
     undoLandmarkEdit: () => undoLandmarkEdit(),
     reverseSelectedLandmark: () => {
       const focus = landmarkFocus();
@@ -5690,7 +5695,7 @@ export function mountEngine({ model, host }) {
       if (!focus || activeVertexIndex < 0) return false;
       const landmarks = model.get("landmarks") || [];
       const lm = landmarks[focus.index];
-      if (!lm || lm.locked) return false;
+      if (!lm) return false;
       pushLandmarkUndo();
       const ok = deleteLandmarkVertex(model, focus.index, landmarks, activeVertexIndex);
       if (ok) {
