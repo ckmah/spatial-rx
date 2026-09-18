@@ -20,7 +20,15 @@ import {
   patchNeighborhood as patchNeighborhoodTrait,
   renameLandmark as renameLandmarkTrait,
   renameSelection as renameSelectionTrait,
+  promoteBufferToSelection as promoteBufferToSelectionTrait,
   promoteNeighborhoodToSelection as promoteNeighborhoodToSelectionTrait,
+  reorderLandmarks as reorderLandmarksTrait,
+  reverseLandmark as reverseLandmarkTrait,
+  selectionToLandmark as selectionToLandmarkTrait,
+  convertLandmarkType as convertLandmarkTypeTrait,
+  deleteLandmarks as deleteLandmarksTrait,
+  patchLandmarks as patchLandmarksTrait,
+  toggleLandmarkLocked as toggleLandmarkLockedTrait,
   setActiveGenes as setActiveGenesTrait,
   setGeneLog1p as setGeneLog1pTrait,
   setGeneScaleMode as setGeneScaleModeTrait,
@@ -67,6 +75,9 @@ export type LandmarksState = {
   embedding_channel_labels: string[];
   point_size: number;
   default_buffer_width: number;
+  promote_buffer_tick: number;
+  selection_to_landmark_tick: number;
+  show_rulers: boolean;
   render_mode: string;
   raster_bin_size: number;
   raster_window_radius: number;
@@ -114,6 +125,9 @@ const MODEL_KEYS: (keyof LandmarksState)[] = [
   "embedding_channel_labels",
   "point_size",
   "default_buffer_width",
+  "promote_buffer_tick",
+  "selection_to_landmark_tick",
+  "show_rulers",
   "render_mode",
   "raster_bin_size",
   "raster_window_radius",
@@ -148,6 +162,15 @@ export type LandmarksModel = LandmarksState & {
   toggleLandmarkHidden(index: number): void;
   toggleSelectionHidden(index: number): void;
   promoteNeighborhoodToSelection(): void;
+  promoteBufferToSelection(): void;
+  selectionToLandmark(): void;
+  reverseLandmark(): void;
+  convertLandmarkType(nextType: string): void;
+  toggleLandmarkLocked(index: number): void;
+  reorderLandmark(fromIndex: number, toIndex: number): void;
+  patchLandmarks(indices: number[], patch: Record<string, unknown>): void;
+  deleteLandmarks(indices: number[]): void;
+  setShowRulers(show: boolean): void;
   setRenderMode(mode: string): void;
   setRasterBinSize(size: number): void;
   setRasterBasis(basis: string): void;
@@ -240,6 +263,51 @@ export function useLandmarksModel(model: AnyModel): LandmarksModel {
     },
     promoteNeighborhoodToSelection() {
       promoteNeighborhoodToSelectionTrait(model);
+    },
+    promoteBufferToSelection() {
+      promoteBufferToSelectionTrait(model);
+    },
+    selectionToLandmark() {
+      selectionToLandmarkTrait(model);
+    },
+    reverseLandmark() {
+      if (state.selected_kind !== "landmark" || state.selected_index < 0) return;
+      reverseLandmarkTrait(
+        model,
+        state.selected_index,
+        state.landmarks,
+      );
+    },
+    convertLandmarkType(nextType) {
+      if (state.selected_kind !== "landmark" || state.selected_index < 0) return;
+      convertLandmarkTypeTrait(
+        model,
+        state.selected_index,
+        state.landmarks,
+        nextType,
+      );
+    },
+    toggleLandmarkLocked(index) {
+      toggleLandmarkLockedTrait(model, index, state.landmarks);
+    },
+    reorderLandmark(fromIndex, toIndex) {
+      reorderLandmarksTrait(model, fromIndex, toIndex, state.landmarks);
+    },
+    patchLandmarks(indices, patch) {
+      patchLandmarksTrait(model, indices, patch, state.landmarks);
+    },
+    deleteLandmarks(indices) {
+      deleteLandmarksTrait(
+        model,
+        indices,
+        state.landmarks,
+        state.selected_kind,
+        state.selected_index,
+      );
+    },
+    setShowRulers(show) {
+      model.set("show_rulers", !!show);
+      model.save_changes();
     },
     setRenderMode(mode) {
       setRenderModeTrait(model, mode);

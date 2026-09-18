@@ -1,19 +1,24 @@
 import { useEffect, useRef, useState } from "react";
+import { ArrowUpFromLineIcon, Trash2Icon } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FieldDescription } from "@/components/ui/field";
 import { ItemGroup } from "@/components/ui/item";
 import { cn } from "@/lib/utils";
 
-import { LANDMARK_COLORS, SELECTION_COLORS } from "../helpers";
+import { landmarkStableColor, SELECTION_COLORS } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
-import { LayerRow } from "./primitives";
+import { LayerRow, ToolbarDivider, chromeHitClass } from "./primitives";
 import { FLOAT_PANEL, FLOAT_PANEL_CLIP, SECTION_LABEL } from "./sections";
 
-/** Left dock: selections + landmarks only. Overlay-scrolls when lists overflow. */
+/** Left dock: selections + landmarks. Overlay-scrolls when lists overflow. */
 export function LayersPanel({ lm }: { lm: LandmarksModel }) {
   const { selections, landmarks, selected_kind, selected_index } = lm;
   const rootRef = useRef<HTMLDivElement>(null);
   const [menuContainer, setMenuContainer] = useState<HTMLElement | null>(null);
+  const [multi, setMulti] = useState<number[]>([]);
+
   useEffect(() => {
     setMenuContainer(
       (rootRef.current?.closest(
@@ -22,6 +27,39 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
     );
   }, []);
 
+  useEffect(() => {
+    if (selected_kind === "landmark" && selected_index >= 0) {
+      setMulti((prev) =>
+        prev.includes(selected_index) ? prev : [selected_index],
+      );
+    } else if (selected_kind !== "landmark") {
+      setMulti([]);
+    }
+  }, [selected_kind, selected_index]);
+
+  const onLandmarkSelect = (i: number, e?: React.MouseEvent) => {
+    if (e?.shiftKey && selected_kind === "landmark" && selected_index >= 0) {
+      setMulti((prev) => {
+        const set = new Set(prev.length ? prev : [selected_index]);
+        if (set.has(i)) set.delete(i);
+        else set.add(i);
+        const next = [...set].sort((a, b) => a - b);
+        return next.length ? next : [i];
+      });
+      lm.select("landmark", i);
+      return;
+    }
+    setMulti([i]);
+    lm.select("landmark", i);
+  };
+
+  const batch =
+    multi.length > 1
+      ? multi
+      : selected_kind === "landmark" && selected_index >= 0
+        ? [selected_index]
+        : [];
+
   return (
     <div
       ref={rootRef}
@@ -29,16 +67,28 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
     >
       <Card className={cn(FLOAT_PANEL, "flex h-full min-h-0 flex-1 flex-col")}>
         <div className={cn(FLOAT_PANEL_CLIP, "flex h-full min-h-0 flex-1 flex-col")}>
-          <div
-            className={cn(
-              /* Vertical inset only — inline pad lives on .landmarks-overlay-scroll
-                 so the scrollbar lane cannot clobber left/right symmetry. */
-              "py-1.5",
-              "landmarks-overlay-scroll min-h-0 flex-1",
-            )}
-          >
+          <div className={cn("py-1.5", "landmarks-overlay-scroll min-h-0 flex-1")}>
             <section>
-              <h3 className={SECTION_LABEL}>Selections</h3>
+              <div className="flex items-center justify-between gap-1 pr-1">
+                <h3 className={SECTION_LABEL}>Selections</h3>
+                {selected_kind === "selection" && selected_index >= 0 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className={cn(chromeHitClass, "active:scale-[0.97]")}
+                    data-testid="selection-to-landmark"
+                    aria-label="Convert selection to landmark"
+                    title="Convert selection to landmark"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      lm.selectionToLandmark();
+                    }}
+                  >
+                    <ArrowUpFromLineIcon className="size-3.5" />
+                  </Button>
+                ) : null}
+              </div>
               {selections.length ? (
                 <ItemGroup className="gap-0.5">
                   {selections.map((sel, i) => (
@@ -65,25 +115,63 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
             </section>
 
             <section className="pt-1">
-              <h3 className={SECTION_LABEL}>Landmarks</h3>
+              <div className="flex items-center justify-between gap-1 pr-1">
+                <h3 className={SECTION_LABEL}>Landmarks</h3>
+                {batch.length > 1 ? (
+                  <div className="flex items-center gap-0.5">
+                    <ToolbarDivider />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className={chromeHitClass}
+                      data-testid="landmark-batch-hide"
+                      aria-label="Hide selected landmarks"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        lm.patchLandmarks(batch, { hidden: true });
+                      }}
+                    >
+                      <span className="text-[10px]">Hide</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className={cn(chromeHitClass, "text-destructive")}
+                      data-testid="landmark-batch-delete"
+                      aria-label="Delete selected landmarks"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        lm.deleteLandmarks(batch);
+                        setMulti([]);
+                      }}
+                    >
+                      <Trash2Icon className="size-3.5" />
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
               {landmarks.length ? (
                 <ItemGroup className="gap-0.5">
                   {landmarks.map((lmItem, i) => (
                     <LayerRow
                       key={`${lmItem.id}-${i}`}
                       active={
-                        selected_kind === "landmark" && selected_index === i
+                        (selected_kind === "landmark" &&
+                          selected_index === i) ||
+                        multi.includes(i)
                       }
                       color={
                         (typeof lmItem.color === "string" && lmItem.color) ||
-                        LANDMARK_COLORS[i % LANDMARK_COLORS.length]
+                        landmarkStableColor(lmItem.id, i)
                       }
                       swatchVariant="landmark"
                       swatchFillOpacity={0.28}
-                      label={lmItem.id}
+                      label={String(lmItem.id)}
                       hidden={!!lmItem.hidden}
                       menuContainer={menuContainer}
-                      onSelect={() => lm.select("landmark", i)}
+                      onSelect={(e) => onLandmarkSelect(i, e)}
                       onRename={(next) => lm.renameLandmark(i, next)}
                       onToggleHidden={() => lm.toggleLandmarkHidden(i)}
                       onDelete={() => lm.deleteLandmark(i)}
@@ -93,6 +181,11 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
               ) : (
                 <FieldDescription>No landmarks yet.</FieldDescription>
               )}
+              {landmarks.length > 1 ? (
+                <FieldDescription className="pt-1">
+                  Shift-click to multi-select.
+                </FieldDescription>
+              ) : null}
             </section>
           </div>
         </div>

@@ -2,6 +2,14 @@ export type EngineHandle = {
   zoomBy(delta: number, opts?: { animate?: boolean; duration?: number }): void;
   resetZoom(): void;
   resize(): void;
+  /** Pop the last landmark-geometry snapshot and restore it. Returns false if the stack is empty. */
+  undoLandmarkEdit(): boolean;
+  /** Reverse the focused landmark's vertex order (flips left/right buffer side for lines). */
+  reverseSelectedLandmark(): void;
+  /** Convert the focused landmark to a different type (point/line/spline/shape). */
+  convertSelectedLandmark(type: string): void;
+  /** Delete the currently active (clicked) vertex on the focused landmark, if any. */
+  deleteActiveVertex(): boolean;
   getViewState(): {
     target?: number[];
     zoom?: number;

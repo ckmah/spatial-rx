@@ -2,7 +2,7 @@ import {
   ChevronDownIcon,
   Maximize2Icon,
   MaximizeIcon,
-  Minimize2Icon,
+  MinimizeIcon,
   MinusIcon,
   PlusIcon,
 } from "lucide-react";
@@ -243,7 +243,7 @@ export function Topbar({
               onReset();
             }}
           >
-            <MaximizeIcon className="size-4" />
+            <Maximize2Icon className="size-4" />
           </Button>
         </ChromeTooltip>
         <ToolbarDivider />
@@ -258,9 +258,9 @@ export function Topbar({
             onClick={onToggleFullscreen}
           >
             {fullscreen ? (
-              <Minimize2Icon className="size-4" />
+              <MinimizeIcon className="size-4" />
             ) : (
-              <Maximize2Icon className="size-4" />
+              <MaximizeIcon className="size-4" />
             )}
           </Button>
         </ChromeTooltip>

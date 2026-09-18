@@ -6,5 +6,6 @@ export { MinimapPanel } from "./minimap-panel";
 export { SelectionToolbar } from "./selection-toolbar";
 export { LandmarkCanvasMenu } from "./landmark-canvas-menu";
 export { ViewCta } from "./view-cta";
+export { CanvasRulers } from "./canvas-rulers";
 export type { PanelSectionId } from "./sections";
 export { RightChromeStack } from "./right-stack";

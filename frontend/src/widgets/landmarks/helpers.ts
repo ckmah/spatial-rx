@@ -22,6 +22,8 @@ export const KEYBOARD_SHORTCUTS: { action: string; keys: string }[] = [
     action: "Delete selected landmark or selection",
     keys: "⌫ / Delete",
   },
+  { action: "Undo landmark edit", keys: "⌘/Ctrl+Z" },
+  { action: "Nudge selection or active node", keys: "Arrow keys" },
   { action: "Finish draft", keys: "Enter" },
   { action: "Cancel draft / deselect / clear probe", keys: "Esc" },
 ];
@@ -61,8 +63,33 @@ export const SIMILARITY_LEGEND_CSS =
 /** Scatter fallback when no palette is set (landmark cyan — never Tailwind blue). */
 export const FALLBACK_POINT_COLOR = LANDMARK_COLORS[0];
 export type GeneScaleMode = "independent" | "shared";
-export const BUFFERABLE = ["line", "spline", "gradient"];
-export const TENSION_TYPES = ["spline", "shape", "gradient"];
+export const BUFFERABLE = ["point", "line", "spline", "shape"];
+export const TENSION_TYPES = ["spline", "shape"];
+export const NODE_EDITABLE = ["line", "spline", "shape"];
+/** Unified buffer sides: shape left=in, right=out (Shapely dilation on right). */
+export const BUFFER_SIDES = ["left", "both", "right"] as const;
+
+/** Stable fallback color from landmark id (not list index). */
+export function landmarkStableColor(id: string | undefined, fallbackIndex = 0) {
+  const s = String(id || "");
+  if (!s) return LANDMARK_COLORS[fallbackIndex % LANDMARK_COLORS.length];
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return LANDMARK_COLORS[Math.abs(h) % LANDMARK_COLORS.length];
+}
+
+/** Normalize legacy in/out → left/right. */
+export function normalizeBufferSide(
+  side: string | undefined,
+  type?: string,
+): "left" | "right" | "both" {
+  const s = String(side || "both");
+  if (s === "in") return "left";
+  if (s === "out") return "right";
+  if (s === "left" || s === "right" || s === "both") return s;
+  if (type === "point") return "both";
+  return "both";
+}
 
 export const MODE_LABELS: Record<string, string> = {
   pointer: "Pointer",
@@ -107,9 +134,12 @@ export type LandmarkItem = {
   id: string;
   type: string;
   hidden?: boolean;
+  locked?: boolean;
   tension?: number;
   buffer_width?: number;
   buffer_side?: string;
+  color?: string;
+  line_style?: string;
   vertices?: number[][];
   [key: string]: unknown;
 };
@@ -152,6 +182,44 @@ export function maxBufferWidth(xBounds: number[], yBounds: number[]) {
   const [xMin, xMax] = xBounds;
   const [yMin, yMax] = yBounds;
   return 0.25 * Math.min(Math.abs(xMax - xMin), Math.abs(yMax - yMin));
+}
+
+export function polylineLength(verts: number[][]) {
+  let len = 0;
+  for (let i = 1; i < verts.length; i++) {
+    const a = verts[i - 1];
+    const b = verts[i];
+    len += Math.hypot(b[0] - a[0], b[1] - a[1]);
+  }
+  return len;
+}
+
+export function polygonArea(verts: number[][]) {
+  if (!verts || verts.length < 3) return 0;
+  let a = 0;
+  for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+    a += verts[j][0] * verts[i][1] - verts[i][0] * verts[j][1];
+  }
+  return Math.abs(a) * 0.5;
+}
+
+export function landmarkMeasure(lm: {
+  type: string;
+  buffer_width?: number;
+  vertices?: number[][];
+} | null) {
+  if (!lm) return null;
+  if (lm.type === "point") {
+    return { kind: "radius" as const, value: Number(lm.buffer_width || 0) };
+  }
+  const verts = lm.vertices || [];
+  if (lm.type === "shape") {
+    return { kind: "area" as const, value: polygonArea(verts) };
+  }
+  if (lm.type === "line" || lm.type === "spline") {
+    return { kind: "length" as const, value: polylineLength(verts) };
+  }
+  return null;
 }
 
 export function formatParam(value: number, empty = "off") {

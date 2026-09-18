@@ -380,10 +380,13 @@ test.describe("LandmarksWidget", () => {
     const landmarks = (await getModel(page, "landmarks")) as any[];
     expect(landmarks[0].line_style).toBe("dashed");
 
-    await page.getByTestId("context-buffer-left").click();
+    await page.getByTestId("context-buffer-toggle").click();
+    await page.waitForTimeout(100);
+    await expect(page.getByTestId("context-buffer-panel")).toBeVisible();
+    await page.getByTestId("context-buffer-both").click();
     await page.waitForTimeout(100);
     const after = (await getModel(page, "landmarks")) as any[];
-    expect(after[0].buffer_side).toBe("left");
+    expect(after[0].buffer_side).toBe("right");
   });
 
   test("context toolbar promote from selection neighborhood", async ({
