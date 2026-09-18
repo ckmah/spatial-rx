@@ -11,6 +11,7 @@ import {
   LandmarkCanvasMenu,
   ViewCta,
   RightChromeStack,
+  CanvasRulers,
 } from "./chrome";
 import { FLOAT_PANEL } from "./chrome/sections";
 import { mountEngine, type EngineHandle } from "./engine";
@@ -172,11 +173,12 @@ export function LandmarksView({
         style={isFullscreen ? undefined : { height: shellHeight }}
       >
         <div className="landmarks__figure">
-          <div className="landmarks__main landmarks__main--plot">
+          <div className="landmarks__main landmarks__main--plot relative">
             <div
               ref={plotHostRef}
               className="landmarks__plot-host relative min-h-0 flex-1 w-full h-full"
             />
+            <CanvasRulers lm={lm} engine={engine} />
           </div>
         </div>
         {isFullscreen ? null : (
@@ -209,7 +211,7 @@ export function LandmarksView({
           />
         </div>
 
-        <SelectionToolbar lm={lm} />
+        <SelectionToolbar lm={lm} engine={engine} />
 
         <div
           className="landmarks__chrome-view"

@@ -1,20 +1,19 @@
 import { useState } from "react";
-import { CircleDot, Grid2x2 } from "lucide-react";
+import { CircleDot, Grid2x2, Ruler } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 import type { LandmarksModel } from "../use-landmarks-model";
-import { ChromeTooltip } from "./primitives";
+import { ChromeTooltip, chromeHitClass, chromeHitOnClass } from "./primitives";
 
 /**
- * Soft Float View CTA — top-right icon. Hover highlights; click toggles
- * Points ↔ Raster with an icon crossfade + canvas view-swap pulse.
- * Tooltip is always "points/raster".
+ * Soft Float View CTA — top-right. Points↔Raster toggle + rulers toggle.
  */
 export function ViewCta({ lm }: { lm: LandmarksModel }) {
   const rasterOn = (lm.render_mode || "points") === "raster";
+  const rulersOn = !!lm.show_rulers;
   const [popNonce, setPopNonce] = useState(0);
 
   const onToggle = () => {
@@ -25,9 +24,28 @@ export function ViewCta({ lm }: { lm: LandmarksModel }) {
   return (
     <TooltipProvider delayDuration={80} skipDelayDuration={0}>
       <div
-        className="landmarks-float landmarks-float--toolbar pointer-events-auto p-1 text-card-foreground"
+        className="landmarks-float landmarks-float--toolbar pointer-events-auto flex items-center gap-0.5 p-1 text-card-foreground"
         data-testid="view-cta"
       >
+        <ChromeTooltip label="Canvas rulers">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            role="switch"
+            aria-checked={rulersOn}
+            aria-label="Canvas rulers"
+            data-testid="toggle-rulers"
+            onClick={() => lm.setShowRulers(!rulersOn)}
+            className={cn(
+              chromeHitClass,
+              "rounded-full text-foreground/70",
+              rulersOn && chromeHitOnClass,
+            )}
+          >
+            <Ruler className="size-4" />
+          </Button>
+        </ChromeTooltip>
         <ChromeTooltip label="points/raster">
           <Button
             type="button"

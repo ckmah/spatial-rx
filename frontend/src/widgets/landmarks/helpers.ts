@@ -22,6 +22,8 @@ export const KEYBOARD_SHORTCUTS: { action: string; keys: string }[] = [
     action: "Delete selected landmark or selection",
     keys: "⌫ / Delete",
   },
+  { action: "Undo landmark edit", keys: "⌘/Ctrl+Z" },
+  { action: "Nudge selection or active node", keys: "Arrow keys" },
   { action: "Finish draft", keys: "Enter" },
   { action: "Cancel draft / deselect / clear probe", keys: "Esc" },
 ];
@@ -159,6 +161,44 @@ export function maxBufferWidth(xBounds: number[], yBounds: number[]) {
   const [xMin, xMax] = xBounds;
   const [yMin, yMax] = yBounds;
   return 0.25 * Math.min(Math.abs(xMax - xMin), Math.abs(yMax - yMin));
+}
+
+export function polylineLength(verts: number[][]) {
+  let len = 0;
+  for (let i = 1; i < verts.length; i++) {
+    const a = verts[i - 1];
+    const b = verts[i];
+    len += Math.hypot(b[0] - a[0], b[1] - a[1]);
+  }
+  return len;
+}
+
+export function polygonArea(verts: number[][]) {
+  if (!verts || verts.length < 3) return 0;
+  let a = 0;
+  for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+    a += verts[j][0] * verts[i][1] - verts[i][0] * verts[j][1];
+  }
+  return Math.abs(a) * 0.5;
+}
+
+export function landmarkMeasure(lm: {
+  type: string;
+  buffer_width?: number;
+  vertices?: number[][];
+} | null) {
+  if (!lm) return null;
+  if (lm.type === "point") {
+    return { kind: "radius" as const, value: Number(lm.buffer_width || 0) };
+  }
+  const verts = lm.vertices || [];
+  if (lm.type === "shape") {
+    return { kind: "area" as const, value: polygonArea(verts) };
+  }
+  if (lm.type === "line" || lm.type === "spline") {
+    return { kind: "length" as const, value: polylineLength(verts) };
+  }
+  return null;
 }
 
 export function formatParam(value: number, empty = "off") {

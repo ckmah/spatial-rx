@@ -276,7 +276,7 @@ export function LayerRow({
   label: string;
   hidden?: boolean;
   disabled?: boolean;
-  onSelect: () => void;
+  onSelect: (e?: React.MouseEvent) => void;
   onRename?: (next: string) => void;
   onDelete?: () => void;
   onToggleHidden?: () => void;
@@ -303,8 +303,8 @@ export function LayerRow({
         hidden && "opacity-50",
       )}
       tabIndex={disabled ? -1 : 0}
-      onClick={() => {
-        if (!disabled) onSelect();
+      onClick={(e) => {
+        if (!disabled) onSelect(e);
       }}
       onKeyDown={(e) => {
         if (disabled) return;
