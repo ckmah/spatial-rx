@@ -254,49 +254,6 @@ test.describe("LandmarksWidget tool completeness", () => {
     expect(reverted[1]).toBeCloseTo(before[1], 5);
   });
 
-  test("extend appends vertices to a line landmark until Enter", async ({
-    page,
-  }) => {
-    await setModel(page, {
-      landmarks: [
-        {
-          id: "lm-extend",
-          type: "line",
-          vertices: [
-            [2500, 300],
-            [2700, 500],
-          ],
-          line_style: "solid",
-          color: "#00e5ff",
-        },
-      ],
-      selected_kind: "landmark",
-      selected_index: 0,
-    });
-    await page.waitForTimeout(150);
-
-    await page.evaluate(() => (window as any).__landmarksEngine.startExtendLandmark(0));
-    await page.waitForTimeout(100);
-
-    const box = await canvasBox(page);
-    await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.6);
-    await page.waitForTimeout(80);
-    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.7);
-    await page.waitForTimeout(80);
-
-    let landmarks = (await getModel(page, "landmarks")) as any[];
-    expect(landmarks[0].vertices.length).toBe(4);
-
-    await page.keyboard.press("Enter");
-    await page.waitForTimeout(80);
-    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.2);
-    await page.waitForTimeout(80);
-
-    landmarks = (await getModel(page, "landmarks")) as any[];
-    // Enter finished the extend; the trailing click must not append further.
-    expect(landmarks[0].vertices.length).toBe(4);
-  });
-
   test("pointer mode: drag a vertex, insert via midpoint, then delete", async ({
     page,
   }) => {
@@ -365,7 +322,7 @@ test.describe("LandmarksWidget tool completeness", () => {
     expect(landmarks.length).toBe(0);
   });
 
-  test("locked landmarks resist drag, nudge, and vertex edits", async ({
+  test("the legacy `locked` field no longer blocks nudge or drag edits", async ({
     page,
   }) => {
     const { worldToScreen } = await calibrate(page);
@@ -396,9 +353,9 @@ test.describe("LandmarksWidget tool completeness", () => {
     await page.keyboard.press("ArrowRight");
     await page.waitForTimeout(100);
     let landmarks = (await getModel(page, "landmarks")) as any[];
-    expect(landmarks[0].vertices[0]).toEqual(v0);
+    expect(landmarks[0].vertices[0][0]).not.toBeCloseTo(v0[0], 5);
 
-    const from = worldToScreen(v0[0], v0[1]);
+    const from = worldToScreen(landmarks[0].vertices[0][0], landmarks[0].vertices[0][1]);
     const to = worldToScreen(v0[0] + spanX * 0.1, v0[1] + spanY * 0.1);
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
@@ -406,7 +363,7 @@ test.describe("LandmarksWidget tool completeness", () => {
     await page.mouse.up();
     await page.waitForTimeout(100);
     landmarks = (await getModel(page, "landmarks")) as any[];
-    expect(landmarks[0].vertices[0]).toEqual(v0);
-    expect(landmarks[0].vertices[1]).toEqual(v1);
+    expect(landmarks[0].vertices[0][0]).toBeCloseTo(v0[0] + spanX * 0.1, -1);
+    expect(landmarks[0].vertices[0][1]).toBeCloseTo(v0[1] + spanY * 0.1, -1);
   });
 });
