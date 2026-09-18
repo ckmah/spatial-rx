@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
+import { Rise } from "cube-motion/react";
 import {
   ArrowLeftRightIcon,
   ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ChevronsLeftRightIcon,
   CircleDotDashedIcon,
   CirclePlusIcon,
+  ChevronsLeftRightIcon,
   GitCommitHorizontal,
-  MoveDiagonalIcon,
   PentagonIcon,
   SplineIcon,
   Trash2Icon,
@@ -25,12 +23,12 @@ import type { EngineHandle } from "../engine";
 import {
   BUFFERABLE,
   LANDMARK_COLORS,
-  LINE_BUFFER_SIDES,
   NODE_EDITABLE,
-  SHAPE_BUFFER_SIDES,
   TENSION_TYPES,
   formatParam,
   maxBufferWidth,
+  landmarkStableColor,
+  normalizeBufferSide,
 } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
 import {
@@ -44,11 +42,13 @@ import {
 const toggleHitClass =
   "size-8 min-w-8 rounded-full border-0 px-0 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground data-[state=on]:bg-foreground data-[state=on]:text-background data-[state=on]:shadow-none data-[spacing=1]:rounded-full";
 
+const pillClass =
+  "landmarks-float landmarks-float--toolbar pointer-events-auto flex min-h-10 items-center gap-1 px-1.5 py-0.5 text-card-foreground";
+
 function IconBtn({
   title,
   active,
   onClick,
-  onMouseEnter,
   disabled,
   children,
   testId,
@@ -57,7 +57,6 @@ function IconBtn({
   title: string;
   active?: boolean;
   onClick: () => void;
-  onMouseEnter?: () => void;
   disabled?: boolean;
   children: React.ReactNode;
   testId?: string;
@@ -78,8 +77,8 @@ function IconBtn({
           expandable && "w-auto gap-0.5 px-1.5",
           active && chromeHitOnClass,
           disabled && "opacity-40",
+          "active:scale-[0.97] transition-transform",
         )}
-        onMouseEnter={onMouseEnter}
         onClick={(e) => {
           e.stopPropagation();
           onClick();
@@ -166,62 +165,99 @@ function ColorControl({
   );
 }
 
-function InlineSlider({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-  testId,
+/** L2 stack anchored above a single L1 control (not the full toolbar). */
+function ToolStack({
+  open,
+  panel,
+  children,
 }: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (v: number) => void;
-  testId?: string;
+  open: boolean;
+  panel: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
-    <div
-      className="flex min-w-[200px] items-center gap-2 px-0.5"
-      data-testid={testId}
-      onWheel={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const dir = e.deltaY > 0 ? -1 : 1;
-        const next = Math.min(max, Math.max(min, value + dir * step));
-        if (next !== value) onChange(Math.round(next * 1000) / 1000);
-      }}
-      title="Scroll to adjust"
-    >
-      <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
-        {label}
-      </span>
-      <div className="landmarks-slider-control min-w-[140px] flex-1">
-        <span className="landmarks-slider-value" aria-hidden>
-          {formatParam(value, "0")}
-        </span>
-        <Slider
-          min={min}
-          max={max}
-          step={step}
-          value={[Math.min(Math.max(value, min), max)]}
-          onValueChange={(v) => onChange(v[0] ?? value)}
-          aria-label={label}
-          className="w-full"
-        />
-      </div>
+    <div className="relative flex flex-col items-center">
+      {open ? (
+        <Rise
+          className="pointer-events-auto absolute bottom-[calc(100%+0.375rem)] z-10"
+          data-testid="context-l2-anchor"
+        >
+          <div className={pillClass}>{panel}</div>
+        </Rise>
+      ) : null}
+      {children}
     </div>
   );
 }
 
-const pillClass =
-  "landmarks-float landmarks-float--toolbar pointer-events-auto flex min-h-10 items-center gap-1 px-1.5 py-0.5 text-card-foreground";
+function SignedBufferSlider({
+  signed,
+  max,
+  isShape,
+  isPoint,
+  both,
+  onSigned,
+  onBoth,
+}: {
+  signed: number;
+  max: number;
+  isShape: boolean;
+  isPoint: boolean;
+  both: boolean;
+  onSigned: (v: number, both: boolean) => void;
+  onBoth: (next: boolean) => void;
+}) {
+  const leftLabel = isShape ? "In" : "Left";
+  const rightLabel = isShape ? "Out" : "Right";
+  return (
+    <div
+      className="flex min-w-[240px] items-center gap-1.5 px-0.5"
+      data-testid="context-buffer-panel"
+    >
+      {!isPoint ? (
+        <span className="shrink-0 text-[0.625rem] text-muted-foreground">
+          {leftLabel}
+        </span>
+      ) : null}
+      <div className="landmarks-slider-control min-w-[160px] flex-1">
+        <span className="landmarks-slider-value" aria-hidden>
+          {formatParam(Math.abs(signed), "0")}
+        </span>
+        <Slider
+          min={isPoint ? 0 : -max}
+          max={max}
+          step={max / 200 || 1}
+          value={[Math.min(Math.max(signed, isPoint ? 0 : -max), max)]}
+          onValueChange={(v) => onSigned(v[0] ?? 0, both)}
+          aria-label="Buffer"
+          className="w-full"
+          data-testid="context-buffer-width"
+        />
+      </div>
+      {!isPoint ? (
+        <span className="shrink-0 text-[0.625rem] text-muted-foreground">
+          {rightLabel}
+        </span>
+      ) : null}
+      {!isPoint ? (
+        <>
+          <ToolbarDivider />
+          <IconBtn
+            title="Both sides"
+            testId="context-buffer-both"
+            active={both}
+            onClick={() => onBoth(!both)}
+          >
+            <ChevronsLeftRightIcon className="size-4" />
+          </IconBtn>
+        </>
+      ) : null}
+    </div>
+  );
+}
 
 /**
- * Sticky bottom-center context chrome (mirrors Topbar). L2 stacks above L1.
+ * Sticky bottom-center context chrome. L2 rises above the pressed tool icon.
  */
 export function SelectionToolbar({
   lm,
@@ -245,59 +281,56 @@ export function SelectionToolbar({
   const isLineLike = lmType === "line" || lmType === "spline";
   const showLandmarkBar = isLandmark && !!selectedLm;
   const showHoodBar = isHood && !!hood;
-  const locked = !!selectedLm?.locked;
 
   const [lmL2, setLmL2] = useState<
-    "width" | "color" | "tension" | "convert" | null
+    "buffer" | "color" | "tension" | "convert" | null
   >(null);
 
   useEffect(() => {
     setLmL2(null);
   }, [kind, index]);
 
-  const showL2 = (
-    next: "width" | "color" | "tension" | "convert" | null,
-  ) => {
-    setLmL2(next);
-  };
-
   if (!showLandmarkBar && !showHoodBar) return null;
 
   const color =
     (typeof selectedLm?.color === "string" && selectedLm.color) ||
-    LANDMARK_COLORS[Math.max(0, index) % LANDMARK_COLORS.length];
+    landmarkStableColor(selectedLm?.id, index);
   const lineStyle =
     String(selectedLm?.line_style || "solid") === "dashed" ? "dashed" : "solid";
-  const bufferSide = (selectedLm?.buffer_side as string) || "both";
+  const side = normalizeBufferSide(
+    selectedLm?.buffer_side as string | undefined,
+    lmType,
+  );
   const bufMax = Math.max(maxBufferWidth(lm.x_bounds, lm.y_bounds), 1);
-  const bufferWidth = Math.min(Number(selectedLm?.buffer_width || 0), bufMax);
+  const width = Math.min(Math.max(Number(selectedLm?.buffer_width || 0), 0), bufMax);
+  const both = side === "both";
+  // Signed slider: left/in negative, right/out positive; both uses +|w|.
+  const signed =
+    both || side === "right" ? width : side === "left" ? -width : width;
+
   const rMax = lm.neighbor_radius_max > 0 ? lm.neighbor_radius_max : bufMax;
   const kMax = Math.max(1, lm.neighbor_k_max || 64);
   const hoodMode = hood?.neighborhood || "off";
   const canPromote = hoodMode === "radius" || hoodMode === "knn";
-  const canPromoteBuffer = usesBuffer && bufferWidth > 0 && !locked;
+  const canPromoteBuffer = usesBuffer && width > 0;
 
-  const bufferSides = isShape
-    ? SHAPE_BUFFER_SIDES
-    : isPoint
-      ? ([] as const)
-      : LINE_BUFFER_SIDES;
-
-  const sideIcons = {
-    left: ChevronLeftIcon,
-    both: ChevronsLeftRightIcon,
-    right: ChevronRightIcon,
-    out: MoveDiagonalIcon,
-    in: CircleDotDashedIcon,
-  } as const;
-
-  const sideLabels = {
-    left: "Left",
-    both: "Both",
-    right: "Right",
-    out: "Out",
-    in: "In",
-  } as const;
+  const applySignedBuffer = (nextSigned: number, nextBoth: boolean) => {
+    const mag = Math.min(Math.abs(nextSigned), bufMax);
+    if (isPoint) {
+      lm.patchLandmark({ buffer_width: mag, buffer_side: "both" });
+      return;
+    }
+    if (nextBoth) {
+      lm.patchLandmark({ buffer_width: mag, buffer_side: "both" });
+      return;
+    }
+    if (mag === 0) {
+      lm.patchLandmark({ buffer_width: 0, buffer_side: side === "both" ? "right" : side });
+      return;
+    }
+    const nextSide = nextSigned < 0 ? "left" : "right";
+    lm.patchLandmark({ buffer_width: mag, buffer_side: nextSide });
+  };
 
   return (
     <TooltipProvider delayDuration={80} skipDelayDuration={0}>
@@ -309,163 +342,58 @@ export function SelectionToolbar({
         onClick={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
       >
-        <div className="pointer-events-none flex flex-col items-center gap-1.5">
-          {showLandmarkBar && lmL2 === "color" ? (
-            <div className={pillClass}>
-              <ColorControl
-                color={color}
-                onChange={(next) => lm.patchLandmark({ color: next })}
-              />
-            </div>
-          ) : null}
-
-          {showLandmarkBar && lmL2 === "width" && usesBuffer ? (
-            <div className={pillClass}>
-              <InlineSlider
-                label={isPoint ? "Radius" : "Width"}
-                value={bufferWidth}
-                min={0}
-                max={bufMax}
-                step={bufMax / 200 || 1}
-                testId="context-buffer-width"
-                onChange={(buffer_width) => lm.patchLandmark({ buffer_width })}
-              />
-            </div>
-          ) : null}
-
-          {showLandmarkBar && lmL2 === "tension" && usesTension ? (
-            <div className={pillClass}>
-              <InlineSlider
-                label="Tension"
-                value={Number(selectedLm?.tension ?? 0)}
-                min={0}
-                max={1}
-                step={0.01}
-                testId="context-tension"
-                onChange={(tension) => lm.patchLandmark({ tension })}
-              />
-            </div>
-          ) : null}
-
-          {showLandmarkBar && lmL2 === "convert" ? (
-            <div className={pillClass} data-testid="context-convert-types">
-              {(
-                [
-                  { id: "line", label: "Line", Icon: GitCommitHorizontal },
-                  { id: "spline", label: "Spline", Icon: SplineIcon },
-                  { id: "shape", label: "Shape", Icon: PentagonIcon },
-                ] as const
-              ).map((opt) => (
-                <IconBtn
-                  key={opt.id}
-                  title={`Convert to ${opt.label}`}
-                  testId={`context-convert-${opt.id}`}
-                  active={lmType === opt.id}
-                  disabled={locked || lmType === opt.id}
-                  onClick={() => {
-                    if (engine?.convertSelectedLandmark) {
-                      engine.convertSelectedLandmark(opt.id);
-                    } else {
-                      lm.convertLandmarkType(opt.id);
+        <div className={cn(pillClass, "pointer-events-auto")} data-testid="context-toolbar-l1">
+          {showLandmarkBar ? (
+            <>
+              <div className="flex items-center gap-1">
+                {!isPoint ? (
+                  <IconBtn
+                    title={
+                      lineStyle === "solid"
+                        ? "Line style: solid (click for dashed)"
+                        : "Line style: dashed (click for solid)"
                     }
-                  }}
+                    testId="context-line-style"
+                    onClick={() =>
+                      lm.patchLandmark({
+                        line_style: lineStyle === "solid" ? "dashed" : "solid",
+                      })
+                    }
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                      <line
+                        x1="2"
+                        y1="8"
+                        x2="14"
+                        y2="8"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeDasharray={
+                          lineStyle === "dashed" ? "3.5 2.5" : undefined
+                        }
+                      />
+                    </svg>
+                  </IconBtn>
+                ) : null}
+
+                <ToolStack
+                  open={lmL2 === "color"}
+                  panel={
+                    <ColorControl
+                      color={color}
+                      onChange={(next) => lm.patchLandmark({ color: next })}
+                    />
+                  }
                 >
-                  <opt.Icon className="size-4" />
-                </IconBtn>
-              ))}
-            </div>
-          ) : null}
-
-          {showHoodBar && hoodMode !== "off" ? (
-            <div className={pillClass}>
-              {hoodMode === "radius" ? (
-                <InlineSlider
-                  label="r"
-                  value={Math.min(Number(hood?.neighborhood_radius || 0), rMax)}
-                  min={0}
-                  max={rMax}
-                  step={rMax / 200 || 1}
-                  testId="context-hood-radius"
-                  onChange={(neighborhood_radius) =>
-                    lm.patchNeighborhood({
-                      neighborhood: "radius",
-                      neighborhood_radius,
-                    })
-                  }
-                />
-              ) : (
-                <InlineSlider
-                  label="k"
-                  value={Math.min(Number(hood?.neighborhood_k || 12), kMax)}
-                  min={1}
-                  max={kMax}
-                  step={1}
-                  testId="context-hood-k"
-                  onChange={(neighborhood_k) =>
-                    lm.patchNeighborhood({
-                      neighborhood: "knn",
-                      neighborhood_k,
-                    })
-                  }
-                />
-              )}
-              <ToolbarDivider />
-              <IconBtn
-                title="Make selection"
-                testId="promote-neighborhood"
-                disabled={!canPromote}
-                onClick={() => {
-                  if (canPromote) lm.promoteNeighborhoodToSelection();
-                }}
-              >
-                <CirclePlusIcon className="size-4" />
-              </IconBtn>
-            </div>
-          ) : null}
-
-          <div className={pillClass} data-testid="context-toolbar-l1">
-            {showLandmarkBar ? (
-              <>
-                <div className="flex items-center gap-1">
-                  {!isPoint ? (
-                    <IconBtn
-                      title={
-                        lineStyle === "solid"
-                          ? "Line style: solid (click for dashed)"
-                          : "Line style: dashed (click for solid)"
-                      }
-                      testId="context-line-style"
-                      disabled={locked}
-                      onClick={() =>
-                        lm.patchLandmark({
-                          line_style:
-                            lineStyle === "solid" ? "dashed" : "solid",
-                        })
-                      }
-                    >
-                      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-                        <line
-                          x1="2"
-                          y1="8"
-                          x2="14"
-                          y2="8"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeDasharray={
-                            lineStyle === "dashed" ? "3.5 2.5" : undefined
-                          }
-                        />
-                      </svg>
-                    </IconBtn>
-                  ) : null}
                   <IconBtn
                     title="Color"
                     testId="context-color-toggle"
                     active={lmL2 === "color"}
                     expandable
-                    disabled={locked}
-                    onClick={() => showL2(lmL2 === "color" ? null : "color")}
+                    onClick={() =>
+                      setLmL2(lmL2 === "color" ? null : "color")
+                    }
                   >
                     <span className="inline-flex size-full items-center justify-center leading-none">
                       <ColorSwatch
@@ -475,146 +403,181 @@ export function SelectionToolbar({
                       />
                     </span>
                   </IconBtn>
-                  {usesTension ? (
+                </ToolStack>
+
+                {usesTension ? (
+                  <ToolStack
+                    open={lmL2 === "tension"}
+                    panel={
+                      <div
+                        className="flex min-w-[180px] items-center gap-2 px-0.5"
+                        data-testid="context-tension"
+                      >
+                        <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
+                          Tension
+                        </span>
+                        <div className="landmarks-slider-control min-w-[120px] flex-1">
+                          <span className="landmarks-slider-value" aria-hidden>
+                            {formatParam(Number(selectedLm?.tension ?? 0), "0")}
+                          </span>
+                          <Slider
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={[Number(selectedLm?.tension ?? 0)]}
+                            onValueChange={(v) =>
+                              lm.patchLandmark({ tension: v[0] ?? 0 })
+                            }
+                            aria-label="Tension"
+                            className="w-full"
+                          />
+                        </div>
+                      </div>
+                    }
+                  >
                     <IconBtn
                       title="Tension"
                       testId="context-tension-toggle"
                       active={lmL2 === "tension"}
                       expandable
-                      disabled={locked}
                       onClick={() =>
-                        showL2(lmL2 === "tension" ? null : "tension")
+                        setLmL2(lmL2 === "tension" ? null : "tension")
                       }
                     >
-                      <span className="inline-flex size-full items-center justify-center">
-                        <GitCommitHorizontal className="size-4" />
-                      </span>
+                      <GitCommitHorizontal className="size-4" />
                     </IconBtn>
-                  ) : null}
-                </div>
-
-                {usesBuffer ? (
-                  <>
-                    <ToolbarDivider />
-                    {isPoint ? (
-                      <IconBtn
-                        title="Buffer radius"
-                        testId="context-buffer-width-toggle"
-                        active={lmL2 === "width"}
-                        expandable
-                        disabled={locked}
-                        onClick={() =>
-                          showL2(lmL2 === "width" ? null : "width")
-                        }
-                      >
-                        <CircleDotDashedIcon className="size-4" />
-                      </IconBtn>
-                    ) : (
-                      <ToggleGroup
-                        type="single"
-                        variant="default"
-                        size="sm"
-                        spacing={1}
-                        value={
-                          (bufferSides as readonly string[]).includes(bufferSide)
-                            ? bufferSide
-                            : "both"
-                        }
-                        className="gap-1"
-                        onValueChange={(next) => {
-                          if (!next || locked) return;
-                          lm.patchLandmark({ buffer_side: next });
-                          setLmL2("width");
-                        }}
-                        onClick={() => {
-                          if (!locked) setLmL2("width");
-                        }}
-                      >
-                        {bufferSides.map((side) => {
-                          const Icon = sideIcons[side];
-                          return (
-                            <ToggleGroupItem
-                              key={side}
-                              value={side}
-                              aria-label={`Buffer ${sideLabels[side]}`}
-                              data-testid={`context-buffer-${side}`}
-                              disabled={locked}
-                              className={toggleHitClass}
-                            >
-                              <ChromeTooltip
-                                label={`Buffer ${sideLabels[side]}`}
-                              >
-                                <span className="inline-flex size-full items-center justify-center">
-                                  <Icon className="size-4" />
-                                </span>
-                              </ChromeTooltip>
-                            </ToggleGroupItem>
-                          );
-                        })}
-                      </ToggleGroup>
-                    )}
-                    <IconBtn
-                      title="Make selection from buffer"
-                      testId="promote-buffer"
-                      disabled={!canPromoteBuffer}
-                      onClick={() => lm.promoteBufferToSelection()}
-                    >
-                      <CirclePlusIcon className="size-4" />
-                    </IconBtn>
-                  </>
+                  </ToolStack>
                 ) : null}
+              </div>
 
-                {usesNodes || isLineLike ? (
-                  <>
-                    <ToolbarDivider />
-                    <div className="flex items-center gap-1">
-                      {isLineLike ? (
-                        <IconBtn
-                          title="Reverse"
-                          testId="context-reverse"
-                          disabled={locked}
-                          onClick={() => {
-                            if (engine?.reverseSelectedLandmark) {
-                              engine.reverseSelectedLandmark();
-                            } else {
-                              lm.reverseLandmark();
-                            }
-                          }}
-                        >
-                          <ArrowLeftRightIcon className="size-4" />
-                        </IconBtn>
-                      ) : null}
-                      {usesNodes || isLineLike ? (
-                        <IconBtn
-                          title="Convert type"
-                          testId="context-convert-toggle"
-                          active={lmL2 === "convert"}
-                          expandable
-                          disabled={locked}
-                          onClick={() =>
-                            showL2(lmL2 === "convert" ? null : "convert")
+              {usesBuffer ? (
+                <>
+                  <ToolbarDivider />
+                  <ToolStack
+                    open={lmL2 === "buffer"}
+                    panel={
+                      <SignedBufferSlider
+                        signed={isPoint ? width : signed}
+                        max={bufMax}
+                        isShape={isShape}
+                        isPoint={isPoint}
+                        both={both}
+                        onSigned={applySignedBuffer}
+                        onBoth={(next) => {
+                          if (next) {
+                            lm.patchLandmark({
+                              buffer_width: width || bufMax * 0.05,
+                              buffer_side: "both",
+                            });
+                          } else {
+                            lm.patchLandmark({
+                              buffer_side: "right",
+                              buffer_width: width,
+                            });
                           }
-                        >
-                          <PentagonIcon className="size-4" />
-                        </IconBtn>
-                      ) : null}
-                      {usesNodes ? (
-                        <IconBtn
-                          title="Delete active node"
-                          testId="context-delete-node"
-                          disabled={locked}
-                          onClick={() => engine?.deleteActiveVertex()}
-                        >
-                          <Trash2Icon className="size-4" />
-                        </IconBtn>
-                      ) : null}
-                    </div>
-                  </>
-                ) : null}
-              </>
-            ) : null}
+                        }}
+                      />
+                    }
+                  >
+                    <IconBtn
+                      title="Buffer"
+                      testId="context-buffer-toggle"
+                      active={lmL2 === "buffer" || width > 0}
+                      expandable
+                      onClick={() =>
+                        setLmL2(lmL2 === "buffer" ? null : "buffer")
+                      }
+                    >
+                      <CircleDotDashedIcon className="size-4" />
+                    </IconBtn>
+                  </ToolStack>
+                  <IconBtn
+                    title="Make selection from buffer"
+                    testId="promote-buffer"
+                    disabled={!canPromoteBuffer}
+                    onClick={() => lm.promoteBufferToSelection()}
+                  >
+                    <CirclePlusIcon className="size-4" />
+                  </IconBtn>
+                </>
+              ) : null}
 
-            {showHoodBar ? (
+              {usesNodes || isLineLike ? (
+                <>
+                  <ToolbarDivider />
+                  <div className="flex items-center gap-1">
+                    {isLineLike ? (
+                      <IconBtn
+                        title="Reverse"
+                        testId="context-reverse"
+                        onClick={() => engine?.reverseSelectedLandmark?.()}
+                      >
+                        <ArrowLeftRightIcon className="size-4" />
+                      </IconBtn>
+                    ) : null}
+                    <ToolStack
+                      open={lmL2 === "convert"}
+                      panel={
+                        <div
+                          className="flex items-center gap-1"
+                          data-testid="context-convert-types"
+                        >
+                          {(
+                            [
+                              {
+                                id: "line",
+                                label: "Line",
+                                Icon: GitCommitHorizontal,
+                              },
+                              { id: "spline", label: "Spline", Icon: SplineIcon },
+                              { id: "shape", label: "Shape", Icon: PentagonIcon },
+                            ] as const
+                          ).map((opt) => (
+                            <IconBtn
+                              key={opt.id}
+                              title={`Convert to ${opt.label}`}
+                              testId={`context-convert-${opt.id}`}
+                              active={lmType === opt.id}
+                              disabled={lmType === opt.id}
+                              onClick={() =>
+                                engine?.convertSelectedLandmark?.(opt.id)
+                              }
+                            >
+                              <opt.Icon className="size-4" />
+                            </IconBtn>
+                          ))}
+                        </div>
+                      }
+                    >
+                      <IconBtn
+                        title="Convert type"
+                        testId="context-convert-toggle"
+                        active={lmL2 === "convert"}
+                        expandable
+                        onClick={() =>
+                          setLmL2(lmL2 === "convert" ? null : "convert")
+                        }
+                      >
+                        <PentagonIcon className="size-4" />
+                      </IconBtn>
+                    </ToolStack>
+                    {usesNodes ? (
+                      <IconBtn
+                        title="Delete active node"
+                        testId="context-delete-node"
+                        onClick={() => engine?.deleteActiveVertex?.()}
+                      >
+                        <Trash2Icon className="size-4" />
+                      </IconBtn>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
+            </>
+          ) : null}
+
+          {showHoodBar ? (
+            <>
               <ToggleGroup
                 type="single"
                 variant="default"
@@ -655,8 +618,73 @@ export function SelectionToolbar({
                   </ChromeTooltip>
                 </ToggleGroupItem>
               </ToggleGroup>
-            ) : null}
-          </div>
+              {hoodMode !== "off" ? (
+                <>
+                  <ToolbarDivider />
+                  <div className="flex min-w-[140px] items-center gap-2 px-0.5">
+                    {hoodMode === "radius" ? (
+                      <div className="landmarks-slider-control min-w-[120px] flex-1" data-testid="context-hood-radius">
+                        <span className="landmarks-slider-value" aria-hidden>
+                          {formatParam(
+                            Math.min(Number(hood?.neighborhood_radius || 0), rMax),
+                            "0",
+                          )}
+                        </span>
+                        <Slider
+                          min={0}
+                          max={rMax}
+                          step={rMax / 200 || 1}
+                          value={[
+                            Math.min(Number(hood?.neighborhood_radius || 0), rMax),
+                          ]}
+                          onValueChange={(v) =>
+                            lm.patchNeighborhood({
+                              neighborhood: "radius",
+                              neighborhood_radius: v[0] ?? 0,
+                            })
+                          }
+                          aria-label="r"
+                          className="w-full"
+                        />
+                      </div>
+                    ) : (
+                      <div className="landmarks-slider-control min-w-[120px] flex-1" data-testid="context-hood-k">
+                        <span className="landmarks-slider-value" aria-hidden>
+                          {Math.min(Number(hood?.neighborhood_k || 12), kMax)}
+                        </span>
+                        <Slider
+                          min={1}
+                          max={kMax}
+                          step={1}
+                          value={[
+                            Math.min(Number(hood?.neighborhood_k || 12), kMax),
+                          ]}
+                          onValueChange={(v) =>
+                            lm.patchNeighborhood({
+                              neighborhood: "knn",
+                              neighborhood_k: v[0] ?? 12,
+                            })
+                          }
+                          aria-label="k"
+                          className="w-full"
+                        />
+                      </div>
+                    )}
+                    <IconBtn
+                      title="Make selection"
+                      testId="promote-neighborhood"
+                      disabled={!canPromote}
+                      onClick={() => {
+                        if (canPromote) lm.promoteNeighborhoodToSelection();
+                      }}
+                    >
+                      <CirclePlusIcon className="size-4" />
+                    </IconBtn>
+                  </div>
+                </>
+              ) : null}
+            </>
+          ) : null}
         </div>
       </div>
     </TooltipProvider>

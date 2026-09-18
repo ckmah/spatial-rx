@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Morph } from "cube-motion/react";
 import { CircleDot, Grid2x2, Ruler } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -39,7 +40,7 @@ export function ViewCta({ lm }: { lm: LandmarksModel }) {
             onClick={() => lm.setShowRulers(!rulersOn)}
             className={cn(
               chromeHitClass,
-              "rounded-full text-foreground/70",
+              "rounded-full text-foreground/70 active:scale-[0.97]",
               rulersOn && chromeHitOnClass,
             )}
           >
@@ -58,38 +59,16 @@ export function ViewCta({ lm }: { lm: LandmarksModel }) {
             className={cn(
               "landmarks-view-cta rounded-full text-foreground/70",
               "hover:bg-foreground/10 hover:text-foreground",
-              "active:scale-[0.92]",
-              "motion-reduce:active:scale-100",
+              "active:scale-[0.97]",
             )}
           >
-            <span
+            <Morph
               key={popNonce || "idle"}
-              className={cn(
-                "landmarks-view-cta__swap relative inline-flex size-4",
-                popNonce > 0 && "landmarks-view-cta--pop",
-              )}
-            >
-              <CircleDot
-                aria-hidden
-                data-testid="view-cta-icon-points"
-                className={cn(
-                  "landmarks-view-cta__icon absolute inset-0 size-4",
-                  rasterOn
-                    ? "landmarks-view-cta__icon--out"
-                    : "landmarks-view-cta__icon--in",
-                )}
-              />
-              <Grid2x2
-                aria-hidden
-                data-testid="view-cta-icon"
-                className={cn(
-                  "landmarks-view-cta__icon absolute inset-0 size-4",
-                  rasterOn
-                    ? "landmarks-view-cta__icon--in"
-                    : "landmarks-view-cta__icon--out",
-                )}
-              />
-            </span>
+              active={rasterOn}
+              className="inline-flex size-4 items-center justify-center"
+              off={<CircleDot className="size-4" data-testid="view-cta-icon-points" />}
+              on={<Grid2x2 className="size-4" data-testid="view-cta-icon" />}
+            />
           </Button>
         </ChromeTooltip>
       </div>

@@ -96,6 +96,8 @@ test.describe("LandmarksWidget tool completeness", () => {
     const selections = (await getModel(page, "selections")) as any[];
     expect(selections.length).toBe(before + 1);
     expect(selections[selections.length - 1].point_indices.length).toBeGreaterThan(0);
+    const landmarks = (await getModel(page, "landmarks")) as any[];
+    expect(landmarks[0].buffer_width).toBe(0);
   });
 
   test("shape buffer side (out/in/both) shapes the promoted selection", async ({

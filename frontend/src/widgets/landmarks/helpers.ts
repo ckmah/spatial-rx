@@ -66,8 +66,30 @@ export type GeneScaleMode = "independent" | "shared";
 export const BUFFERABLE = ["point", "line", "spline", "shape"];
 export const TENSION_TYPES = ["spline", "shape"];
 export const NODE_EDITABLE = ["line", "spline", "shape"];
-export const LINE_BUFFER_SIDES = ["left", "both", "right"] as const;
-export const SHAPE_BUFFER_SIDES = ["out", "both", "in"] as const;
+/** Unified buffer sides: shape left=in, right=out (Shapely dilation on right). */
+export const BUFFER_SIDES = ["left", "both", "right"] as const;
+
+/** Stable fallback color from landmark id (not list index). */
+export function landmarkStableColor(id: string | undefined, fallbackIndex = 0) {
+  const s = String(id || "");
+  if (!s) return LANDMARK_COLORS[fallbackIndex % LANDMARK_COLORS.length];
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return LANDMARK_COLORS[Math.abs(h) % LANDMARK_COLORS.length];
+}
+
+/** Normalize legacy in/out → left/right. */
+export function normalizeBufferSide(
+  side: string | undefined,
+  type?: string,
+): "left" | "right" | "both" {
+  const s = String(side || "both");
+  if (s === "in") return "left";
+  if (s === "out") return "right";
+  if (s === "left" || s === "right" || s === "both") return s;
+  if (type === "point") return "both";
+  return "both";
+}
 
 export const MODE_LABELS: Record<string, string> = {
   pointer: "Pointer",

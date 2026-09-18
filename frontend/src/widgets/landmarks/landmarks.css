@@ -40,6 +40,9 @@
   /* Matches `.landmarks__resize` (bottom 8px + 16px hit area). */
   --lm-resize-band: calc(8px + 16px);
   --lm-dock-width: 14rem;
+  /* Ruler clear of Soft Float docks / top tools */
+  --lm-ruler-band: 1.25rem;
+  --lm-ruler-inset: var(--lm-chrome-band);
 
   /* Shared Soft Float surface — panels + toolbars (shadow-only elevation) */
   --lm-float-radius: calc(var(--radius) + 0.25rem);
@@ -1400,4 +1403,100 @@
   .landmarks-rgb-cube__labels {
     transition: opacity 80ms linear;
   }
+}
+
+/* Canvas rulers — inset clear of Soft Float chrome; cross marks only */
+.landmarks-rulers {
+  --lm-ruler-pad-top: calc(var(--lm-chrome-band) + var(--lm-chrome-gap));
+  --lm-ruler-pad-x: calc(var(--lm-dock-width) + var(--lm-chrome-inset) + var(--lm-chrome-gap));
+  --lm-ruler-pad-bottom: calc(var(--lm-chrome-band) + var(--lm-chrome-gap));
+}
+
+.landmarks-ruler--x {
+  position: absolute;
+  top: var(--lm-ruler-pad-top);
+  left: var(--lm-ruler-pad-x);
+  right: var(--lm-ruler-pad-x);
+  height: var(--lm-ruler-band);
+  pointer-events: none;
+  color: color-mix(in oklab, var(--muted-foreground) 85%, transparent);
+  font-size: 9px;
+  line-height: 1;
+  background: color-mix(in oklab, var(--background) 40%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 50%, transparent);
+}
+
+.landmarks-ruler--y {
+  position: absolute;
+  top: calc(var(--lm-ruler-pad-top) + var(--lm-ruler-band));
+  bottom: var(--lm-ruler-pad-bottom);
+  left: var(--lm-ruler-pad-x);
+  width: var(--lm-ruler-band);
+  pointer-events: none;
+  color: color-mix(in oklab, var(--muted-foreground) 85%, transparent);
+  font-size: 9px;
+  line-height: 1;
+  background: color-mix(in oklab, var(--background) 40%, transparent);
+  border-right: 1px solid color-mix(in oklab, var(--border) 50%, transparent);
+}
+
+.landmarks-ruler--x .landmarks-ruler-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  padding-top: 0.2rem;
+  border-left: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+  padding-left: 0.2rem;
+}
+
+.landmarks-ruler--y .landmarks-ruler-tick {
+  position: absolute;
+  left: 0;
+  transform: translateY(-50%);
+  padding-left: 0.15rem;
+  border-top: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+  writing-mode: horizontal-tb;
+}
+
+.landmarks-ruler-crosses {
+  position: absolute;
+  top: calc(var(--lm-ruler-pad-top) + var(--lm-ruler-band));
+  left: calc(var(--lm-ruler-pad-x) + var(--lm-ruler-band));
+  right: var(--lm-ruler-pad-x);
+  bottom: var(--lm-ruler-pad-bottom);
+}
+
+.landmarks-ruler-cross {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  transform: translate(-50%, -50%);
+  opacity: 0.35;
+}
+
+.landmarks-ruler-cross::before,
+.landmarks-ruler-cross::after {
+  content: "";
+  position: absolute;
+  background: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+}
+
+.landmarks-ruler-cross::before {
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  transform: translateX(-50%);
+}
+
+.landmarks-ruler-cross::after {
+  top: 50%;
+  left: 0;
+  height: 1px;
+  width: 100%;
+  transform: translateY(-50%);
+}
+
+.landmarks--narrow .landmarks-rulers {
+  --lm-ruler-pad-x: var(--lm-chrome-inset);
 }

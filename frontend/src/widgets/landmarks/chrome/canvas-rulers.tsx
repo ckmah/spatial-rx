@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Rise } from "cube-motion/react";
 
 import type { EngineHandle } from "../engine";
 import type { LandmarksModel } from "../use-landmarks-model";
@@ -15,8 +16,8 @@ function niceStep(span: number) {
 }
 
 /**
- * Edge rulers in data/tissue units. Toggle via `show_rulers`.
- * No snap-to-tick — readout only.
+ * Edge rulers inset clear of Soft Float chrome + faint cross grid at ticks.
+ * No snap-to-tick.
  */
 export function CanvasRulers({
   lm,
@@ -29,19 +30,11 @@ export function CanvasRulers({
   const [bounds, setBounds] = useState<[number, number, number, number] | null>(
     null,
   );
-  const [size, setSize] = useState({ w: 0, h: 0 });
 
   useEffect(() => {
     if (!show || !engine) return;
     const sync = () => {
-      const b = engine.getViewportWorldBounds();
-      setBounds(b);
-      const host = document.querySelector(
-        ".landmarks__plot-host",
-      ) as HTMLElement | null;
-      if (host) {
-        setSize({ w: host.clientWidth, h: host.clientHeight });
-      }
+      setBounds(engine.getViewportWorldBounds());
     };
     sync();
     const unsub = engine.subscribeViewState(() => sync());
@@ -53,8 +46,11 @@ export function CanvasRulers({
   }, [show, engine]);
 
   const ticks = useMemo(() => {
-    if (!bounds || size.w < 8 || size.h < 8) {
-      return { x: [] as { label: string; pct: number }[], y: [] as { label: string; pct: number }[] };
+    if (!bounds) {
+      return {
+        x: [] as { label: string; pct: number }[],
+        y: [] as { label: string; pct: number }[],
+      };
     }
     const [x0, y0, x1, y1] = bounds;
     const sx = niceStep(x1 - x0);
@@ -70,45 +66,61 @@ export function CanvasRulers({
     const yTicks: { label: string; pct: number }[] = [];
     const startY = Math.ceil(y0 / sy) * sy;
     for (let y = startY; y <= y1; y += sy) {
-      // Screen y grows downward; world y may grow up — map via bounds.
       yTicks.push({
         label: formatParam(y, String(y)),
         pct: ((y1 - y) / (y1 - y0)) * 100,
       });
     }
     return { x: xTicks, y: yTicks };
-  }, [bounds, size.w, size.h]);
+  }, [bounds]);
 
   if (!show) return null;
 
+  const crosses = [];
+  for (const xt of ticks.x) {
+    for (const yt of ticks.y) {
+      crosses.push({ x: xt.pct, y: yt.pct, key: `${xt.pct}-${yt.pct}` });
+    }
+  }
+
   return (
-    <div
-      className="landmarks-rulers pointer-events-none absolute inset-0 z-[40]"
+    <Rise
+      className="landmarks-rulers pointer-events-none absolute inset-0 z-[5]"
       data-testid="canvas-rulers"
       aria-hidden
     >
-      <div className="landmarks-ruler landmarks-ruler--x absolute inset-x-0 top-0 h-5 bg-background/55 text-[9px] text-muted-foreground backdrop-blur-[2px]">
+      {/* Cross marks at tick intersections (not full gridlines). */}
+                    <div className="landmarks-ruler-crosses">
+        {crosses.map((c) => (
+          <span
+            key={c.key}
+            className="landmarks-ruler-cross"
+            style={{ left: `${c.x}%`, top: `${c.y}%` }}
+          />
+        ))}
+      </div>
+      <div className="landmarks-ruler landmarks-ruler--x">
         {ticks.x.map((t) => (
           <span
             key={`x-${t.label}-${t.pct}`}
-            className="absolute top-0 -translate-x-1/2 border-l border-border/70 pl-0.5 pt-0.5 leading-none"
+            className="landmarks-ruler-tick"
             style={{ left: `${t.pct}%` }}
           >
             {t.label}
           </span>
         ))}
       </div>
-      <div className="landmarks-ruler landmarks-ruler--y absolute inset-y-0 left-0 w-8 bg-background/55 text-[9px] text-muted-foreground backdrop-blur-[2px]">
+      <div className="landmarks-ruler landmarks-ruler--y">
         {ticks.y.map((t) => (
           <span
             key={`y-${t.label}-${t.pct}`}
-            className="absolute left-0 -translate-y-1/2 border-t border-border/70 pl-0.5 leading-none"
+            className="landmarks-ruler-tick"
             style={{ top: `${t.pct}%` }}
           >
             {t.label}
           </span>
         ))}
       </div>
-    </div>
+    </Rise>
   );
 }
