@@ -61,8 +61,12 @@ export const SIMILARITY_LEGEND_CSS =
 /** Scatter fallback when no palette is set (landmark cyan — never Tailwind blue). */
 export const FALLBACK_POINT_COLOR = LANDMARK_COLORS[0];
 export type GeneScaleMode = "independent" | "shared";
-export const BUFFERABLE = ["line", "spline", "gradient"];
-export const TENSION_TYPES = ["spline", "shape", "gradient"];
+export const BUFFERABLE = ["point", "line", "spline", "shape"];
+export const TENSION_TYPES = ["spline", "shape"];
+export const NODE_EDITABLE = ["line", "spline", "shape"];
+export const EXTENDABLE = ["line", "spline"];
+export const LINE_BUFFER_SIDES = ["left", "both", "right"] as const;
+export const SHAPE_BUFFER_SIDES = ["out", "both", "in"] as const;
 
 export const MODE_LABELS: Record<string, string> = {
   pointer: "Pointer",
@@ -107,9 +111,12 @@ export type LandmarkItem = {
   id: string;
   type: string;
   hidden?: boolean;
+  locked?: boolean;
   tension?: number;
   buffer_width?: number;
   buffer_side?: string;
+  color?: string;
+  line_style?: string;
   vertices?: number[][];
   [key: string]: unknown;
 };
