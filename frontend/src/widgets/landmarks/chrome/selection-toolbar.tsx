@@ -24,7 +24,6 @@ import { cn } from "@/lib/utils";
 import type { EngineHandle } from "../engine";
 import {
   BUFFERABLE,
-  EXTENDABLE,
   LANDMARK_COLORS,
   LINE_BUFFER_SIDES,
   NODE_EDITABLE,
@@ -241,7 +240,6 @@ export function SelectionToolbar({
   const usesBuffer = !!selectedLm && BUFFERABLE.includes(lmType);
   const usesTension = !!selectedLm && TENSION_TYPES.includes(lmType);
   const usesNodes = !!selectedLm && NODE_EDITABLE.includes(lmType);
-  const canExtend = !!selectedLm && EXTENDABLE.includes(lmType) && !selectedLm.locked;
   const isPoint = lmType === "point";
   const isShape = lmType === "shape";
   const isLineLike = lmType === "line" || lmType === "spline";
@@ -566,20 +564,10 @@ export function SelectionToolbar({
                   </>
                 ) : null}
 
-                {usesNodes || canExtend || isLineLike ? (
+                {usesNodes || isLineLike ? (
                   <>
                     <ToolbarDivider />
                     <div className="flex items-center gap-1">
-                      {canExtend ? (
-                        <IconBtn
-                          title="Extend from tip"
-                          testId="context-extend"
-                          disabled={locked}
-                          onClick={() => engine?.startExtendLandmark(index)}
-                        >
-                          <WaypointsIcon className="size-4" />
-                        </IconBtn>
-                      ) : null}
                       {isLineLike ? (
                         <IconBtn
                           title="Reverse"

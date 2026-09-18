@@ -2,8 +2,6 @@ export type EngineHandle = {
   zoomBy(delta: number, opts?: { animate?: boolean; duration?: number }): void;
   resetZoom(): void;
   resize(): void;
-  /** Begin appending clicked points to an existing line/spline landmark's vertices. */
-  startExtendLandmark(index: number): void;
   /** Pop the last landmark-geometry snapshot and restore it. Returns false if the stack is empty. */
   undoLandmarkEdit(): boolean;
   /** Reverse the focused landmark's vertex order (flips left/right buffer side for lines). */

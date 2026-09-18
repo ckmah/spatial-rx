@@ -66,7 +66,6 @@ export type GeneScaleMode = "independent" | "shared";
 export const BUFFERABLE = ["point", "line", "spline", "shape"];
 export const TENSION_TYPES = ["spline", "shape"];
 export const NODE_EDITABLE = ["line", "spline", "shape"];
-export const EXTENDABLE = ["line", "spline"];
 export const LINE_BUFFER_SIDES = ["left", "both", "right"] as const;
 export const SHAPE_BUFFER_SIDES = ["out", "both", "in"] as const;
 
