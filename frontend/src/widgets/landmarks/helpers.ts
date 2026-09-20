@@ -1,6 +1,7 @@
 /** Keyboard shortcuts for the landmarks canvas (see engine handleKeyDown). */
 export const KEYBOARD_SHORTCUTS: { action: string; keys: string }[] = [
-  { action: "Pointer", keys: "V" },
+  { action: "Select", keys: "V" },
+  { action: "Node", keys: "N" },
   { action: "Move", keys: "H" },
   { action: "Probe", keys: "P" },
   { action: "Lasso", keys: "L" },
@@ -19,18 +20,19 @@ export const KEYBOARD_SHORTCUTS: { action: string; keys: string }[] = [
   { action: "Cut", keys: "⌘/Ctrl+X" },
   { action: "Paste", keys: "⌘/Ctrl+V" },
   {
-    action: "Delete selected landmark or selection",
+    action: "Delete selected landmark or active node",
     keys: "⌫ / Delete",
   },
   { action: "Undo landmark edit", keys: "⌘/Ctrl+Z" },
   { action: "Nudge selection or active node", keys: "Arrow keys" },
   { action: "Finish draft", keys: "Enter" },
-  { action: "Cancel draft / deselect / clear probe", keys: "Esc" },
+  { action: "Cancel draft / leave node / deselect / clear probe", keys: "Esc" },
 ];
 
 /** Mode id → tooltip shortcut glyph. */
 export const MODE_SHORTCUTS: Record<string, string> = {
-  pointer: "V",
+  select: "V",
+  node: "N",
   move: "H",
   probe: "P",
   lasso: "L",
@@ -92,7 +94,8 @@ export function normalizeBufferSide(
 }
 
 export const MODE_LABELS: Record<string, string> = {
-  pointer: "Pointer",
+  select: "Select",
+  node: "Node",
   move: "Move",
   probe: "Probe",
   selection: "Selection",
@@ -107,7 +110,7 @@ export const MODE_LABELS: Record<string, string> = {
 };
 
 /** Top-level interaction tools (left ToggleGroup). */
-export const INTERACTION_MODE_IDS = ["pointer", "move", "probe"];
+export const INTERACTION_MODE_IDS = ["select", "node", "move", "probe"];
 /** Selection geometry modes (lasso dropdown on Topbar). */
 export const GEOMETRY_MODE_IDS = ["lasso", "rectangle", "ellipse", "polygon"];
 export const LANDMARK_MODE_IDS = ["point", "line", "spline", "shape"];
@@ -118,7 +121,13 @@ export function isGeometryMode(mode: string) {
 
 /** Map concrete mode → left-group interaction value (empty when landmark/geometry). */
 export function interactionFromMode(mode: string) {
-  if (mode === "pointer" || mode === "move" || mode === "probe") return mode;
+  if (
+    mode === "select" ||
+    mode === "node" ||
+    mode === "move" ||
+    mode === "probe"
+  )
+    return mode;
   return "";
 }
 

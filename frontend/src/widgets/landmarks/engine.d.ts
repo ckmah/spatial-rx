@@ -10,6 +10,15 @@ export type EngineHandle = {
   convertSelectedLandmark(type: string): void;
   /** Delete the currently active (clicked) vertex on the focused landmark, if any. */
   deleteActiveVertex(): boolean;
+  /** Insert a vertex on a landmark edge (node-mode context menu). */
+  insertVertexAt(
+    landmarkIdx: number,
+    afterIndex: number,
+    xy: [number, number] | number[],
+  ): boolean;
+  setNodeInsertArmed(armed: boolean): void;
+  getNodeInsertArmed(): boolean;
+  getActiveVertexIndex(): number;
   getViewState(): {
     target?: number[];
     zoom?: number;
@@ -54,6 +63,12 @@ export type EngineHandle = {
       index: number;
       clientX: number;
       clientY: number;
+      mode?: string;
+      hit?: "vertex" | "edge" | "body";
+      vertexIndex?: number;
+      afterIndex?: number;
+      insertX?: number | null;
+      insertY?: number | null;
     }) => void,
   ): () => void;
   getInspectPin(): { kind: string; index: number } | null;

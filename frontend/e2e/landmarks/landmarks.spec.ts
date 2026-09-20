@@ -244,9 +244,12 @@ test.describe("LandmarksWidget", () => {
     expect(active?.lineAlpha).toBe(0);
   });
 
-  test("Pointer / Move / Probe and lasso geometry control", async ({ page }) => {
+  test("Select / Node / Move / Probe and lasso geometry control", async ({ page }) => {
     await expect(
-      page.getByRole("radio", { name: "Pointer", exact: true }),
+      page.getByRole("radio", { name: "Select", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("radio", { name: "Node", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("radio", { name: "Move", exact: true }),
@@ -275,13 +278,17 @@ test.describe("LandmarksWidget", () => {
     await page.waitForTimeout(100);
     expect(await getModel(page, "mode")).toBe("probe");
 
-    await page.getByRole("radio", { name: "Pointer", exact: true }).click();
+    await page.getByRole("radio", { name: "Node", exact: true }).click();
     await page.waitForTimeout(100);
-    expect(await getModel(page, "mode")).toBe("pointer");
+    expect(await getModel(page, "mode")).toBe("node");
+
+    await page.getByRole("radio", { name: "Select", exact: true }).click();
+    await page.waitForTimeout(100);
+    expect(await getModel(page, "mode")).toBe("select");
   });
 
-  test("pointer pin via model + Esc clears", async ({ page }) => {
-    await page.getByRole("radio", { name: "Pointer", exact: true }).click();
+  test("select pin via model + Esc clears", async ({ page }) => {
+    await page.getByRole("radio", { name: "Select", exact: true }).click();
     await setModel(page, { selected_kind: "", selected_index: -1 });
     await page.waitForTimeout(150);
 

@@ -12,7 +12,7 @@ export const NOTEBOOK_KEYS = new Set([
 ]);
 
 const DEFAULTS = {
-  mode: "pointer",
+  mode: "select",
   active_genes: [],
   gene_scale_mode: "independent",
   gene_log1p: false,

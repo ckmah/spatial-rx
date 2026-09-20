@@ -23,6 +23,7 @@ import {
   SplineIcon,
   SquareIcon,
   Trash2Icon,
+  WaypointsIcon,
   type LucideProps,
 } from "lucide-react";
 import { Tooltip as TooltipPrimitive } from "radix-ui";
@@ -46,7 +47,8 @@ function FilledCircleIcon(props: LucideProps) {
 }
 
 const MODE_ICONS: Record<string, ComponentType<LucideProps>> = {
-  pointer: MousePointer2Icon,
+  select: MousePointer2Icon,
+  node: WaypointsIcon,
   move: MoveIcon,
   probe: LocateIcon,
   selection: LassoIcon,

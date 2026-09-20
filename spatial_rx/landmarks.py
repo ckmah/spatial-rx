@@ -305,7 +305,7 @@ class LandmarksWidget(AnyWidget):
     active_genes = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
 
     # --- Internal plumbing (synced, not notebook API) ---
-    mode = traitlets.Unicode("pointer").tag(sync=True)
+    mode = traitlets.Unicode("select").tag(sync=True)
     x_bounds = traitlets.Tuple(
         traitlets.Float(), traitlets.Float(), default_value=(0.0, 1.0)
     ).tag(sync=True)
@@ -522,7 +522,7 @@ class LandmarksWidget(AnyWidget):
 
         AnyWidget.__init__(
             self,
-            mode="pointer",
+            mode="select",
             x_bounds=(xmin, xmax),
             y_bounds=(ymin, ymax),
             points_data=_encode_f32(points),

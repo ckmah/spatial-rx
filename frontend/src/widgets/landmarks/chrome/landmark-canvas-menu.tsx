@@ -2,16 +2,19 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Rise } from "cube-motion/react";
 import {
+  CircleMinusIcon,
   CopyPlusIcon,
   EyeIcon,
   EyeOffIcon,
   PencilIcon,
   Trash2Icon,
+  WaypointsIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 import type { EngineHandle } from "../engine";
+import { NODE_EDITABLE } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
 import { chromeMenuClass } from "./primitives";
 
@@ -19,6 +22,12 @@ type MenuState = {
   index: number;
   x: number;
   y: number;
+  mode?: string;
+  hit?: "vertex" | "edge" | "body";
+  vertexIndex?: number;
+  afterIndex?: number;
+  insertX?: number | null;
+  insertY?: number | null;
 } | null;
 
 /** Soft Float menu row — same tokens as shadcn DropdownMenuItem. */
@@ -74,13 +83,22 @@ export function LandmarkCanvasMenu({
     if (!engine?.subscribeLandmarkMenu) return;
     return engine.subscribeLandmarkMenu((evt) => {
       const root = rootEl;
+      const base = {
+        index: evt.index,
+        mode: evt.mode,
+        hit: evt.hit,
+        vertexIndex: evt.vertexIndex,
+        afterIndex: evt.afterIndex,
+        insertX: evt.insertX,
+        insertY: evt.insertY,
+      };
       if (!root) {
-        setMenu({ index: evt.index, x: evt.clientX, y: evt.clientY });
+        setMenu({ ...base, x: evt.clientX, y: evt.clientY });
         return;
       }
       const rect = root.getBoundingClientRect();
       setMenu({
-        index: evt.index,
+        ...base,
         x: evt.clientX - rect.left,
         y: evt.clientY - rect.top,
       });
@@ -128,6 +146,19 @@ export function LandmarkCanvasMenu({
     close();
   };
 
+  const inNodeMode = menu.mode === "node";
+  const nodeEditable = NODE_EDITABLE.includes(String(item.type || ""));
+  const showDeleteNode =
+    inNodeMode && nodeEditable && menu.hit === "vertex";
+  const showInsertNode =
+    inNodeMode &&
+    nodeEditable &&
+    menu.hit === "edge" &&
+    menu.afterIndex != null &&
+    menu.afterIndex >= 0 &&
+    menu.insertX != null &&
+    menu.insertY != null;
+
   return createPortal(
     <Rise
       id="landmarks-canvas-menu"
@@ -136,6 +167,36 @@ export function LandmarkCanvasMenu({
       style={{ left: menu.x, top: menu.y }}
       data-testid="landmarks-canvas-menu"
     >
+      {showInsertNode ? (
+        <SoftMenuItem
+          onClick={() =>
+            run(() => {
+              engine?.insertVertexAt?.(
+                menu.index,
+                menu.afterIndex!,
+                [menu.insertX!, menu.insertY!],
+              );
+            })
+          }
+        >
+          <WaypointsIcon className="size-3.5" />
+          Insert node
+        </SoftMenuItem>
+      ) : null}
+      {showDeleteNode ? (
+        <SoftMenuItem
+          destructive
+          shortcut="⌫"
+          onClick={() =>
+            run(() => {
+              engine?.deleteActiveVertex?.();
+            })
+          }
+        >
+          <CircleMinusIcon className="size-3.5" />
+          Delete node
+        </SoftMenuItem>
+      ) : null}
       <SoftMenuItem onClick={() => run(() => lm.toggleLandmarkHidden(menu.index))}>
         {item.hidden ? (
           <EyeIcon className="size-3.5" />

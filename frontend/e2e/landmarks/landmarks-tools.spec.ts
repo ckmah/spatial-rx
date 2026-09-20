@@ -53,7 +53,7 @@ test.describe("LandmarksWidget tool completeness", () => {
       selected_kind: "",
       selected_index: -1,
     });
-    await page.getByRole("radio", { name: "Pointer", exact: true }).click();
+    await page.getByRole("radio", { name: "Select", exact: true }).click();
     await page.waitForTimeout(80);
     return {
       worldToScreen: (wx: number, worldY: number) => ({
@@ -226,7 +226,7 @@ test.describe("LandmarksWidget tool completeness", () => {
     expect(reverted[1]).toBeCloseTo(before[1], 5);
   });
 
-  test("pointer mode: drag a vertex, insert via midpoint, then delete", async ({
+  test("node mode: drag a vertex, insert via midpoint, then delete", async ({
     page,
   }) => {
     const { worldToScreen } = await calibrate(page);
@@ -248,6 +248,11 @@ test.describe("LandmarksWidget tool completeness", () => {
       selected_index: 0,
     });
     await page.waitForTimeout(150);
+
+    // Node interactions require node mode (select mode never hit-tests vertices).
+    await page.getByRole("radio", { name: "Node", exact: true }).click();
+    await page.waitForTimeout(100);
+    expect(await getModel(page, "mode")).toBe("node");
 
     // Drag the first vertex to a new world position.
     const target: [number, number] = [xMin + spanX * 0.35, yMin + spanY * 0.45];
@@ -283,9 +288,12 @@ test.describe("LandmarksWidget tool completeness", () => {
     expect(landmarks.length).toBe(1);
     expect(landmarks[0].vertices.length).toBe(2);
 
-    // With no active vertex, Delete removes the whole landmark.
+    // Esc clears active node, then leaves node → select; Delete removes landmark.
     await page.keyboard.press("Escape");
     await page.waitForTimeout(80);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(80);
+    expect(await getModel(page, "mode")).toBe("select");
     await setModel(page, { selected_kind: "landmark", selected_index: 0 });
     await page.waitForTimeout(80);
     await page.keyboard.press("Delete");

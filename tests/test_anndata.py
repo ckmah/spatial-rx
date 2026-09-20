@@ -53,7 +53,7 @@ def test_constructor_packs_obs_palette_and_genes():
     assert w.neighbor_k_max >= 1
     assert w.neighbor_radius_max > 0
     assert len(w._data_x) == 4
-    assert w.mode == "pointer"
+    assert w.mode == "select"
     assert w.point_size == pytest.approx(0.4)
 
 
