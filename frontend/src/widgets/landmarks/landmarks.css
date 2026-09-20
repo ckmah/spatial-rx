@@ -1541,7 +1541,10 @@
 
 /* Bidirectional buffer pill — Soft Float capsule + white fill + line handle */
 .landmarks-pill-slider.landmarks-slider-control {
-  /* inherit capsule background from .landmarks-slider-control */
+  /* Fixed capsule height — do not use flex-1 in a column (collapses to 0). */
+  height: 1.75rem;
+  min-height: 1.75rem;
+  flex: none;
 }
 
 .landmarks-pill-slider__fill {
@@ -1557,7 +1560,8 @@
 
 .landmarks-pill-slider__thumb {
   opacity: 1;
-  background: color-mix(in oklab, var(--foreground) 70%, transparent);
+  /* Dark line on white pill — readable like Soft Float thumb on light range */
+  background: #171717;
   pointer-events: none;
   transition:
     height var(--duration-quick) var(--ease-out),
@@ -1566,7 +1570,7 @@
 
 .landmarks-pill-slider:hover .landmarks-pill-slider__thumb,
 .landmarks-pill-slider:focus-within .landmarks-pill-slider__thumb {
-  background: var(--foreground);
+  background: #0a0a0a;
   height: 0.875rem;
 }
 

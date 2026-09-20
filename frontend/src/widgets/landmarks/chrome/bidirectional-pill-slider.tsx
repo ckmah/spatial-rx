@@ -65,7 +65,7 @@ export function BidirectionalPillSlider({
   return (
     <div
       className={cn(
-        "landmarks-slider-control landmarks-pill-slider group/slider relative min-w-[180px] flex-1",
+        "landmarks-slider-control landmarks-pill-slider group/slider relative h-7 w-full min-w-[180px] shrink-0",
         className,
       )}
       data-testid={testId}
