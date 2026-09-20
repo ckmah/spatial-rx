@@ -38,7 +38,6 @@ import {
   pointInBufferPolys,
   pointInRing,
   distPointToSeg,
-  convexHull,
 } from "./landmarks_geometry.js";
 import { buildSpatialIndex, queryNeighbors } from "../../frontend/src/widgets/landmarks/spatial-neighbors.js";
 import {
@@ -4128,58 +4127,6 @@ export function mountEngine({ model, host }) {
     setDeckLayers();
   }
 
-  /** Client-side convert: focused selection geometry/points → a new landmark. */
-  function selectionToLandmarkClient() {
-    const kind = model.get("selected_kind");
-    const index = Number(model.get("selected_index"));
-    if (kind !== "selection" || index < 0) return;
-    const selections = model.get("selections") || [];
-    const sel = selections[index];
-    if (!sel) return;
-    let type;
-    let vertices;
-    const poly = selectionPolygonData(sel);
-    if (poly.length >= 2) {
-      type = poly.length >= 3 ? "shape" : "line";
-      vertices = poly.map(([x, y]) => [x, y]);
-    } else if (Array.isArray(sel.point_indices) && sel.point_indices.length) {
-      const pts = getPointsData();
-      const chosen = sel.point_indices.map((idx) => pts[idx]).filter(Boolean);
-      if (!chosen.length) return;
-      if (chosen.length === 1) {
-        type = "point";
-        vertices = [[chosen[0].x, chosen[0].y]];
-      } else {
-        const hull = convexHull(chosen.map((p) => [p.x, p.y]));
-        if (hull.length >= 3) type = "shape";
-        else if (hull.length === 2) type = "line";
-        else type = "point";
-        vertices = hull.length ? hull : [[chosen[0].x, chosen[0].y]];
-      }
-    } else {
-      return;
-    }
-    const landmarks = [...(model.get("landmarks") || [])];
-    const item = {
-      id: nextLandmarkId(landmarks),
-      type,
-      vertices,
-      line_style: "solid",
-      color: COLORS[landmarks.length % COLORS.length],
-    };
-    if (TENSION_TYPES.includes(type)) item.tension = DEFAULT_TENSION;
-    if (BUFFERABLE.includes(type)) {
-      item.buffer_width = model.get("default_buffer_width") ?? 0;
-      item.buffer_side = DEFAULT_BUFFER_SIDE;
-    }
-    landmarks.push(item);
-    setLandmarks(model, landmarks);
-    model.set("selected_kind", "landmark");
-    model.set("selected_index", landmarks.length - 1);
-    model.save_changes();
-    setDeckLayers();
-  }
-
   function hashSeedIndices(seeds) {
     let h = seeds.length * 73856093;
     for (let i = 0; i < seeds.length; i++) h = (Math.imul(h, 31) + (seeds[i] | 0)) | 0;
@@ -5593,9 +5540,6 @@ export function mountEngine({ model, host }) {
   });
   onChange("promote_buffer_tick", () => {
     promoteBufferClient();
-  });
-  onChange("selection_to_landmark_tick", () => {
-    selectionToLandmarkClient();
   });
   ["category_columns", "active_category"].forEach((k) => {
     onChange(k, () => {

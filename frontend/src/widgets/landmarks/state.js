@@ -21,7 +21,6 @@ export {
   renameLandmark,
   renameSelection,
   reverseLandmark,
-  selectionToLandmark,
   setActiveGenes,
   setGeneLog1p,
   setGeneScaleMode,

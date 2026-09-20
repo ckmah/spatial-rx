@@ -354,7 +354,6 @@ class LandmarksWidget(AnyWidget):
     # Chrome bumps this; engine promotes neighborhood → selection client-side.
     promote_tick = traitlets.Int(0).tag(sync=True)
     promote_buffer_tick = traitlets.Int(0).tag(sync=True)
-    selection_to_landmark_tick = traitlets.Int(0).tag(sync=True)
     show_rulers = traitlets.Bool(False).tag(sync=True)
 
     # --- Raster bins + similarity query ---

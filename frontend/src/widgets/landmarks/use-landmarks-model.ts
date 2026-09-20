@@ -23,7 +23,6 @@ import {
   promoteBufferToSelection as promoteBufferToSelectionTrait,
   promoteNeighborhoodToSelection as promoteNeighborhoodToSelectionTrait,
   reverseLandmark as reverseLandmarkTrait,
-  selectionToLandmark as selectionToLandmarkTrait,
   convertLandmarkType as convertLandmarkTypeTrait,
   deleteLandmarks as deleteLandmarksTrait,
   patchLandmarks as patchLandmarksTrait,
@@ -74,7 +73,6 @@ export type LandmarksState = {
   point_size: number;
   default_buffer_width: number;
   promote_buffer_tick: number;
-  selection_to_landmark_tick: number;
   show_rulers: boolean;
   render_mode: string;
   raster_bin_size: number;
@@ -124,7 +122,6 @@ const MODEL_KEYS: (keyof LandmarksState)[] = [
   "point_size",
   "default_buffer_width",
   "promote_buffer_tick",
-  "selection_to_landmark_tick",
   "show_rulers",
   "render_mode",
   "raster_bin_size",
@@ -161,7 +158,6 @@ export type LandmarksModel = LandmarksState & {
   toggleSelectionHidden(index: number): void;
   promoteNeighborhoodToSelection(): void;
   promoteBufferToSelection(): void;
-  selectionToLandmark(): void;
   reverseLandmark(): void;
   convertLandmarkType(nextType: string): void;
   patchLandmarks(indices: number[], patch: Record<string, unknown>): void;
@@ -262,9 +258,6 @@ export function useLandmarksModel(model: AnyModel): LandmarksModel {
     },
     promoteBufferToSelection() {
       promoteBufferToSelectionTrait(model);
-    },
-    selectionToLandmark() {
-      selectionToLandmarkTrait(model);
     },
     reverseLandmark() {
       if (state.selected_kind !== "landmark" || state.selected_index < 0) return;

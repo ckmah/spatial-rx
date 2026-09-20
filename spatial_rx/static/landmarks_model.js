@@ -19,7 +19,6 @@ const DEFAULTS = {
   type_neighborhoods: [],
   promote_tick: 0,
   promote_buffer_tick: 0,
-  selection_to_landmark_tick: 0,
   show_rulers: false,
   raster_query_bin: -1,
   raster_threshold: 0,

@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpFromLineIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FieldDescription } from "@/components/ui/field";
 import { ItemGroup } from "@/components/ui/item";
@@ -9,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 import { landmarkStableColor, SELECTION_COLORS } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
-import { LayerRow, chromeHitClass } from "./primitives";
+import { LayerRow } from "./primitives";
 import { FLOAT_PANEL, FLOAT_PANEL_CLIP, SECTION_LABEL } from "./sections";
 
 /** Left dock: selections + landmarks (single-select only). */
@@ -35,26 +33,7 @@ export function LayersPanel({ lm }: { lm: LandmarksModel }) {
         <div className={cn(FLOAT_PANEL_CLIP, "flex h-full min-h-0 flex-1 flex-col")}>
           <div className={cn("py-1.5", "landmarks-overlay-scroll min-h-0 flex-1")}>
             <section>
-              <div className="flex items-center justify-between gap-1 pr-1">
-                <h3 className={SECTION_LABEL}>Selections</h3>
-                {selected_kind === "selection" && selected_index >= 0 ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className={cn(chromeHitClass, "active:scale-[0.97]")}
-                    data-testid="selection-to-landmark"
-                    aria-label="Convert selection to landmark"
-                    title="Convert selection to landmark"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      lm.selectionToLandmark();
-                    }}
-                  >
-                    <ArrowUpFromLineIcon className="size-3.5" />
-                  </Button>
-                ) : null}
-              </div>
+              <h3 className={SECTION_LABEL}>Selections</h3>
               {selections.length ? (
                 <ItemGroup className="gap-0.5">
                   {selections.map((sel, i) => (

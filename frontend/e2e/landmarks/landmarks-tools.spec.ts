@@ -148,36 +148,6 @@ test.describe("LandmarksWidget tool completeness", () => {
     expect(bothCount).toBeGreaterThan(0);
   });
 
-  test("selection → landmark: point selection becomes a hull shape/line/point", async ({
-    page,
-  }) => {
-    await setModel(page, {
-      landmarks: [],
-      selections: [
-        {
-          id: "sel-1",
-          type: "points",
-          point_indices: [0, 1, 2, 3, 4, 5, 6, 7],
-          neighborhood: "off",
-        },
-      ],
-      selected_kind: "selection",
-      selected_index: 0,
-    });
-    await page.waitForTimeout(150);
-
-    await setModel(page, {
-      selection_to_landmark_tick:
-        ((await getModel(page, "selection_to_landmark_tick")) as number || 0) + 1,
-    });
-    await page.waitForTimeout(150);
-
-    const landmarks = (await getModel(page, "landmarks")) as any[];
-    expect(landmarks.length).toBe(1);
-    expect(["point", "line", "shape"]).toContain(landmarks[0].type);
-    expect(await getModel(page, "selected_kind")).toBe("landmark");
-  });
-
   test("reverse and convert the selected landmark via engine handle", async ({
     page,
   }) => {

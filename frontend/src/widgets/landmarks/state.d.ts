@@ -154,8 +154,6 @@ export declare function promoteNeighborhoodToSelection(model: AnyModel): void;
 
 export declare function promoteBufferToSelection(model: AnyModel): void;
 
-export declare function selectionToLandmark(model: AnyModel): void;
-
 export declare function reverseLandmark(
   model: AnyModel,
   index: number,

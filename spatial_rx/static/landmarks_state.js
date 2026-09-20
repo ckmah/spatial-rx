@@ -378,12 +378,6 @@ export function promoteBufferToSelection(model) {
   model.set("promote_buffer_tick", tick);
 }
 
-/** Convert focused selection → landmark (engine listens). */
-export function selectionToLandmark(model) {
-  const tick = Number(model.get("selection_to_landmark_tick") || 0) + 1;
-  model.set("selection_to_landmark_tick", tick);
-}
-
 export function reverseLandmark(model, index, landmarks) {
   const lm = landmarks[index];
   if (!lm || !Array.isArray(lm.vertices) || lm.vertices.length < 2) return;
