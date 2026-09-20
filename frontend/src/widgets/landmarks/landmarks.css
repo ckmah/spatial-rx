@@ -1574,11 +1574,11 @@
   height: 0.875rem;
 }
 
-.landmarks-pill-slider__input {
-  margin: 0;
-  appearance: none;
-  -webkit-appearance: none;
-  background: transparent;
+.landmarks-pill-slider__value {
+  /* Sit inside the white fill; dark type for contrast on #fff */
+  color: #171717;
+  text-shadow: none;
+  left: 0.55rem;
 }
 
 .landmarks--narrow .landmarks-rulers {

@@ -8,6 +8,7 @@ import {
   ChevronsLeftRightIcon,
   GitCommitHorizontal,
   PentagonIcon,
+  RotateCcwIcon,
   SplineIcon,
   Trash2Icon,
   WaypointsIcon,
@@ -198,16 +199,17 @@ function SignedBufferSlider({
   both,
   onSigned,
   onBoth,
+  onReset,
 }: {
   signed: number;
   max: number;
-  isShape: boolean;
   isPoint: boolean;
   both: boolean;
   onSigned: (v: number, both: boolean) => void;
   onBoth: (next: boolean) => void;
+  onReset: () => void;
 }) {
-  // Signed: left of center = negative, right = positive (no side-name labels).
+  // Signed: − left of center, + right of center.
   const display = isPoint
     ? formatParam(Math.abs(signed), "0")
     : both
@@ -222,38 +224,37 @@ function SignedBufferSlider({
       title={
         isPoint
           ? "Buffer radius"
-          : "Signed buffer: neg = inward/left, pos = outward/right"
+          : "Signed buffer: − = left/in, + = right/out; snap to center for 0"
       }
     >
       {!isPoint ? (
-        <span className="w-7 shrink-0 text-right text-[0.625rem] lowercase text-muted-foreground">
-          neg
-        </span>
-      ) : null}
-      <div className="flex min-w-[180px] flex-1 flex-col gap-0.5">
         <span
-          className="text-center text-[0.625rem] tabular-nums text-muted-foreground"
+          className="w-4 shrink-0 text-right text-[0.75rem] tabular-nums text-muted-foreground"
           aria-hidden
         >
-          {display}
+          −
         </span>
-        <BidirectionalPillSlider
-          value={isPoint ? Math.abs(signed) : signed}
-          min={isPoint ? 0 : -max}
-          max={max}
-          both={both && !isPoint}
-          onChange={(v) => onSigned(v, both)}
-          aria-label={
-            isPoint
-              ? "Buffer radius"
-              : "Buffer width; negative is left or in, positive is right or out"
-          }
-          testId="context-buffer-width"
-        />
-      </div>
+      ) : null}
+      <BidirectionalPillSlider
+        value={isPoint ? Math.abs(signed) : signed}
+        min={isPoint ? 0 : -max}
+        max={max}
+        both={both && !isPoint}
+        onChange={(v) => onSigned(v, both)}
+        displayValue={display}
+        aria-label={
+          isPoint
+            ? "Buffer radius"
+            : "Buffer width; negative is left or in, positive is right or out"
+        }
+        testId="context-buffer-width"
+      />
       {!isPoint ? (
-        <span className="w-7 shrink-0 text-[0.625rem] lowercase text-muted-foreground">
-          pos
+        <span
+          className="w-4 shrink-0 text-[0.75rem] tabular-nums text-muted-foreground"
+          aria-hidden
+        >
+          +
         </span>
       ) : null}
       {!isPoint ? (
@@ -267,8 +268,23 @@ function SignedBufferSlider({
           >
             <ChevronsLeftRightIcon className="size-4" />
           </IconBtn>
+          <IconBtn
+            title="Reset buffer"
+            testId="context-buffer-reset"
+            onClick={onReset}
+          >
+            <RotateCcwIcon className="size-4" />
+          </IconBtn>
         </>
-      ) : null}
+      ) : (
+        <IconBtn
+          title="Reset buffer"
+          testId="context-buffer-reset"
+          onClick={onReset}
+        >
+          <RotateCcwIcon className="size-4" />
+        </IconBtn>
+      )}
     </div>
   );
 }
@@ -477,7 +493,6 @@ export function SelectionToolbar({
                       <SignedBufferSlider
                         signed={isPoint ? width : signed}
                         max={bufMax}
-                        isShape={isShape}
                         isPoint={isPoint}
                         both={both}
                         onSigned={applySignedBuffer}
@@ -494,6 +509,12 @@ export function SelectionToolbar({
                             });
                           }
                         }}
+                        onReset={() =>
+                          lm.patchLandmark({
+                            buffer_width: 0,
+                            buffer_side: both ? "both" : "right",
+                          })
+                        }
                       />
                     }
                   >

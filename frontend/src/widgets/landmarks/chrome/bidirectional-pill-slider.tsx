@@ -3,14 +3,12 @@ import { cn } from "@/lib/utils";
 /**
  * Bidirectional Soft Float pill slider for signed buffer width.
  *
- * Matches `.landmarks-slider-control`: capsule track, **white fill pill**,
- * and a thin **line handle** at the value (same affordance as the normal
- * Slider thumb).
+ * - Capsule track + **white fill** + dark **line handle**(s)
+ * - Center mark at 0; dragging near 0 **snaps** to 0
+ * - Value drawn **inside** the capsule (same as `.landmarks-slider-value`)
+ * - **Both** mode: symmetric fill + handles on **both** ends
  *
- * Signed mapping (also enforced by `applySignedBuffer` in the toolbar):
- * - **Negative** values grow the pill left of center.
- * - **Positive** values grow the pill right of center.
- * - **Both** mode: magnitude only; pill grows symmetrically from center.
+ * Signed mapping: negative ← left of center, positive → right of center.
  */
 export function BidirectionalPillSlider({
   value,
@@ -18,6 +16,7 @@ export function BidirectionalPillSlider({
   max = 1,
   both = false,
   onChange,
+  displayValue,
   "aria-label": ariaLabel = "Buffer",
   testId,
   className,
@@ -27,6 +26,8 @@ export function BidirectionalPillSlider({
   max?: number;
   both?: boolean;
   onChange: (v: number) => void;
+  /** Formatted label drawn inside the capsule. */
+  displayValue?: string;
   "aria-label"?: string;
   testId?: string;
   className?: string;
@@ -35,9 +36,10 @@ export function BidirectionalPillSlider({
   const clamped = Math.min(max, Math.max(min, value));
   const absMax = Math.max(Math.abs(min), Math.abs(max), 1e-9);
   const mag = Math.abs(clamped);
-  // Center at signed 0 — left of center is negative, right is positive.
   const centerPct = ((0 - min) / span) * 100;
   const thumbPct = ((clamped - min) / span) * 100;
+  // Snap threshold ~2% of span so the center line is easy to hit.
+  const snapEps = Math.max(span * 0.02, span / 200);
 
   let fillLeft: number;
   let fillWidth: number;
@@ -52,6 +54,25 @@ export function BidirectionalPillSlider({
     fillLeft = ((clamped - min) / span) * 100;
     fillWidth = ((0 - clamped) / span) * 100;
   }
+
+  const leftThumbPct = both
+    ? centerPct - (mag / absMax) * 50
+    : clamped < 0
+      ? thumbPct
+      : null;
+  const rightThumbPct = both
+    ? centerPct + (mag / absMax) * 50
+    : clamped > 0
+      ? thumbPct
+      : clamped === 0
+        ? centerPct
+        : null;
+
+  const commit = (raw: number) => {
+    let next = Math.min(max, Math.max(min, raw));
+    if (Math.abs(next) <= snapEps) next = 0;
+    onChange(next);
+  };
 
   const signedHint =
     both || min >= 0
@@ -78,9 +99,11 @@ export function BidirectionalPillSlider({
         className="landmarks-pill-slider__track relative h-full w-full overflow-hidden rounded-[var(--radius)]"
         aria-hidden
       >
+        {/* Snap target — 0 at center */}
         <div
-          className="landmarks-pill-slider__center absolute top-1 bottom-1 z-[1] w-px bg-border/70"
+          className="landmarks-pill-slider__center absolute top-0.5 bottom-0.5 z-[1] w-px bg-foreground/35"
           style={{ left: `${centerPct}%` }}
+          data-testid="context-buffer-center"
         />
         <div
           className="landmarks-pill-slider__fill absolute inset-y-0 z-[1] rounded-[var(--radius)]"
@@ -89,11 +112,26 @@ export function BidirectionalPillSlider({
             width: `${Math.max(0, Math.min(100, fillWidth))}%`,
           }}
         />
-        {/* Line handle — same w-0.5 vertical bar as Soft Float Slider thumb */}
-        <div
-          className="landmarks-pill-slider__thumb absolute top-1/2 z-[2] h-2.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
-          style={{ left: `${Math.max(0, Math.min(100, thumbPct))}%` }}
-        />
+        {leftThumbPct != null ? (
+          <div
+            className="landmarks-pill-slider__thumb absolute top-1/2 z-[2] h-2.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+            style={{ left: `${Math.max(0, Math.min(100, leftThumbPct))}%` }}
+            data-thumb="left"
+          />
+        ) : null}
+        {rightThumbPct != null &&
+        (both || rightThumbPct !== leftThumbPct) ? (
+          <div
+            className="landmarks-pill-slider__thumb absolute top-1/2 z-[2] h-2.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+            style={{ left: `${Math.max(0, Math.min(100, rightThumbPct))}%` }}
+            data-thumb="right"
+          />
+        ) : null}
+        {displayValue != null ? (
+          <span className="landmarks-slider-value landmarks-pill-slider__value z-[2]">
+            {displayValue}
+          </span>
+        ) : null}
       </div>
       <input
         type="range"
@@ -106,7 +144,7 @@ export function BidirectionalPillSlider({
           signedHint ? `${signedHint}, ${mag}` : String(clamped)
         }
         className="landmarks-pill-slider__input absolute inset-0 z-[3] h-full w-full cursor-pointer opacity-0"
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => commit(Number(e.target.value))}
       />
     </div>
   );
