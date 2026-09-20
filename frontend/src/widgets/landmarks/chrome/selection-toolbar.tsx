@@ -194,7 +194,6 @@ function ToolStack({
 function SignedBufferSlider({
   signed,
   max,
-  isShape,
   isPoint,
   both,
   onSigned,
@@ -208,9 +207,7 @@ function SignedBufferSlider({
   onSigned: (v: number, both: boolean) => void;
   onBoth: (next: boolean) => void;
 }) {
-  // Left/In ← negative signed values; Right/Out → positive signed values.
-  const leftLabel = isShape ? "In (−)" : "Left (−)";
-  const rightLabel = isShape ? "Out (+)" : "Right (+)";
+  // Signed: left of center = negative, right = positive (no side-name labels).
   const display = isPoint
     ? formatParam(Math.abs(signed), "0")
     : both
@@ -220,17 +217,17 @@ function SignedBufferSlider({
         : `${signed < 0 ? "−" : "+"}${formatParam(Math.abs(signed), "0")}`;
   return (
     <div
-      className="flex min-w-[280px] items-center gap-1.5 px-0.5"
+      className="flex min-w-[260px] items-center gap-1.5 px-0.5"
       data-testid="context-buffer-panel"
       title={
         isPoint
           ? "Buffer radius"
-          : "Signed buffer: left/in = negative, right/out = positive"
+          : "Signed buffer: neg = inward/left, pos = outward/right"
       }
     >
       {!isPoint ? (
-        <span className="w-10 shrink-0 text-right text-[0.625rem] text-muted-foreground">
-          {leftLabel}
+        <span className="w-7 shrink-0 text-right text-[0.625rem] lowercase text-muted-foreground">
+          neg
         </span>
       ) : null}
       <div className="flex min-w-[180px] flex-1 flex-col gap-0.5">
@@ -249,14 +246,14 @@ function SignedBufferSlider({
           aria-label={
             isPoint
               ? "Buffer radius"
-              : "Buffer width; left or in is negative, right or out is positive"
+              : "Buffer width; negative is left or in, positive is right or out"
           }
           testId="context-buffer-width"
         />
       </div>
       {!isPoint ? (
-        <span className="w-11 shrink-0 text-[0.625rem] text-muted-foreground">
-          {rightLabel}
+        <span className="w-7 shrink-0 text-[0.625rem] lowercase text-muted-foreground">
+          pos
         </span>
       ) : null}
       {!isPoint ? (

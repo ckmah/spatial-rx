@@ -3,11 +3,13 @@ import { cn } from "@/lib/utils";
 /**
  * Bidirectional Soft Float pill slider for signed buffer width.
  *
- * Visual language matches `.landmarks-slider-control` (capsule track + fill).
+ * Matches `.landmarks-slider-control`: capsule track, **white fill pill**,
+ * and a thin **line handle** at the value (same affordance as the normal
+ * Slider thumb).
  *
  * Signed mapping (also enforced by `applySignedBuffer` in the toolbar):
- * - **Left / In = negative** values (pill grows left of center).
- * - **Right / Out = positive** values (pill grows right of center).
+ * - **Negative** values grow the pill left of center.
+ * - **Positive** values grow the pill right of center.
  * - **Both** mode: magnitude only; pill grows symmetrically from center.
  */
 export function BidirectionalPillSlider({
@@ -55,21 +57,21 @@ export function BidirectionalPillSlider({
     both || min >= 0
       ? undefined
       : clamped < 0
-        ? "left negative"
+        ? "negative"
         : clamped > 0
-          ? "right positive"
+          ? "positive"
           : "zero";
 
   return (
     <div
       className={cn(
-        "landmarks-slider-control landmarks-pill-slider relative min-w-[180px] flex-1",
+        "landmarks-slider-control landmarks-pill-slider group/slider relative min-w-[180px] flex-1",
         className,
       )}
       data-testid={testId}
       data-both={both ? "1" : "0"}
       data-signed-side={
-        both ? "both" : clamped < 0 ? "left" : clamped > 0 ? "right" : "zero"
+        both ? "both" : clamped < 0 ? "neg" : clamped > 0 ? "pos" : "zero"
       }
     >
       <div
@@ -77,18 +79,19 @@ export function BidirectionalPillSlider({
         aria-hidden
       >
         <div
-          className="landmarks-pill-slider__center absolute top-1 bottom-1 w-px bg-border/80"
+          className="landmarks-pill-slider__center absolute top-1 bottom-1 z-[1] w-px bg-border/70"
           style={{ left: `${centerPct}%` }}
         />
         <div
-          className="landmarks-pill-slider__fill absolute inset-y-0 rounded-[var(--radius)]"
+          className="landmarks-pill-slider__fill absolute inset-y-0 z-[1] rounded-[var(--radius)]"
           style={{
             left: `${Math.max(0, Math.min(100, fillLeft))}%`,
             width: `${Math.max(0, Math.min(100, fillWidth))}%`,
           }}
         />
+        {/* Line handle — same w-0.5 vertical bar as Soft Float Slider thumb */}
         <div
-          className="landmarks-pill-slider__thumb absolute top-1/2 h-2.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground opacity-0 transition-[height,opacity] duration-150 ease-out group-hover/slider:opacity-100"
+          className="landmarks-pill-slider__thumb absolute top-1/2 z-[2] h-2.5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
           style={{ left: `${Math.max(0, Math.min(100, thumbPct))}%` }}
         />
       </div>
@@ -100,11 +103,9 @@ export function BidirectionalPillSlider({
         value={clamped}
         aria-label={ariaLabel}
         aria-valuetext={
-          signedHint
-            ? `${signedHint}, ${mag}`
-            : String(clamped)
+          signedHint ? `${signedHint}, ${mag}` : String(clamped)
         }
-        className="landmarks-pill-slider__input absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        className="landmarks-pill-slider__input absolute inset-0 z-[3] h-full w-full cursor-pointer opacity-0"
         onChange={(e) => onChange(Number(e.target.value))}
       />
     </div>

@@ -385,8 +385,10 @@ export function bufferPolygonRound(points, distance, quadSegs = 8) {
 /**
  * Shape buffer corridor (the drawable band), Shapely-clean:
  * - `right` / `out`: dilated \\ original
- * - `left` / `in`: original \\ eroded (empty when erosion collapses)
- * - `both`: dilated \\ eroded (or dilated \\ original when eroded empty)
+ * - `left` / `in`: original \\ eroded; when erosion has consumed the whole
+ *   interior the corridor is the **full original** (filled inward, never
+ *   inverted outward through the boundary)
+ * - `both`: dilated \\ eroded (or full dilated when eroded is empty)
  *
  * Returns `{ outer, holes }[]` for deck.gl / hit-tests.
  */
@@ -412,13 +414,16 @@ export function shapeBufferCorridor(points, width, side = "both", quadSegs = 8) 
       return pcToPolys(polygonClipping.difference(dilatedPc, origPc));
     }
     if (mode === "left") {
-      if (!erodedPc.length) return []; // deep inward → empty, never invert
+      // Deep inward: eroded core is empty → entire interior is the buffer
+      // (visible filled region). Do not invert/expand outside the boundary.
+      if (!erodedPc.length) return pcToPolys([origPc]);
       return pcToPolys(polygonClipping.difference(origPc, erodedPc));
     }
     // both
     if (!dilatedPc.length) return [];
     if (!erodedPc.length) {
-      return pcToPolys(polygonClipping.difference(dilatedPc, origPc));
+      // Inward has filled the interior — keep full dilated (out + filled in).
+      return pcToPolys(dilatedPc);
     }
     return pcToPolys(polygonClipping.difference(dilatedPc, erodedPc));
   } catch {

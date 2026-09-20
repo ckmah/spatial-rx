@@ -1539,27 +1539,34 @@
   }
 }
 
-/* Bidirectional buffer pill — same Soft Float capsule as .landmarks-slider-control */
+/* Bidirectional buffer pill — Soft Float capsule + white fill + line handle */
 .landmarks-pill-slider.landmarks-slider-control {
   /* inherit capsule background from .landmarks-slider-control */
 }
 
 .landmarks-pill-slider__fill {
-  background: color-mix(in oklab, var(--card) 82%, var(--foreground));
+  /* White pill — matches Soft Float range contrast Clarence expects */
+  background: #fff;
   box-shadow: none;
 }
 
-.landmarks--dark .landmarks-pill-slider__fill {
-  background: color-mix(in oklab, var(--foreground) 22%, var(--card));
+.landmarks--dark .landmarks-pill-slider__fill,
+.landmarks--light .landmarks-pill-slider__fill {
+  background: #fff;
 }
 
-.landmarks--light .landmarks-pill-slider__fill {
-  background: color-mix(in oklab, var(--card) 88%, var(--foreground));
+.landmarks-pill-slider__thumb {
+  opacity: 1;
+  background: color-mix(in oklab, var(--foreground) 70%, transparent);
+  pointer-events: none;
+  transition:
+    height var(--duration-quick) var(--ease-out),
+    background-color var(--duration-quick) var(--ease-out);
 }
 
 .landmarks-pill-slider:hover .landmarks-pill-slider__thumb,
 .landmarks-pill-slider:focus-within .landmarks-pill-slider__thumb {
-  opacity: 1;
+  background: var(--foreground);
   height: 0.875rem;
 }
 
