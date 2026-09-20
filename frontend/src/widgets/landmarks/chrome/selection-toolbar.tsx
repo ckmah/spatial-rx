@@ -5,7 +5,6 @@ import {
   ChevronDownIcon,
   CircleDotDashedIcon,
   CirclePlusIcon,
-  CircleMinusIcon,
   ChevronsLeftRightIcon,
   GitCommitHorizontal,
   PentagonIcon,
@@ -240,15 +239,12 @@ function SignedBufferSlider({
           aria-label="Buffer radius"
           testId="context-buffer-width"
           className="min-w-[180px]"
+          onReset={onReset}
+          resetTitle="Reset buffer"
+          resetTestId="context-buffer-reset"
         />
       ) : (
         <>
-          <span
-            className="w-4 shrink-0 text-right text-[0.75rem] tabular-nums text-muted-foreground"
-            aria-hidden
-          >
-            −
-          </span>
           <SoftFloatSignedSlider
             value={signed}
             min={-max}
@@ -258,13 +254,8 @@ function SignedBufferSlider({
             displayValue={display}
             aria-label="Buffer width; negative is left or in, positive is right or out"
             testId="context-buffer-width"
+            className="min-w-[200px] flex-1"
           />
-          <span
-            className="w-4 shrink-0 text-[0.75rem] tabular-nums text-muted-foreground"
-            aria-hidden
-          >
-            +
-          </span>
           <ToolbarDivider />
           <IconBtn
             title="Both sides"
@@ -274,13 +265,13 @@ function SignedBufferSlider({
           >
             <ChevronsLeftRightIcon className="size-4" />
           </IconBtn>
+          <SoftFloatSliderReset
+            title="Reset buffer"
+            testId="context-buffer-reset"
+            onClick={onReset}
+          />
         </>
       )}
-      <SoftFloatSliderReset
-        title="Reset buffer"
-        testId="context-buffer-reset"
-        onClick={onReset}
-      />
     </div>
   );
 }
@@ -310,24 +301,18 @@ export function SelectionToolbar({
   const isNodeMode = lm.mode === "node";
   const showLandmarkBar = isLandmark && !!selectedLm;
   const showHoodBar = isHood && !!hood;
-  const vertCount = Array.isArray(selectedLm?.vertices)
-    ? selectedLm.vertices.length
-    : 0;
-  const minVerts = lmType === "shape" ? 3 : 2;
-  const canDeleteNode = usesNodes && vertCount > minVerts;
 
   const [lmL2, setLmL2] = useState<
     "buffer" | "color" | "tension" | "convert" | null
   >(null);
-  const [insertArmed, setInsertArmed] = useState(true);
 
   useEffect(() => {
     setLmL2(null);
   }, [kind, index, isNodeMode]);
 
+  // Node mode keeps ghost-insert armed; no dedicated Add/Delete L1 bar.
   useEffect(() => {
     if (!isNodeMode) return;
-    setInsertArmed(true);
     engine?.setNodeInsertArmed?.(true);
   }, [isNodeMode, engine, index]);
 
@@ -385,80 +370,7 @@ export function SelectionToolbar({
         onWheel={(e) => e.stopPropagation()}
       >
         <div className={cn(pillClass, "pointer-events-auto")} data-testid="context-toolbar-l1">
-          {showLandmarkBar && isNodeMode && usesNodes ? (
-            <>
-              <div className="flex items-center gap-1" data-testid="context-node-l1">
-                <IconBtn
-                  title="Add node (hover edge + click)"
-                  testId="context-add-node"
-                  active={insertArmed}
-                  onClick={() => {
-                    const next = !insertArmed;
-                    setInsertArmed(next);
-                    engine?.setNodeInsertArmed?.(next);
-                  }}
-                >
-                  <WaypointsIcon className="size-4" />
-                </IconBtn>
-                <IconBtn
-                  title="Delete active node"
-                  testId="context-delete-node"
-                  disabled={!canDeleteNode}
-                  onClick={() => engine?.deleteActiveVertex?.()}
-                >
-                  <CircleMinusIcon className="size-4" />
-                </IconBtn>
-                {usesTension ? (
-                  <ToolStack
-                    open={lmL2 === "tension"}
-                    panel={
-                      <div
-                        className="flex min-w-[180px] items-center gap-2 px-0.5"
-                        data-testid="context-tension"
-                      >
-                        <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
-                          Tension
-                        </span>
-                        <SoftFloatCapsuleSlider
-                          value={Number(selectedLm?.tension ?? 0)}
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          onValueChange={(v) =>
-                            lm.patchLandmark({ tension: v })
-                          }
-                          displayValue={formatParam(
-                            Number(selectedLm?.tension ?? 0),
-                            "0",
-                          )}
-                          aria-label="Tension"
-                        />
-                        <SoftFloatSliderReset
-                          title="Reset tension"
-                          testId="context-tension-reset"
-                          onClick={() => lm.patchLandmark({ tension: 0 })}
-                        />
-                      </div>
-                    }
-                  >
-                    <IconBtn
-                      title="Tension"
-                      testId="context-tension-toggle"
-                      active={lmL2 === "tension"}
-                      expandable
-                      onClick={() =>
-                        setLmL2(lmL2 === "tension" ? null : "tension")
-                      }
-                    >
-                      <GitCommitHorizontal className="size-4" />
-                    </IconBtn>
-                  </ToolStack>
-                ) : null}
-              </div>
-            </>
-          ) : null}
-
-          {showLandmarkBar && !isNodeMode ? (
+          {showLandmarkBar ? (
             <>
               <div className="flex items-center gap-1">
                 {!isPoint ? (
@@ -544,11 +456,9 @@ export function SelectionToolbar({
                             "0",
                           )}
                           aria-label="Tension"
-                        />
-                        <SoftFloatSliderReset
-                          title="Reset tension"
-                          testId="context-tension-reset"
-                          onClick={() => lm.patchLandmark({ tension: 0 })}
+                          onReset={() => lm.patchLandmark({ tension: 0 })}
+                          resetTitle="Reset tension"
+                          resetTestId="context-tension-reset"
                         />
                       </div>
                     }
@@ -737,76 +647,68 @@ export function SelectionToolbar({
                   <ToolbarDivider />
                   <div className="flex min-w-[140px] items-center gap-2 px-0.5">
                     {hoodMode === "radius" ? (
-                      <>
-                        <SoftFloatCapsuleSlider
-                          testId="context-hood-radius"
-                          value={Math.min(
+                      <SoftFloatCapsuleSlider
+                        testId="context-hood-radius"
+                        value={Math.min(
+                          Number(hood?.neighborhood_radius || 0),
+                          rMax,
+                        )}
+                        min={0}
+                        max={rMax}
+                        step={rMax / 200 || 1}
+                        onValueChange={(v) =>
+                          lm.patchNeighborhood({
+                            neighborhood: "radius",
+                            neighborhood_radius: v,
+                          })
+                        }
+                        displayValue={formatParam(
+                          Math.min(
                             Number(hood?.neighborhood_radius || 0),
                             rMax,
-                          )}
-                          min={0}
-                          max={rMax}
-                          step={rMax / 200 || 1}
-                          onValueChange={(v) =>
-                            lm.patchNeighborhood({
-                              neighborhood: "radius",
-                              neighborhood_radius: v,
-                            })
-                          }
-                          displayValue={formatParam(
-                            Math.min(
-                              Number(hood?.neighborhood_radius || 0),
-                              rMax,
-                            ),
-                            "0",
-                          )}
-                          aria-label="r"
-                        />
-                        <SoftFloatSliderReset
-                          title="Reset radius"
-                          testId="context-hood-radius-reset"
-                          onClick={() =>
-                            lm.patchNeighborhood({
-                              neighborhood: "radius",
-                              neighborhood_radius: 0,
-                            })
-                          }
-                        />
-                      </>
+                          ),
+                          "0",
+                        )}
+                        aria-label="r"
+                        onReset={() =>
+                          lm.patchNeighborhood({
+                            neighborhood: "radius",
+                            neighborhood_radius: 0,
+                          })
+                        }
+                        resetTitle="Reset radius"
+                        resetTestId="context-hood-radius-reset"
+                      />
                     ) : (
-                      <>
-                        <SoftFloatCapsuleSlider
-                          testId="context-hood-k"
-                          value={Math.min(
-                            Number(hood?.neighborhood_k || 12),
-                            kMax,
-                          )}
-                          min={1}
-                          max={kMax}
-                          step={1}
-                          onValueChange={(v) =>
-                            lm.patchNeighborhood({
-                              neighborhood: "knn",
-                              neighborhood_k: v,
-                            })
-                          }
-                          displayValue={Math.min(
-                            Number(hood?.neighborhood_k || 12),
-                            kMax,
-                          )}
-                          aria-label="k"
-                        />
-                        <SoftFloatSliderReset
-                          title="Reset k"
-                          testId="context-hood-k-reset"
-                          onClick={() =>
-                            lm.patchNeighborhood({
-                              neighborhood: "knn",
-                              neighborhood_k: 12,
-                            })
-                          }
-                        />
-                      </>
+                      <SoftFloatCapsuleSlider
+                        testId="context-hood-k"
+                        value={Math.min(
+                          Number(hood?.neighborhood_k || 12),
+                          kMax,
+                        )}
+                        min={1}
+                        max={kMax}
+                        step={1}
+                        onValueChange={(v) =>
+                          lm.patchNeighborhood({
+                            neighborhood: "knn",
+                            neighborhood_k: v,
+                          })
+                        }
+                        displayValue={Math.min(
+                          Number(hood?.neighborhood_k || 12),
+                          kMax,
+                        )}
+                        aria-label="k"
+                        onReset={() =>
+                          lm.patchNeighborhood({
+                            neighborhood: "knn",
+                            neighborhood_k: 12,
+                          })
+                        }
+                        resetTitle="Reset k"
+                        resetTestId="context-hood-k-reset"
+                      />
                     )}
                     <IconBtn
                       title="Make selection"

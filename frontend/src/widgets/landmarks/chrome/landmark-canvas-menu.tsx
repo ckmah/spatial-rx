@@ -220,14 +220,17 @@ export function LandmarkCanvasMenu({
         <CopyPlusIcon className="size-3.5" />
         Duplicate
       </SoftMenuItem>
-      <SoftMenuItem
-        destructive
-        shortcut="⌫"
-        onClick={() => run(() => lm.deleteLandmark(menu.index))}
-      >
-        <Trash2Icon className="size-3.5" />
-        Delete
-      </SoftMenuItem>
+      {/* In node mode, Delete node is enough — omit whole-landmark Delete. */}
+      {!inNodeMode ? (
+        <SoftMenuItem
+          destructive
+          shortcut="⌫"
+          onClick={() => run(() => lm.deleteLandmark(menu.index))}
+        >
+          <Trash2Icon className="size-3.5" />
+          Delete
+        </SoftMenuItem>
+      ) : null}
     </Rise>,
     rootEl,
   );

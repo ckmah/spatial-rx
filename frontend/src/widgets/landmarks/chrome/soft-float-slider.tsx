@@ -37,6 +37,7 @@ export function SoftFloatSliderReset({
         data-testid={testId}
         className={cn(
           chromeHitClass,
+          "shrink-0",
           disabled && "opacity-40",
           "active:scale-[0.97] transition-transform",
         )}
@@ -62,6 +63,9 @@ export function SoftFloatCapsuleSlider({
   "aria-label": ariaLabel,
   testId,
   className,
+  onReset,
+  resetTitle = "Reset",
+  resetTestId,
 }: {
   value: number;
   min: number;
@@ -72,13 +76,17 @@ export function SoftFloatCapsuleSlider({
   "aria-label"?: string;
   testId?: string;
   className?: string;
+  /** When set, renders RotateCcw immediately to the right of the capsule. */
+  onReset?: () => void;
+  resetTitle?: string;
+  resetTestId?: string;
 }) {
   const span = Math.max(max - min, 1e-9);
-  return (
+  const capsule = (
     <div
       className={cn(
         "landmarks-slider-control min-w-[120px] flex-1",
-        className,
+        !onReset && className,
       )}
       data-testid={testId}
     >
@@ -96,11 +104,29 @@ export function SoftFloatCapsuleSlider({
       />
     </div>
   );
+  if (!onReset) return capsule;
+  return (
+    <div
+      className={cn(
+        "flex min-w-[120px] flex-1 items-center gap-1.5",
+        className,
+      )}
+    >
+      {capsule}
+      <SoftFloatSliderReset
+        title={resetTitle}
+        testId={resetTestId}
+        onClick={onReset}
+      />
+    </div>
+  );
 }
 
 /**
  * Signed / bidirectional Soft Float capsule.
  * Same chrome tokens as SoftFloatCapsuleSlider; geometry differs (center 0, both thumbs).
+ * End labels (−/+) live *inside* the capsule background so the track fill encapsulates
+ * the full control (parity with the regular slider).
  */
 export function SoftFloatSignedSlider({
   value,
@@ -112,6 +138,7 @@ export function SoftFloatSignedSlider({
   "aria-label": ariaLabel = "Buffer",
   testId,
   className,
+  showEnds,
 }: {
   value: number;
   min?: number;
@@ -122,6 +149,8 @@ export function SoftFloatSignedSlider({
   "aria-label"?: string;
   testId?: string;
   className?: string;
+  /** When omitted, ends show whenever the range is signed (min < 0). */
+  showEnds?: boolean;
 }) {
   const span = Math.max(max - min, 1e-9);
   const clamped = Math.min(max, Math.max(min, value));
@@ -130,6 +159,7 @@ export function SoftFloatSignedSlider({
   const centerPct = ((0 - min) / span) * 100;
   const thumbPct = ((clamped - min) / span) * 100;
   const snapEps = Math.max(span * 0.02, span / 200);
+  const ends = showEnds ?? min < 0;
 
   let fillLeft: number;
   let fillWidth: number;
@@ -176,7 +206,7 @@ export function SoftFloatSignedSlider({
   return (
     <div
       className={cn(
-        "landmarks-slider-control landmarks-slider-control--signed group/slider relative h-7 w-full min-w-[180px] shrink-0",
+        "landmarks-slider-control landmarks-slider-control--signed group/slider relative flex h-7 w-full min-w-[180px] shrink-0 items-stretch",
         className,
       )}
       data-slot="slider"
@@ -186,16 +216,21 @@ export function SoftFloatSignedSlider({
         both ? "both" : clamped < 0 ? "neg" : clamped > 0 ? "pos" : "zero"
       }
     >
+      {ends ? (
+        <span className="landmarks-slider-end" aria-hidden>
+          −
+        </span>
+      ) : null}
       <div
         data-slot="slider-track"
-        className="relative h-full w-full overflow-hidden rounded-[var(--radius)]"
-        aria-hidden
+        className="relative min-w-0 flex-1 overflow-hidden rounded-[var(--radius)]"
       >
         {min < 0 ? (
           <div
             className="landmarks-slider-center absolute top-0.5 bottom-0.5 z-[1] w-px bg-foreground/35"
             style={{ left: `${centerPct}%` }}
             data-testid="context-buffer-center"
+            aria-hidden
           />
         ) : null}
         <div
@@ -205,6 +240,7 @@ export function SoftFloatSignedSlider({
             left: `${Math.max(0, Math.min(100, fillLeft))}%`,
             width: `${Math.max(0, Math.min(100, fillWidth))}%`,
           }}
+          aria-hidden
         />
         {leftThumbPct != null ? (
           <div
@@ -212,6 +248,7 @@ export function SoftFloatSignedSlider({
             data-thumb="left"
             className="landmarks-slider-thumb-mark absolute top-1/2 z-[2] -translate-x-1/2 -translate-y-1/2"
             style={{ left: `${Math.max(0, Math.min(100, leftThumbPct))}%` }}
+            aria-hidden
           />
         ) : null}
         {rightThumbPct != null &&
@@ -221,25 +258,33 @@ export function SoftFloatSignedSlider({
             data-thumb="right"
             className="landmarks-slider-thumb-mark absolute top-1/2 z-[2] -translate-x-1/2 -translate-y-1/2"
             style={{ left: `${Math.max(0, Math.min(100, rightThumbPct))}%` }}
+            aria-hidden
           />
         ) : null}
         {displayValue != null ? (
-          <span className="landmarks-slider-value z-[2]">{displayValue}</span>
+          <span className="landmarks-slider-value z-[2]" aria-hidden>
+            {displayValue}
+          </span>
         ) : null}
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={span / 200 || 0.01}
+          value={clamped}
+          aria-label={ariaLabel}
+          aria-valuetext={
+            signedHint ? `${signedHint}, ${mag}` : String(clamped)
+          }
+          className="absolute inset-0 z-[3] h-full w-full cursor-pointer opacity-0"
+          onChange={(e) => commit(Number(e.target.value))}
+        />
       </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={span / 200 || 0.01}
-        value={clamped}
-        aria-label={ariaLabel}
-        aria-valuetext={
-          signedHint ? `${signedHint}, ${mag}` : String(clamped)
-        }
-        className="absolute inset-0 z-[3] h-full w-full cursor-pointer opacity-0"
-        onChange={(e) => commit(Number(e.target.value))}
-      />
+      {ends ? (
+        <span className="landmarks-slider-end" aria-hidden>
+          +
+        </span>
+      ) : null}
     </div>
   );
 }

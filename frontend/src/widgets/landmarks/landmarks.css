@@ -903,6 +903,22 @@
     0 1px 0 color-mix(in oklab, var(--card) 55%, transparent);
 }
 
+/* Signed end labels (−/+) sit inside the capsule, flanking the track. */
+.landmarks-slider-end {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1rem;
+  padding-inline: 0.1rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: color-mix(in oklab, var(--foreground) 62%, transparent);
+  pointer-events: none;
+  user-select: none;
+}
+
 .landmarks-slider-control [data-slot="slider-thumb"]:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 45%, transparent);
 }
