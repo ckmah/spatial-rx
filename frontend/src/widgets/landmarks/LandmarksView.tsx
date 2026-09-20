@@ -166,7 +166,9 @@ export function LandmarksView({
         narrow && "landmarks--narrow",
         isFullscreen && "landmarks--fs",
         overlay && "landmarks--overlay-fs",
+        lm.show_rulers && "landmarks--rulers",
       )}
+      data-rulers={lm.show_rulers ? "on" : "off"}
     >
       <div
         className="landmarks__body"

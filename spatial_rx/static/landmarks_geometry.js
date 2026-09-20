@@ -22,6 +22,215 @@ export function circlePolygon(cx, cy, r, n = 48) {
   return pts;
 }
 
+function unitNormalLeft(dx, dy) {
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: -dy / len, y: dx / len };
+}
+
+function unitVec(dx, dy) {
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: dx / len, y: dy / len };
+}
+
+/**
+ * Intermediate points (excluding both endpoints) of the circular arc from
+ * `from` to `to`, centered at `center`, following the signed short-way turn
+ * angle between them. `quadSegs` is segments-per-quarter-circle, as in
+ * Shapely's `buffer(..., quad_segs=n)`.
+ */
+function roundJoinArc(center, from, to, radius, quadSegs) {
+  const a0 = Math.atan2(from.y - center.y, from.x - center.x);
+  let a1 = Math.atan2(to.y - center.y, to.x - center.x);
+  let delta = a1 - a0;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta <= -Math.PI) delta += Math.PI * 2;
+  const steps = Math.max(1, Math.round((Math.abs(delta) / (Math.PI / 2)) * quadSegs));
+  const pts = [];
+  for (let i = 1; i < steps; i++) {
+    const a = a0 + delta * (i / steps);
+    pts.push({ x: center.x + Math.cos(a) * radius, y: center.y + Math.sin(a) * radius });
+  }
+  return pts;
+}
+
+/**
+ * Join between two adjacent offset edges at `vertex` (original, unoffset
+ * corner), where `dirIn`/`dirOut` are the (non-unit) directions of the
+ * incoming/outgoing original edges and `pFrom`/`pTo` are the corresponding
+ * offset edge endpoints at this vertex, offset by `width` (signed; positive
+ * = left-normal side).
+ *
+ * Round join only bulges the *convex* corner relative to the offset side.
+ * `width`'s sign selects which side of travel is offset (left-normal side
+ * for `width > 0`); a corner is convex for that side iff the turn
+ * direction (sign of the cross product of `dirIn`/`dirOut`) is *opposite*
+ * the offset side — offsetting to the side you're turning away from opens
+ * a gap that needs the round fill, while offsetting to the side you're
+ * turning into makes the two offset edges overlap. On that concave side
+ * the offset edge lines cross before reaching `pFrom`/`pTo`; connecting
+ * through their true intersection (not an arc, and not a straight bevel
+ * between `pFrom`/`pTo`) keeps erosion of convex shapes sharp instead of
+ * incorrectly rounding inward.
+ */
+function offsetCornerPoints(vertex, dirIn, dirOut, pFrom, pTo, width, quadSegs) {
+  const crossZ = dirIn.x * dirOut.y - dirIn.y * dirOut.x;
+  if (Math.abs(crossZ) < 1e-9) return [pFrom, pTo];
+  const isConvexForSide = crossZ > 0 !== width > 0;
+  if (isConvexForSide) {
+    return [pFrom, ...roundJoinArc(vertex, pFrom, pTo, Math.abs(width), quadSegs), pTo];
+  }
+  const t = ((pTo.x - pFrom.x) * dirOut.y - (pTo.y - pFrom.y) * dirOut.x) / crossZ;
+  return [{ x: pFrom.x + dirIn.x * t, y: pFrom.y + dirIn.y * t }];
+}
+
+/**
+ * Intermediate points (excluding both endpoints) of the round-cap
+ * semicircle starting at `from` and sweeping 180° through the point in
+ * `outwardDir` (unit vector) away from `center`, ending at the antipode of
+ * `from` around `center`.
+ */
+function roundCapArc(center, from, outwardDir, radius, quadSegs) {
+  const a0 = Math.atan2(from.y - center.y, from.x - center.x);
+  const aMid = Math.atan2(outwardDir.y, outwardDir.x);
+  let d = aMid - a0;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d <= -Math.PI) d += Math.PI * 2;
+  const sign = d >= 0 ? 1 : -1;
+  const steps = Math.max(1, quadSegs * 2);
+  const pts = [];
+  for (let i = 1; i < steps; i++) {
+    const a = a0 + sign * Math.PI * (i / steps);
+    pts.push({ x: center.x + Math.cos(a) * radius, y: center.y + Math.sin(a) * radius });
+  }
+  return pts;
+}
+
+/**
+ * One-sided offset of an open polyline (start→end order preserved), with
+ * round joins (radius |width|) at interior vertices. `width` may be
+ * negative (offsets to the right instead of the left).
+ */
+function offsetOpenPolylineRoundJoins(points, width, quadSegs) {
+  const n = points.length;
+  const dirs = [];
+  const normals = [];
+  for (let i = 0; i < n - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    dirs.push({ x: b.x - a.x, y: b.y - a.y });
+    normals.push(unitNormalLeft(b.x - a.x, b.y - a.y));
+  }
+  const out = [
+    { x: points[0].x + normals[0].x * width, y: points[0].y + normals[0].y * width },
+  ];
+  for (let j = 1; j < n - 1; j++) {
+    const edgeIn = j - 1;
+    const edgeOut = j;
+    const pFrom = { x: points[j].x + normals[edgeIn].x * width, y: points[j].y + normals[edgeIn].y * width };
+    const pTo = { x: points[j].x + normals[edgeOut].x * width, y: points[j].y + normals[edgeOut].y * width };
+    out.push(...offsetCornerPoints(points[j], dirs[edgeIn], dirs[edgeOut], pFrom, pTo, width, quadSegs));
+  }
+  const last = n - 1;
+  out.push({
+    x: points[last].x + normals[last - 1].x * width,
+    y: points[last].y + normals[last - 1].y * width,
+  });
+  return out;
+}
+
+/**
+ * One-sided offset of a closed ring (same point order as input), with round
+ * joins at every vertex (including the wrap-around joint).
+ */
+function offsetClosedRingRoundJoins(points, effWidth, quadSegs) {
+  const n = points.length;
+  const dirs = [];
+  const normals = [];
+  for (let i = 0; i < n; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % n];
+    dirs.push({ x: b.x - a.x, y: b.y - a.y });
+    normals.push(unitNormalLeft(b.x - a.x, b.y - a.y));
+  }
+  const out = [];
+  for (let j = 0; j < n; j++) {
+    const edgeIn = (j - 1 + n) % n;
+    const edgeOut = j;
+    const pFrom = {
+      x: points[j].x + normals[edgeIn].x * effWidth,
+      y: points[j].y + normals[edgeIn].y * effWidth,
+    };
+    const pTo = {
+      x: points[j].x + normals[edgeOut].x * effWidth,
+      y: points[j].y + normals[edgeOut].y * effWidth,
+    };
+    out.push(...offsetCornerPoints(points[j], dirs[edgeIn], dirs[edgeOut], pFrom, pTo, effWidth, quadSegs));
+  }
+  return out;
+}
+
+/**
+ * Round join/cap buffer outline of an open polyline, matching Shapely
+ * `buffer(distance, join_style="round", cap_style="round")` semantics.
+ * `side`: "left" | "right" | "both". "left"/"right" corridors keep the
+ * original centerline as the flat (uncapped) edge — matching Shapely's
+ * `single_sided=True` buffers, which are flat-ended. "both" produces a
+ * full stroke buffer with round semicircle caps at both ends. Returns a
+ * closed ring of `{x,y}` points.
+ */
+export function bufferPolylineRound(points, width, side = "both", quadSegs = 8) {
+  const pts = (points || []).filter(Boolean);
+  if (pts.length < 2 || !(width > 0)) return null;
+  if (side === "left" || side === "right") {
+    const w = side === "left" ? width : -width;
+    const offset = offsetOpenPolylineRoundJoins(pts, w, quadSegs);
+    return [...pts, ...offset.slice().reverse()];
+  }
+  const left = offsetOpenPolylineRoundJoins(pts, width, quadSegs);
+  const right = offsetOpenPolylineRoundJoins(pts, -width, quadSegs);
+  const n = pts.length;
+  const startDir = unitVec(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+  const endDir = unitVec(pts[n - 1].x - pts[n - 2].x, pts[n - 1].y - pts[n - 2].y);
+  const endCap = roundCapArc(
+    pts[n - 1],
+    left[left.length - 1],
+    { x: endDir.x, y: endDir.y },
+    width,
+    quadSegs,
+  );
+  const startCap = roundCapArc(
+    pts[0],
+    right[0],
+    { x: -startDir.x, y: -startDir.y },
+    width,
+    quadSegs,
+  );
+  return [...left, ...endCap, ...right.slice().reverse(), ...startCap];
+}
+
+/**
+ * Round-join buffer of a closed ring, matching Shapely `buffer()` sign
+ * semantics: positive `width` dilates the exterior, negative erodes,
+ * independent of the ring's vertex winding order. Returns the outer
+ * boundary ring as `{x,y}[]` (for corridor fills, combine with the
+ * original ring — see `bufferPolygonData` in landmarks.js).
+ */
+export function bufferRingRound(points, width, quadSegs = 8) {
+  const n = points.length;
+  if (n < 3) return points.slice();
+  let signedArea2 = 0;
+  for (let i = 0; i < n; i++) {
+    const p = points[i];
+    const q = points[(i + 1) % n];
+    signedArea2 += p.x * q.y - q.x * p.y;
+  }
+  // The left normal points outward for a CW ring and inward for a CCW
+  // ring; flip the effective width so +width always dilates regardless of
+  // winding (same convention as legacy `offsetRingData`).
+  const effWidth = signedArea2 < 0 ? width : -width;
+  return offsetClosedRingRoundJoins(points, effWidth, quadSegs);
+}
+
 /** Offset open polyline by width along left normal (negative → right). */
 export function offsetPathData(points, width) {
   return points.map((p, i) => {

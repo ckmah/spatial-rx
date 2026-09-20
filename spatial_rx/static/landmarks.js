@@ -32,8 +32,8 @@ import {
   TENSION_TYPES,
   NODE_EDITABLE,
   circlePolygon,
-  offsetPathData,
-  offsetRingData,
+  bufferPolylineRound,
+  bufferRingRound,
   pointInRing,
   distPointToSeg,
   convexHull,
@@ -3870,9 +3870,12 @@ export function mountEngine({ model, host }) {
   /**
    * Buffer polygon for a landmark, by type:
    * - point: disk of radius buffer_width.
-   * - line/spline: offset corridor along the (possibly tension-sampled) path.
-   * - shape: offset corridor along the closed ring, side left/right/both
-   *   (unified with line/spline; legacy "in"/"out" map onto left/right).
+   * - line/spline: round join/cap buffer along the (possibly
+   *   tension-sampled) path, matching Shapely
+   *   `buffer(distance, join_style="round", cap_style="round")`.
+   * - shape: buffer corridor along the closed ring, side left/right/both
+   *   (unified with line/spline; legacy "in"/"out" map onto left/right),
+   *   using round-join Shapely-style ring buffering.
    */
   function bufferPolygonData(lm) {
     const width = Number(lm.buffer_width || 0);
@@ -3891,22 +3894,20 @@ export function mountEngine({ model, host }) {
       else if (side === "out") side = "right";
       if (side !== "left" && side !== "right") side = "both";
       if (side === "right") {
-        const outer = offsetRingData(points, width);
+        const outer = bufferRingRound(points, width);
         return [...outer, ...points.slice().reverse()];
       }
       if (side === "left") {
-        const inner = offsetRingData(points, -width);
+        const inner = bufferRingRound(points, -width);
         return [...points, ...inner.slice().reverse()];
       }
-      const outer = offsetRingData(points, width);
-      const inner = offsetRingData(points, -width);
+      const outer = bufferRingRound(points, width);
+      const inner = bufferRingRound(points, -width);
       return [...outer, ...inner.slice().reverse()];
     }
     if (points.length < 2) return null;
     const side = lm.buffer_side || "both";
-    if (side === "left") return [...points, ...offsetPathData(points, width).reverse()];
-    if (side === "right") return [...points, ...offsetPathData(points, -width).reverse()];
-    return [...offsetPathData(points, width), ...offsetPathData(points, -width).reverse()];
+    return bufferPolylineRound(points, width, side);
   }
 
   function cellLayerFocus() {
@@ -4605,9 +4606,19 @@ export function mountEngine({ model, host }) {
   }
 
   /**
-   * Nearest-edge insertion point of the focused landmark's control vertices,
-   * within ~10px screen distance of `pt`. Unlike a fixed midpoint, this
-   * tracks the cursor continuously along the segment (hover-ghost insert).
+   * Nearest-edge insertion point of the focused landmark, within ~10px
+   * screen distance of `pt`. Unlike a fixed midpoint, this tracks the
+   * cursor continuously along the segment (hover-ghost insert).
+   *
+   * - "line": projects onto the straight control-vertex segments directly;
+   *   `afterIndex` is the control vertex to insert after.
+   * - "spline"/"shape": projects onto the *densified* rendered curve/ring
+   *   (`landmarkPathData(lm)` — the same points `cardinalSample` produces
+   *   with `nPerSeg` samples per control-vertex segment), so the ghost sits
+   *   on the actual curve rather than a straight chord between control
+   *   vertices. The densified sample index is mapped back to the
+   *   control-vertex segment it belongs to (`floor(sampleIndex / nPerSeg)`)
+   *   to derive `afterIndex`.
    */
   function hitTestNearestEdge(pt) {
     const focus = landmarkFocus();
@@ -4618,29 +4629,52 @@ export function mountEngine({ model, host }) {
     const verts = lm.vertices || [];
     const n = verts.length;
     if (n < 2) return null;
-    const segCount = lm.type === "shape" ? n : n - 1;
     const viewport = deckgl?.isInitialized ? deckgl.getViewports()[0] : null;
-    let best = null;
-    for (let i = 0; i < segCount; i++) {
-      const a = verts[i];
-      const b = verts[(i + 1) % n];
+    const threshold = viewport ? 10 : 6;
+
+    function evalSeg(ax, ay, bx, by) {
       if (viewport) {
-        const [ax, ay] = viewport.project([a[0], a[1]]);
-        const [bx, by] = viewport.project([b[0], b[1]]);
-        const { dist, qx, qy } = distPointToSeg(pt.px, pt.py, ax, ay, bx, by);
-        if (dist <= 10 && (!best || dist < best.dist)) {
-          const [wx, wy] = viewport.unproject([qx, qy]);
-          best = { dist, landmarkIdx: focus.index, afterIndex: i + 1, x: wx, y: wy };
+        const [px, py] = viewport.project([ax, ay]);
+        const [qx, qy] = viewport.project([bx, by]);
+        const r = distPointToSeg(pt.px, pt.py, px, py, qx, qy);
+        const [wx, wy] = viewport.unproject([r.qx, r.qy]);
+        return { dist: r.dist, x: wx, y: wy };
+      }
+      const r = distPointToSeg(pt.x, pt.y, ax, ay, bx, by);
+      return { dist: r.dist, x: r.qx, y: r.qy };
+    }
+
+    let best = null;
+    if (lm.type === "line") {
+      for (let i = 0; i < n - 1; i++) {
+        const a = verts[i];
+        const b = verts[i + 1];
+        const r = evalSeg(a[0], a[1], b[0], b[1]);
+        if (r.dist <= threshold && (!best || r.dist < best.dist)) {
+          best = { dist: r.dist, afterIndex: i + 1, x: r.x, y: r.y };
         }
-      } else {
-        const { dist, qx, qy } = distPointToSeg(pt.x, pt.y, a[0], a[1], b[0], b[1]);
-        if (dist <= 6 && (!best || dist < best.dist)) {
-          best = { dist, landmarkIdx: focus.index, afterIndex: i + 1, x: qx, y: qy };
+      }
+    } else {
+      // spline / shape: densify via the same nPerSeg used by cardinalSample
+      // (through landmarkPathData) and map the hit sample back to the
+      // control-vertex segment it was generated from.
+      const nPerSeg = 20;
+      const closed = lm.type === "shape";
+      const segCount = closed ? n : n - 1;
+      const dense = landmarkPathData(lm);
+      if (!dense || dense.length < 2) return null;
+      for (let k = 0; k < dense.length - 1; k++) {
+        const a = dense[k];
+        const b = dense[k + 1];
+        const r = evalSeg(a.x, a.y, b.x, b.y);
+        if (r.dist <= threshold && (!best || r.dist < best.dist)) {
+          const segIdx = Math.min(segCount - 1, Math.floor(k / nPerSeg));
+          best = { dist: r.dist, afterIndex: segIdx + 1, x: r.x, y: r.y };
         }
       }
     }
     if (!best) return null;
-    return { landmarkIdx: best.landmarkIdx, afterIndex: best.afterIndex, x: best.x, y: best.y };
+    return { landmarkIdx: focus.index, afterIndex: best.afterIndex, x: best.x, y: best.y };
   }
 
   function handleMouseDown(event) {
@@ -4667,7 +4701,7 @@ export function mountEngine({ model, host }) {
           }
           if (hoverInsert && hoverInsert.landmarkIdx === focus.index) {
             pushLandmarkUndo();
-            insertLandmarkVertex(model, hoverInsert.landmarkIdx, landmarks, hoverInsert.afterIndex, [pt.x, pt.y]);
+            insertLandmarkVertex(model, hoverInsert.landmarkIdx, landmarks, hoverInsert.afterIndex, [hoverInsert.x, hoverInsert.y]);
             activeVertexIndex = hoverInsert.afterIndex;
             hoverInsert = null;
             suppressClick = true;

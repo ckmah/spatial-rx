@@ -16,8 +16,8 @@ function niceStep(span: number) {
 }
 
 /**
- * Edge rulers inset clear of Soft Float chrome + faint cross grid at ticks.
- * No snap-to-tick.
+ * Edge rulers framing the canvas (top + left axes) + faint crosses at ticks.
+ * Chrome docks shift via `.landmarks--rulers` (cube-motion curve).
  */
 export function CanvasRulers({
   lm,
@@ -74,30 +74,23 @@ export function CanvasRulers({
     return { x: xTicks, y: yTicks };
   }, [bounds]);
 
-  if (!show) return null;
-
-  const crosses = [];
-  for (const xt of ticks.x) {
-    for (const yt of ticks.y) {
-      crosses.push({ x: xt.pct, y: yt.pct, key: `${xt.pct}-${yt.pct}` });
-    }
-  }
-
   return (
     <Rise
+      show={show}
       className="landmarks-rulers pointer-events-none absolute inset-0 z-[5]"
       data-testid="canvas-rulers"
-      aria-hidden
+      aria-hidden={!show}
     >
-      {/* Cross marks at tick intersections (not full gridlines). */}
-                    <div className="landmarks-ruler-crosses">
-        {crosses.map((c) => (
-          <span
-            key={c.key}
-            className="landmarks-ruler-cross"
-            style={{ left: `${c.x}%`, top: `${c.y}%` }}
-          />
-        ))}
+      <div className="landmarks-ruler-crosses">
+        {ticks.x.flatMap((xt) =>
+          ticks.y.map((yt) => (
+            <span
+              key={`${xt.pct}-${yt.pct}`}
+              className="landmarks-ruler-cross"
+              style={{ left: `${xt.pct}%`, top: `${yt.pct}%` }}
+            />
+          )),
+        )}
       </div>
       <div className="landmarks-ruler landmarks-ruler--x">
         {ticks.x.map((t) => (

@@ -31,6 +31,7 @@ import {
   normalizeBufferSide,
 } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
+import { BidirectionalPillSlider } from "./bidirectional-pill-slider";
 import {
   ChromeTooltip,
   ColorSwatch,
@@ -211,31 +212,33 @@ function SignedBufferSlider({
   const rightLabel = isShape ? "Out" : "Right";
   return (
     <div
-      className="flex min-w-[240px] items-center gap-1.5 px-0.5"
+      className="flex min-w-[260px] items-center gap-1.5 px-0.5"
       data-testid="context-buffer-panel"
     >
       {!isPoint ? (
-        <span className="shrink-0 text-[0.625rem] text-muted-foreground">
+        <span className="w-7 shrink-0 text-right text-[0.625rem] text-muted-foreground">
           {leftLabel}
         </span>
       ) : null}
-      <div className="landmarks-slider-control min-w-[160px] flex-1">
-        <span className="landmarks-slider-value" aria-hidden>
+      <div className="flex min-w-[180px] flex-1 flex-col gap-0.5">
+        <span
+          className="text-center text-[0.625rem] tabular-nums text-muted-foreground"
+          aria-hidden
+        >
           {formatParam(Math.abs(signed), "0")}
         </span>
-        <Slider
+        <BidirectionalPillSlider
+          value={isPoint ? Math.abs(signed) : signed}
           min={isPoint ? 0 : -max}
           max={max}
-          step={max / 200 || 1}
-          value={[Math.min(Math.max(signed, isPoint ? 0 : -max), max)]}
-          onValueChange={(v) => onSigned(v[0] ?? 0, both)}
+          both={both && !isPoint}
+          onChange={(v) => onSigned(v, both)}
           aria-label="Buffer"
-          className="w-full"
-          data-testid="context-buffer-width"
+          testId="context-buffer-width"
         />
       </div>
       {!isPoint ? (
-        <span className="shrink-0 text-[0.625rem] text-muted-foreground">
+        <span className="w-7 shrink-0 text-[0.625rem] text-muted-foreground">
           {rightLabel}
         </span>
       ) : null}
