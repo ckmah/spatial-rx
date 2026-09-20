@@ -156,19 +156,6 @@ export declare function promoteBufferToSelection(model: AnyModel): void;
 
 export declare function selectionToLandmark(model: AnyModel): void;
 
-export declare function toggleLandmarkLocked(
-  model: AnyModel,
-  index: number,
-  landmarks: LandmarkItem[],
-): void;
-
-export declare function reorderLandmarks(
-  model: AnyModel,
-  fromIndex: number,
-  toIndex: number,
-  landmarks: LandmarkItem[],
-): void;
-
 export declare function reverseLandmark(
   model: AnyModel,
   index: number,

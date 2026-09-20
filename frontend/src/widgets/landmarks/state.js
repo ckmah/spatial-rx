@@ -20,7 +20,6 @@ export {
   removeAt,
   renameLandmark,
   renameSelection,
-  reorderLandmarks,
   reverseLandmark,
   selectionToLandmark,
   setActiveGenes,
@@ -35,7 +34,6 @@ export {
   setRenderMode,
   setSelected,
   toggleLandmarkHidden,
-  toggleLandmarkLocked,
   toggleSelectionHidden,
   withHood,
 } from "../../../../spatial_rx/static/landmarks_state.js";

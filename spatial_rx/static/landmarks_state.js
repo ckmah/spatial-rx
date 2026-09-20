@@ -384,43 +384,6 @@ export function selectionToLandmark(model) {
   model.set("selection_to_landmark_tick", tick);
 }
 
-export function toggleLandmarkLocked(model, index, landmarks) {
-  setLandmarks(
-    model,
-    landmarks.map((lm, i) =>
-      i === index ? { ...lm, locked: !lm.locked } : lm,
-    ),
-  );
-  flushNotebook(model);
-}
-
-export function reorderLandmarks(model, fromIndex, toIndex, landmarks) {
-  if (
-    fromIndex < 0 ||
-    toIndex < 0 ||
-    fromIndex >= landmarks.length ||
-    toIndex >= landmarks.length ||
-    fromIndex === toIndex
-  ) {
-    return;
-  }
-  const next = landmarks.slice();
-  const [item] = next.splice(fromIndex, 1);
-  next.splice(toIndex, 0, item);
-  setLandmarks(model, next);
-  const kind = model.get("selected_kind");
-  const sel = Number(model.get("selected_index"));
-  if (kind === "landmark" && sel === fromIndex) {
-    model.set("selected_index", toIndex);
-  } else if (kind === "landmark" && sel >= 0) {
-    let idx = sel;
-    if (fromIndex < sel && toIndex >= sel) idx -= 1;
-    else if (fromIndex > sel && toIndex <= sel) idx += 1;
-    model.set("selected_index", idx);
-  }
-  flushNotebook(model);
-}
-
 export function reverseLandmark(model, index, landmarks) {
   const lm = landmarks[index];
   if (!lm || !Array.isArray(lm.vertices) || lm.vertices.length < 2) return;
@@ -513,7 +476,7 @@ export function patchLandmarks(model, indices, patch, landmarks) {
   setLandmarks(
     model,
     landmarks.map((lm, i) => {
-      if (!set.has(i) || lm.locked) return lm;
+      if (!set.has(i)) return lm;
       return { ...lm, ...patch };
     }),
   );
