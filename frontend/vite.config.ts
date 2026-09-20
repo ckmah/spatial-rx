@@ -31,6 +31,10 @@ const sharedResolve = {
     "@deck.gl/extensions": path.resolve(rootDir, "node_modules/@deck.gl/extensions"),
     "@deck.gl/widgets": path.resolve(rootDir, "node_modules/@deck.gl/widgets"),
     "@thi.ng/geom-accel": path.resolve(rootDir, "node_modules/@thi.ng/geom-accel"),
+    "polygon-clipping": path.resolve(
+      rootDir,
+      "node_modules/polygon-clipping/dist/polygon-clipping.esm.js",
+    ),
   },
 };
 

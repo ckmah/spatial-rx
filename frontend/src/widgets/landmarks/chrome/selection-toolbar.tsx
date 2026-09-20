@@ -208,15 +208,28 @@ function SignedBufferSlider({
   onSigned: (v: number, both: boolean) => void;
   onBoth: (next: boolean) => void;
 }) {
-  const leftLabel = isShape ? "In" : "Left";
-  const rightLabel = isShape ? "Out" : "Right";
+  // Left/In ← negative signed values; Right/Out → positive signed values.
+  const leftLabel = isShape ? "In (−)" : "Left (−)";
+  const rightLabel = isShape ? "Out (+)" : "Right (+)";
+  const display = isPoint
+    ? formatParam(Math.abs(signed), "0")
+    : both
+      ? formatParam(Math.abs(signed), "0")
+      : signed === 0
+        ? "0"
+        : `${signed < 0 ? "−" : "+"}${formatParam(Math.abs(signed), "0")}`;
   return (
     <div
-      className="flex min-w-[260px] items-center gap-1.5 px-0.5"
+      className="flex min-w-[280px] items-center gap-1.5 px-0.5"
       data-testid="context-buffer-panel"
+      title={
+        isPoint
+          ? "Buffer radius"
+          : "Signed buffer: left/in = negative, right/out = positive"
+      }
     >
       {!isPoint ? (
-        <span className="w-7 shrink-0 text-right text-[0.625rem] text-muted-foreground">
+        <span className="w-10 shrink-0 text-right text-[0.625rem] text-muted-foreground">
           {leftLabel}
         </span>
       ) : null}
@@ -225,7 +238,7 @@ function SignedBufferSlider({
           className="text-center text-[0.625rem] tabular-nums text-muted-foreground"
           aria-hidden
         >
-          {formatParam(Math.abs(signed), "0")}
+          {display}
         </span>
         <BidirectionalPillSlider
           value={isPoint ? Math.abs(signed) : signed}
@@ -233,12 +246,16 @@ function SignedBufferSlider({
           max={max}
           both={both && !isPoint}
           onChange={(v) => onSigned(v, both)}
-          aria-label="Buffer"
+          aria-label={
+            isPoint
+              ? "Buffer radius"
+              : "Buffer width; left or in is negative, right or out is positive"
+          }
           testId="context-buffer-width"
         />
       </div>
       {!isPoint ? (
-        <span className="w-7 shrink-0 text-[0.625rem] text-muted-foreground">
+        <span className="w-11 shrink-0 text-[0.625rem] text-muted-foreground">
           {rightLabel}
         </span>
       ) : null}
@@ -307,7 +324,7 @@ export function SelectionToolbar({
   const bufMax = Math.max(maxBufferWidth(lm.x_bounds, lm.y_bounds), 1);
   const width = Math.min(Math.max(Number(selectedLm?.buffer_width || 0), 0), bufMax);
   const both = side === "both";
-  // Signed slider: left/in negative, right/out positive; both uses +|w|.
+  // Signed slider: left/in = negative, right/out = positive; both uses +|w|.
   const signed =
     both || side === "right" ? width : side === "left" ? -width : width;
 
@@ -331,6 +348,7 @@ export function SelectionToolbar({
       lm.patchLandmark({ buffer_width: 0, buffer_side: side === "both" ? "right" : side });
       return;
     }
+    // Explicit: negative → left/in, positive → right/out.
     const nextSide = nextSigned < 0 ? "left" : "right";
     lm.patchLandmark({ buffer_width: mag, buffer_side: nextSide });
   };

@@ -1,5 +1,6 @@
-/** Pure landmark geometry helpers (engine + optional chrome). */
+import polygonClipping from "../../frontend/node_modules/polygon-clipping/dist/polygon-clipping.esm.js";
 
+/** Pure landmark geometry helpers (engine + optional chrome). */
 export const BUFFERABLE = ["point", "line", "spline", "shape"];
 export const TENSION_TYPES = ["spline", "shape"];
 export const NODE_EDITABLE = ["line", "spline", "shape"];
@@ -214,6 +215,9 @@ export function bufferPolylineRound(points, width, side = "both", quadSegs = 8) 
  * independent of the ring's vertex winding order. Returns the outer
  * boundary ring as `{x,y}[]` (for corridor fills, combine with the
  * original ring — see `bufferPolygonData` in landmarks.js).
+ *
+ * Prefer {@link bufferPolygonRound} for shape corridors — it dissolves
+ * self-intersections and collapses deep erosions to empty.
  */
 export function bufferRingRound(points, width, quadSegs = 8) {
   const n = points.length;
@@ -229,6 +233,241 @@ export function bufferRingRound(points, width, quadSegs = 8) {
   // winding (same convention as legacy `offsetRingData`).
   const effWidth = signedArea2 < 0 ? width : -width;
   return offsetClosedRingRoundJoins(points, effWidth, quadSegs);
+}
+
+/* --- Shapely-like polygon round buffer via boundary stroke + boolean --- */
+
+const PC_SNAP = 1e8;
+
+function snapCoord(v) {
+  return Math.round(v * PC_SNAP) / PC_SNAP;
+}
+
+function closePcRing(coords) {
+  const ring = coords.map(([x, y]) => [snapCoord(x), snapCoord(y)]);
+  if (!ring.length) return ring;
+  const f = ring[0];
+  const l = ring[ring.length - 1];
+  if (f[0] !== l[0] || f[1] !== l[1]) ring.push([f[0], f[1]]);
+  return ring;
+}
+
+function xyToPcPolygon(points) {
+  return [closePcRing(points.map((p) => [p.x, p.y]))];
+}
+
+function diskPc(cx, cy, r, segs) {
+  const coords = [];
+  for (let i = 0; i < segs; i++) {
+    const a = (i / segs) * Math.PI * 2;
+    coords.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+  }
+  return [closePcRing(coords)];
+}
+
+function edgeRectPc(a, b, r) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = (-dy / len) * r;
+  const ny = (dx / len) * r;
+  return [
+    closePcRing([
+      [a.x + nx, a.y + ny],
+      [b.x + nx, b.y + ny],
+      [b.x - nx, b.y - ny],
+      [a.x - nx, a.y - ny],
+    ]),
+  ];
+}
+
+function unionPc(parts) {
+  if (!parts.length) return [];
+  let acc = parts[0];
+  for (let i = 1; i < parts.length; i++) {
+    try {
+      acc = polygonClipping.union(acc, parts[i]);
+    } catch {
+      /* skip degenerate piece — float noise in overlapping disks/rects */
+    }
+  }
+  return acc;
+}
+
+/** Round stroke of a closed ring boundary (vertex disks ∪ edge rectangles). */
+function boundaryStrokePc(points, radius, quadSegs) {
+  const segs = Math.max(12, quadSegs * 4);
+  const parts = [];
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    const p = points[i];
+    parts.push(diskPc(p.x, p.y, radius, segs));
+  }
+  for (let i = 0; i < n; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % n];
+    if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-12) continue;
+    parts.push(edgeRectPc(a, b, radius));
+  }
+  return unionPc(parts);
+}
+
+function pcRingToXy(ring) {
+  // Drop closing duplicate if present.
+  const pts = [];
+  for (let i = 0; i < ring.length; i++) {
+    const [x, y] = ring[i];
+    if (
+      i === ring.length - 1 &&
+      pts.length &&
+      pts[0].x === x &&
+      pts[0].y === y
+    ) {
+      break;
+    }
+    pts.push({ x, y });
+  }
+  return pts;
+}
+
+/**
+ * Convert polygon-clipping MultiPolygon → deck.gl-friendly polys.
+ * Each entry is `{ outer: {x,y}[], holes: {x,y}[][] }`.
+ */
+function pcToPolys(multipoly) {
+  if (!multipoly || !multipoly.length) return [];
+  return multipoly
+    .map((poly) => {
+      if (!poly || !poly.length || !poly[0] || poly[0].length < 4) return null;
+      const outer = pcRingToXy(poly[0]);
+      if (outer.length < 3) return null;
+      const holes = [];
+      for (let h = 1; h < poly.length; h++) {
+        const hole = pcRingToXy(poly[h]);
+        if (hole.length >= 3) holes.push(hole);
+      }
+      return { outer, holes };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Shapely-like `Polygon.buffer(distance, join_style="round")` for a closed
+ * ring. Positive dilates; negative erodes. Deep erosions that would invert
+ * through the boundary collapse to `[]` (empty), matching Shapely.
+ * Self-overlapping fold-ins dissolve via boolean union of the stroke.
+ *
+ * Returns `{ outer, holes }[]` (usually one poly; empty array if nothing).
+ */
+export function bufferPolygonRound(points, distance, quadSegs = 8) {
+  const pts = (points || []).filter(Boolean);
+  if (pts.length < 3 || !Number.isFinite(distance) || distance === 0) {
+    return distance === 0 && pts.length >= 3
+      ? [{ outer: pts.slice(), holes: [] }]
+      : [];
+  }
+  const radius = Math.abs(distance);
+  const stroke = boundaryStrokePc(pts, radius, quadSegs);
+  if (!stroke.length) return [];
+  const orig = xyToPcPolygon(pts);
+  let result;
+  try {
+    result =
+      distance > 0
+        ? polygonClipping.union(orig, stroke)
+        : polygonClipping.difference(orig, stroke);
+  } catch {
+    return [];
+  }
+  return pcToPolys(result);
+}
+
+/**
+ * Shape buffer corridor (the drawable band), Shapely-clean:
+ * - `right` / `out`: dilated \\ original
+ * - `left` / `in`: original \\ eroded (empty when erosion collapses)
+ * - `both`: dilated \\ eroded (or dilated \\ original when eroded empty)
+ *
+ * Returns `{ outer, holes }[]` for deck.gl / hit-tests.
+ */
+export function shapeBufferCorridor(points, width, side = "both", quadSegs = 8) {
+  const pts = (points || []).filter(Boolean);
+  if (pts.length < 3 || !(width > 0)) return [];
+
+  let mode = side || "both";
+  if (mode === "in") mode = "left";
+  else if (mode === "out") mode = "right";
+  if (mode !== "left" && mode !== "right") mode = "both";
+
+  const dilated = bufferPolygonRound(pts, width, quadSegs);
+  const eroded = bufferPolygonRound(pts, -width, quadSegs);
+  const origPc = xyToPcPolygon(pts);
+
+  const dilatedPc = polysToPc(dilated);
+  const erodedPc = polysToPc(eroded);
+
+  try {
+    if (mode === "right") {
+      if (!dilatedPc.length) return [];
+      return pcToPolys(polygonClipping.difference(dilatedPc, origPc));
+    }
+    if (mode === "left") {
+      if (!erodedPc.length) return []; // deep inward → empty, never invert
+      return pcToPolys(polygonClipping.difference(origPc, erodedPc));
+    }
+    // both
+    if (!dilatedPc.length) return [];
+    if (!erodedPc.length) {
+      return pcToPolys(polygonClipping.difference(dilatedPc, origPc));
+    }
+    return pcToPolys(polygonClipping.difference(dilatedPc, erodedPc));
+  } catch {
+    return [];
+  }
+}
+
+function polysToPc(polys) {
+  if (!polys || !polys.length) return [];
+  const parts = polys.map((p) => {
+    const rings = [closePcRing(p.outer.map((q) => [q.x, q.y]))];
+    for (const hole of p.holes || []) {
+      rings.push(closePcRing(hole.map((q) => [q.x, q.y])));
+    }
+    return rings;
+  });
+  if (parts.length === 1) return parts;
+  return unionPc(parts);
+}
+
+/**
+ * Point-in-corridor for shape buffers that may include holes.
+ * `polys` is `{ outer, holes }[]` from {@link shapeBufferCorridor}.
+ */
+export function pointInBufferPolys(p, polys) {
+  if (!polys || !polys.length) return false;
+  for (const poly of polys) {
+    const outer = poly.outer.map((q) => [q.x, q.y]);
+    if (!pointInRing(p, outer)) continue;
+    let inHole = false;
+    for (const hole of poly.holes || []) {
+      if (pointInRing(p, hole.map((q) => [q.x, q.y]))) {
+        inHole = true;
+        break;
+      }
+    }
+    if (!inHole) return true;
+  }
+  return false;
+}
+
+/** Flatten corridor polys to deck.gl PolygonLayer `getPolygon` rows. */
+export function bufferPolysToDeck(polys) {
+  if (!polys || !polys.length) return [];
+  return polys.map((poly) => {
+    const outer = poly.outer.map((q) => [q.x, q.y]);
+    if (!poly.holes || !poly.holes.length) return outer;
+    return [outer, ...poly.holes.map((h) => h.map((q) => [q.x, q.y]))];
+  });
 }
 
 /** Offset open polyline by width along left normal (negative → right). */

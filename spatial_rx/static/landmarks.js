@@ -33,7 +33,9 @@ import {
   NODE_EDITABLE,
   circlePolygon,
   bufferPolylineRound,
-  bufferRingRound,
+  shapeBufferCorridor,
+  bufferPolysToDeck,
+  pointInBufferPolys,
   pointInRing,
   distPointToSeg,
   convexHull,
@@ -2751,15 +2753,14 @@ export function mountEngine({ model, host }) {
         const v = (lm.vertices || [])[0];
         if (!v) return;
         const buffer = bufferPolygonData(lm);
-        if (buffer) {
-          polys.push({
-            polygon: asPath(buffer),
-            fill: scaleRgbaAlpha(hexToRgbaBytes(NEIGH_COLOR, NEIGH_FILL_ALPHA), alphaScale),
-            line: scaleRgbaAlpha(hexToRgbaBytes(NEIGH_COLOR, NEIGH_LINE_ALPHA), alphaScale),
-            width: 1.5,
-            ...pick,
-          });
-        }
+        pushBufferPolys(
+          polys,
+          buffer,
+          scaleRgbaAlpha(hexToRgbaBytes(NEIGH_COLOR, NEIGH_FILL_ALPHA), alphaScale),
+          scaleRgbaAlpha(hexToRgbaBytes(NEIGH_COLOR, NEIGH_LINE_ALPHA), alphaScale),
+          1.5,
+          pick,
+        );
         markers.push({
           position: [v[0], v[1], 0],
           fill,
@@ -2790,15 +2791,14 @@ export function mountEngine({ model, host }) {
           ...pick,
         });
         const shapeBuffer = bufferPolygonData(lm);
-        if (shapeBuffer) {
-          polys.push({
-            polygon: asPath(shapeBuffer),
-            fill: scaleRgbaAlpha(hexToRgbaBytes(NEIGH_COLOR, NEIGH_FILL_ALPHA), alphaScale),
-            line: scaleRgbaAlpha(hexToRgbaBytes(NEIGH_COLOR, NEIGH_LINE_ALPHA), alphaScale),
-            width: 1.5,
-            ...pick,
-          });
-        }
+        pushBufferPolys(
+          polys,
+          shapeBuffer,
+          scaleRgbaAlpha(hexToRgbaBytes(NEIGH_COLOR, NEIGH_FILL_ALPHA), alphaScale),
+          scaleRgbaAlpha(hexToRgbaBytes(NEIGH_COLOR, NEIGH_LINE_ALPHA), alphaScale),
+          1.5,
+          pick,
+        );
         (lm.vertices || []).forEach(([x, y], vidx) => {
           const hoveredVertex = selected && vidx === hoverVertexIndex;
           markers.push({
@@ -2833,15 +2833,14 @@ export function mountEngine({ model, host }) {
         return;
       }
       const buffer = bufferPolygonData(lm);
-      if (buffer) {
-        polys.push({
-          polygon: asPath(buffer),
-          fill: scaleRgbaAlpha(hexToRgbaBytes(NEIGH_COLOR, NEIGH_FILL_ALPHA), alphaScale),
-          line: scaleRgbaAlpha(hexToRgbaBytes(NEIGH_COLOR, NEIGH_LINE_ALPHA), alphaScale),
-          width: 1.5,
-          ...pick,
-        });
-      }
+      pushBufferPolys(
+        polys,
+        buffer,
+        scaleRgbaAlpha(hexToRgbaBytes(NEIGH_COLOR, NEIGH_FILL_ALPHA), alphaScale),
+        scaleRgbaAlpha(hexToRgbaBytes(NEIGH_COLOR, NEIGH_LINE_ALPHA), alphaScale),
+        1.5,
+        pick,
+      );
       if (pathPts.length >= 2) {
         const path = asPath(pathPts);
         paths.push({
@@ -3869,13 +3868,13 @@ export function mountEngine({ model, host }) {
 
   /**
    * Buffer polygon for a landmark, by type:
-   * - point: disk of radius buffer_width.
+   * - point: disk of radius buffer_width (`{x,y}[]`).
    * - line/spline: round join/cap buffer along the (possibly
    *   tension-sampled) path, matching Shapely
-   *   `buffer(distance, join_style="round", cap_style="round")`.
-   * - shape: buffer corridor along the closed ring, side left/right/both
-   *   (unified with line/spline; legacy "in"/"out" map onto left/right),
-   *   using round-join Shapely-style ring buffering.
+   *   `buffer(distance, join_style="round", cap_style="round")` (`{x,y}[]`).
+   * - shape: Shapely-clean corridor (`{ outer, holes }[]`) via
+   *   `shapeBufferCorridor` — dissolves fold-ins, collapses deep inward
+   *   buffers to empty (never inverts through the boundary).
    */
   function bufferPolygonData(lm) {
     const width = Number(lm.buffer_width || 0);
@@ -3888,26 +3887,27 @@ export function mountEngine({ model, host }) {
     const points = landmarkPathData(lm);
     if (lm.type === "shape") {
       if (points.length < 3) return null;
-      // left = inside/erosion corridor, right = outside/dilation corridor.
       let side = lm.buffer_side || "both";
       if (side === "in") side = "left";
       else if (side === "out") side = "right";
-      if (side !== "left" && side !== "right") side = "both";
-      if (side === "right") {
-        const outer = bufferRingRound(points, width);
-        return [...outer, ...points.slice().reverse()];
-      }
-      if (side === "left") {
-        const inner = bufferRingRound(points, -width);
-        return [...points, ...inner.slice().reverse()];
-      }
-      const outer = bufferRingRound(points, width);
-      const inner = bufferRingRound(points, -width);
-      return [...outer, ...inner.slice().reverse()];
+      const polys = shapeBufferCorridor(points, width, side);
+      return polys.length ? polys : null;
     }
     if (points.length < 2) return null;
     const side = lm.buffer_side || "both";
     return bufferPolylineRound(points, width, side);
+  }
+
+  /** Push buffer fill(s) into `polys` for PolygonLayer (handles shape holes). */
+  function pushBufferPolys(polys, buffer, fill, line, width, pick) {
+    if (!buffer) return;
+    if (Array.isArray(buffer) && buffer[0] && buffer[0].outer) {
+      for (const deckPoly of bufferPolysToDeck(buffer)) {
+        polys.push({ polygon: deckPoly, fill, line, width, ...pick });
+      }
+      return;
+    }
+    polys.push({ polygon: asPath(buffer), fill, line, width, ...pick });
   }
 
   function cellLayerFocus() {
@@ -4091,10 +4091,16 @@ export function mountEngine({ model, host }) {
       }
     } else {
       const poly = bufferPolygonData(lm);
-      if (!poly || poly.length < 3) return;
-      const ring = poly.map((p) => [p.x, p.y]);
-      for (let i = 0; i < pts.length; i++) {
-        if (pointInRing(pts[i], ring)) point_indices.push(i);
+      if (!poly) return;
+      if (Array.isArray(poly) && poly[0] && poly[0].outer) {
+        for (let i = 0; i < pts.length; i++) {
+          if (pointInBufferPolys(pts[i], poly)) point_indices.push(i);
+        }
+      } else if (poly.length >= 3) {
+        const ring = poly.map((p) => [p.x, p.y]);
+        for (let i = 0; i < pts.length; i++) {
+          if (pointInRing(pts[i], ring)) point_indices.push(i);
+        }
       }
     }
     if (!point_indices.length) return;
