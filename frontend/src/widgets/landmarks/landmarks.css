@@ -782,11 +782,29 @@
   color: color-mix(in oklab, var(--foreground) 62%, transparent);
 }
 
+/*
+ * Soft Float SliderRow tokens — shared by SoftFloatCapsuleSlider + SoftFloatSignedSlider.
+ * Keep regular + bidirectional visually in sync; do not fork thumb/fill/value here.
+ */
 .landmarks-slider-control {
+  --lm-slider-height: 1.75rem;
+  --lm-slider-value-size: 0.6875rem;
+  --lm-slider-value-weight: 500;
+  --lm-slider-thumb-w: 0.125rem; /* 2px — matches Slider thumb w-0.5 */
+  --lm-slider-thumb-h: 0.625rem; /* h-2.5 */
+  --lm-slider-thumb-h-active: 0.875rem; /* ~h-3.5 on hover/focus */
+  --lm-slider-thumb-h-press: 1rem; /* h-4 while active */
+  --lm-slider-fill: color-mix(in oklab, var(--card) 82%, var(--foreground));
+  --lm-slider-thumb: color-mix(in oklab, var(--foreground) 55%, var(--muted-foreground));
+  --lm-slider-thumb-on: var(--foreground);
+  --lm-slider-value-color: var(--foreground);
+
   position: relative;
   min-width: 0;
   box-sizing: border-box;
-  height: 1.75rem;
+  height: var(--lm-slider-height);
+  min-height: var(--lm-slider-height);
+  flex: none;
   padding: 0;
   border-radius: var(--radius);
   /* Outer capsule — fill only; no inset ring (Soft Float elevation is shadow-only). */
@@ -798,10 +816,13 @@
 
 .landmarks--dark .landmarks-slider-control {
   background: color-mix(in oklab, var(--muted) 45%, transparent);
+  --lm-slider-fill: color-mix(in oklab, var(--foreground) 22%, var(--card));
+  --lm-slider-thumb: color-mix(in oklab, var(--foreground) 70%, var(--muted-foreground));
 }
 
 .landmarks--light .landmarks-slider-control {
   background: color-mix(in oklab, var(--muted) 65%, transparent);
+  --lm-slider-fill: color-mix(in oklab, var(--popover) 88%, var(--foreground));
 }
 
 /* Capsule value slider — inner track fills the control; range flush to track. */
@@ -821,38 +842,47 @@
 
 .landmarks-slider-control [data-slot="slider-range"] {
   border-radius: var(--radius);
-  background: color-mix(in oklab, var(--card) 82%, var(--foreground));
+  background: var(--lm-slider-fill);
   box-shadow: none;
 }
 
-.landmarks--dark .landmarks-slider-control [data-slot="slider-range"] {
-  background: color-mix(in oklab, var(--foreground) 22%, var(--card));
-}
-
-.landmarks--light .landmarks-slider-control [data-slot="slider-range"] {
-  background: color-mix(in oklab, var(--popover) 88%, var(--foreground));
-}
-
-.landmarks-slider-control [data-slot="slider-thumb"] {
+.landmarks-slider-control [data-slot="slider-thumb"],
+.landmarks-slider-control .landmarks-slider-thumb-mark {
   /* Hidden until hover/focus — fill encodes value; thumb is a grab affordance. */
+  width: var(--lm-slider-thumb-w);
+  height: var(--lm-slider-thumb-h);
+  border-radius: 9999px;
   opacity: 0;
-  background: color-mix(in oklab, var(--foreground) 55%, var(--muted-foreground));
-  /* Compose onto Radix centering — never replace -50% or tracking breaks. */
-  transform: var(--radix-slider-thumb-transform, translateX(-50%)) translateX(-2px);
+  pointer-events: none;
+  background: var(--lm-slider-thumb);
   transition:
     opacity var(--duration-quick) var(--ease-out),
+    height var(--duration-quick) var(--ease-out),
     background-color var(--duration-quick) var(--ease-out);
 }
 
-.landmarks--dark .landmarks-slider-control [data-slot="slider-thumb"] {
-  background: color-mix(in oklab, var(--foreground) 70%, var(--muted-foreground));
+/* Radix thumbs: compose onto centering — never replace -50% or tracking breaks. */
+.landmarks-slider-control [data-slot="slider"] > [data-slot="slider-thumb"] {
+  pointer-events: auto;
+  transform: var(--radix-slider-thumb-transform, translateX(-50%)) translateX(-2px);
 }
 
+.landmarks-slider-control:hover [data-slot="slider-thumb"],
+.landmarks-slider-control:hover .landmarks-slider-thumb-mark,
+.landmarks-slider-control:focus-within [data-slot="slider-thumb"],
+.landmarks-slider-control:focus-within .landmarks-slider-thumb-mark,
 .landmarks-slider-control [data-slot="slider"]:hover [data-slot="slider-thumb"],
 .landmarks-slider-control [data-slot="slider"]:focus-within [data-slot="slider-thumb"],
-.landmarks-slider-control [data-slot="slider-thumb"]:active {
-  background: var(--foreground);
+.landmarks-slider-control [data-slot="slider-thumb"]:active,
+.landmarks-slider-control .landmarks-slider-thumb-mark:active {
+  background: var(--lm-slider-thumb-on);
   opacity: 1;
+  height: var(--lm-slider-thumb-h-active);
+}
+
+.landmarks-slider-control [data-slot="slider-thumb"]:active,
+.landmarks-slider-control .landmarks-slider-thumb-mark:active {
+  height: var(--lm-slider-thumb-h-press);
 }
 
 /* Value overlays the left of the fill (DESIGN SliderRow). */
@@ -863,11 +893,11 @@
   z-index: 1;
   transform: translateY(-50%);
   pointer-events: none;
-  font-size: 0.6875rem;
-  font-weight: 500;
+  font-size: var(--lm-slider-value-size);
+  font-weight: var(--lm-slider-value-weight);
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  color: var(--foreground);
+  color: var(--lm-slider-value-color);
   text-shadow:
     0 0 6px color-mix(in oklab, var(--card) 80%, transparent),
     0 1px 0 color-mix(in oklab, var(--card) 55%, transparent);
@@ -875,6 +905,11 @@
 
 .landmarks-slider-control [data-slot="slider-thumb"]:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 45%, transparent);
+}
+
+/* Signed-only: 0 snap mark (regular sliders omit this). */
+.landmarks-slider-center {
+  pointer-events: none;
 }
 
 /* Chrome regions */
@@ -1537,48 +1572,6 @@
   .landmarks__chrome-minimap {
     transition: none;
   }
-}
-
-/* Bidirectional buffer pill — Soft Float capsule + white fill + line handle */
-.landmarks-pill-slider.landmarks-slider-control {
-  /* Fixed capsule height — do not use flex-1 in a column (collapses to 0). */
-  height: 1.75rem;
-  min-height: 1.75rem;
-  flex: none;
-}
-
-.landmarks-pill-slider__fill {
-  /* White pill — matches Soft Float range contrast Clarence expects */
-  background: #fff;
-  box-shadow: none;
-}
-
-.landmarks--dark .landmarks-pill-slider__fill,
-.landmarks--light .landmarks-pill-slider__fill {
-  background: #fff;
-}
-
-.landmarks-pill-slider__thumb {
-  opacity: 1;
-  /* Dark line on white pill — readable like Soft Float thumb on light range */
-  background: #171717;
-  pointer-events: none;
-  transition:
-    height var(--duration-quick) var(--ease-out),
-    background-color var(--duration-quick) var(--ease-out);
-}
-
-.landmarks-pill-slider:hover .landmarks-pill-slider__thumb,
-.landmarks-pill-slider:focus-within .landmarks-pill-slider__thumb {
-  background: #0a0a0a;
-  height: 0.875rem;
-}
-
-.landmarks-pill-slider__value {
-  /* Sit inside the white fill; dark type for contrast on #fff */
-  color: #171717;
-  text-shadow: none;
-  left: 0.55rem;
 }
 
 .landmarks--narrow .landmarks-rulers {

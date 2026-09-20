@@ -217,6 +217,13 @@ Icon-only select + landmark mode groups, zoom (in / out / reset), and fullscreen
 
 `SliderRow` — single-line instrument row: left-aligned label, rounded-rect capsule whose fill denotes the value, tabular numeral inside the fill (left), thin thumb that stays quiet until hover/focus. Soft segment toggles for neighborhood/buffer.
 
+Shared Soft Float slider chrome (Impeccable extract): `chrome/soft-float-slider.tsx`
+- `SoftFloatCapsuleSlider` — unidirectional (tension, neighborhood, point buffer)
+- `SoftFloatSignedSlider` — signed / both-mode buffer (center snap mark only)
+- `SoftFloatSliderReset` — Lucide `rotate-ccw`, immediately right of the capsule
+
+Both capsule variants share `.landmarks-slider-control` CSS tokens (`--lm-slider-fill`, `--lm-slider-thumb*`, `--lm-slider-value-*`) and the same `data-slot` hooks so handle, fill, value text, and hover/press stay aligned.
+
 ### Accordion sections
 
 `+` when closed, `−` when open (crossfade). No chevron rotation.

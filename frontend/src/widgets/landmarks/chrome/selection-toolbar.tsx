@@ -8,14 +8,12 @@ import {
   ChevronsLeftRightIcon,
   GitCommitHorizontal,
   PentagonIcon,
-  RotateCcwIcon,
   SplineIcon,
   Trash2Icon,
   WaypointsIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -32,7 +30,11 @@ import {
   normalizeBufferSide,
 } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
-import { BidirectionalPillSlider } from "./bidirectional-pill-slider";
+import {
+  SoftFloatCapsuleSlider,
+  SoftFloatSignedSlider,
+  SoftFloatSliderReset,
+} from "./soft-float-slider";
 import {
   ChromeTooltip,
   ColorSwatch,
@@ -227,38 +229,42 @@ function SignedBufferSlider({
           : "Signed buffer: − = left/in, + = right/out; snap to center for 0"
       }
     >
-      {!isPoint ? (
-        <span
-          className="w-4 shrink-0 text-right text-[0.75rem] tabular-nums text-muted-foreground"
-          aria-hidden
-        >
-          −
-        </span>
-      ) : null}
-      <BidirectionalPillSlider
-        value={isPoint ? Math.abs(signed) : signed}
-        min={isPoint ? 0 : -max}
-        max={max}
-        both={both && !isPoint}
-        onChange={(v) => onSigned(v, both)}
-        displayValue={display}
-        aria-label={
-          isPoint
-            ? "Buffer radius"
-            : "Buffer width; negative is left or in, positive is right or out"
-        }
-        testId="context-buffer-width"
-      />
-      {!isPoint ? (
-        <span
-          className="w-4 shrink-0 text-[0.75rem] tabular-nums text-muted-foreground"
-          aria-hidden
-        >
-          +
-        </span>
-      ) : null}
-      {!isPoint ? (
+      {isPoint ? (
+        <SoftFloatCapsuleSlider
+          value={Math.abs(signed)}
+          min={0}
+          max={max}
+          step={max / 200 || 0.01}
+          onValueChange={(v) => onSigned(v, both)}
+          displayValue={display}
+          aria-label="Buffer radius"
+          testId="context-buffer-width"
+          className="min-w-[180px]"
+        />
+      ) : (
         <>
+          <span
+            className="w-4 shrink-0 text-right text-[0.75rem] tabular-nums text-muted-foreground"
+            aria-hidden
+          >
+            −
+          </span>
+          <SoftFloatSignedSlider
+            value={signed}
+            min={-max}
+            max={max}
+            both={both}
+            onChange={(v) => onSigned(v, both)}
+            displayValue={display}
+            aria-label="Buffer width; negative is left or in, positive is right or out"
+            testId="context-buffer-width"
+          />
+          <span
+            className="w-4 shrink-0 text-[0.75rem] tabular-nums text-muted-foreground"
+            aria-hidden
+          >
+            +
+          </span>
           <ToolbarDivider />
           <IconBtn
             title="Both sides"
@@ -268,23 +274,13 @@ function SignedBufferSlider({
           >
             <ChevronsLeftRightIcon className="size-4" />
           </IconBtn>
-          <IconBtn
-            title="Reset buffer"
-            testId="context-buffer-reset"
-            onClick={onReset}
-          >
-            <RotateCcwIcon className="size-4" />
-          </IconBtn>
         </>
-      ) : (
-        <IconBtn
-          title="Reset buffer"
-          testId="context-buffer-reset"
-          onClick={onReset}
-        >
-          <RotateCcwIcon className="size-4" />
-        </IconBtn>
       )}
+      <SoftFloatSliderReset
+        title="Reset buffer"
+        testId="context-buffer-reset"
+        onClick={onReset}
+      />
     </div>
   );
 }
@@ -310,7 +306,6 @@ export function SelectionToolbar({
   const usesTension = !!selectedLm && TENSION_TYPES.includes(lmType);
   const usesNodes = !!selectedLm && NODE_EDITABLE.includes(lmType);
   const isPoint = lmType === "point";
-  const isShape = lmType === "shape";
   const isLineLike = lmType === "line" || lmType === "spline";
   const showLandmarkBar = isLandmark && !!selectedLm;
   const showHoodBar = isHood && !!hood;
@@ -450,22 +445,25 @@ export function SelectionToolbar({
                         <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
                           Tension
                         </span>
-                        <div className="landmarks-slider-control min-w-[120px] flex-1">
-                          <span className="landmarks-slider-value" aria-hidden>
-                            {formatParam(Number(selectedLm?.tension ?? 0), "0")}
-                          </span>
-                          <Slider
-                            min={0}
-                            max={1}
-                            step={0.01}
-                            value={[Number(selectedLm?.tension ?? 0)]}
-                            onValueChange={(v) =>
-                              lm.patchLandmark({ tension: v[0] ?? 0 })
-                            }
-                            aria-label="Tension"
-                            className="w-full"
-                          />
-                        </div>
+                        <SoftFloatCapsuleSlider
+                          value={Number(selectedLm?.tension ?? 0)}
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          onValueChange={(v) =>
+                            lm.patchLandmark({ tension: v })
+                          }
+                          displayValue={formatParam(
+                            Number(selectedLm?.tension ?? 0),
+                            "0",
+                          )}
+                          aria-label="Tension"
+                        />
+                        <SoftFloatSliderReset
+                          title="Reset tension"
+                          testId="context-tension-reset"
+                          onClick={() => lm.patchLandmark({ tension: 0 })}
+                        />
                       </div>
                     }
                   >
@@ -662,52 +660,76 @@ export function SelectionToolbar({
                   <ToolbarDivider />
                   <div className="flex min-w-[140px] items-center gap-2 px-0.5">
                     {hoodMode === "radius" ? (
-                      <div className="landmarks-slider-control min-w-[120px] flex-1" data-testid="context-hood-radius">
-                        <span className="landmarks-slider-value" aria-hidden>
-                          {formatParam(
-                            Math.min(Number(hood?.neighborhood_radius || 0), rMax),
-                            "0",
+                      <>
+                        <SoftFloatCapsuleSlider
+                          testId="context-hood-radius"
+                          value={Math.min(
+                            Number(hood?.neighborhood_radius || 0),
+                            rMax,
                           )}
-                        </span>
-                        <Slider
                           min={0}
                           max={rMax}
                           step={rMax / 200 || 1}
-                          value={[
-                            Math.min(Number(hood?.neighborhood_radius || 0), rMax),
-                          ]}
                           onValueChange={(v) =>
                             lm.patchNeighborhood({
                               neighborhood: "radius",
-                              neighborhood_radius: v[0] ?? 0,
+                              neighborhood_radius: v,
                             })
                           }
+                          displayValue={formatParam(
+                            Math.min(
+                              Number(hood?.neighborhood_radius || 0),
+                              rMax,
+                            ),
+                            "0",
+                          )}
                           aria-label="r"
-                          className="w-full"
                         />
-                      </div>
+                        <SoftFloatSliderReset
+                          title="Reset radius"
+                          testId="context-hood-radius-reset"
+                          onClick={() =>
+                            lm.patchNeighborhood({
+                              neighborhood: "radius",
+                              neighborhood_radius: 0,
+                            })
+                          }
+                        />
+                      </>
                     ) : (
-                      <div className="landmarks-slider-control min-w-[120px] flex-1" data-testid="context-hood-k">
-                        <span className="landmarks-slider-value" aria-hidden>
-                          {Math.min(Number(hood?.neighborhood_k || 12), kMax)}
-                        </span>
-                        <Slider
+                      <>
+                        <SoftFloatCapsuleSlider
+                          testId="context-hood-k"
+                          value={Math.min(
+                            Number(hood?.neighborhood_k || 12),
+                            kMax,
+                          )}
                           min={1}
                           max={kMax}
                           step={1}
-                          value={[
-                            Math.min(Number(hood?.neighborhood_k || 12), kMax),
-                          ]}
                           onValueChange={(v) =>
                             lm.patchNeighborhood({
                               neighborhood: "knn",
-                              neighborhood_k: v[0] ?? 12,
+                              neighborhood_k: v,
                             })
                           }
+                          displayValue={Math.min(
+                            Number(hood?.neighborhood_k || 12),
+                            kMax,
+                          )}
                           aria-label="k"
-                          className="w-full"
                         />
-                      </div>
+                        <SoftFloatSliderReset
+                          title="Reset k"
+                          testId="context-hood-k-reset"
+                          onClick={() =>
+                            lm.patchNeighborhood({
+                              neighborhood: "knn",
+                              neighborhood_k: 12,
+                            })
+                          }
+                        />
+                      </>
                     )}
                     <IconBtn
                       title="Make selection"
