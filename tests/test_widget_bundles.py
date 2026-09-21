@@ -12,3 +12,8 @@ def test_gallery_bundle_does_not_reference_process_env():
 def test_landmarks_bundle_does_not_reference_process_env():
     text = (BUNDLED / "landmarks.mjs").read_text(encoding="utf-8")
     assert "process.env" not in text
+
+
+def test_volume_cube_bundle_does_not_reference_process_env():
+    text = (BUNDLED / "volume-cube.mjs").read_text(encoding="utf-8")
+    assert "process.env" not in text

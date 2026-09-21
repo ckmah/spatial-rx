@@ -9,6 +9,8 @@ export const NOTEBOOK_KEYS = new Set([
   "selections",
   "selected_kind",
   "selected_index",
+  "inspect_cx",
+  "inspect_cy",
 ]);
 
 const DEFAULTS = {

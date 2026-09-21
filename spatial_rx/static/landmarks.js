@@ -383,7 +383,7 @@ export function mountEngine({ model, host }) {
   legend.addEventListener("mousedown", (e) => e.stopPropagation());
   legend.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
 
-  const INTERACTION_MODES = ["select", "node", "move", "probe"];
+  const INTERACTION_MODES = ["select", "node", "move", "probe", "inspect"];
   const GEOMETRY_MODES = ["lasso", "polygon", "rectangle", "ellipse"];
   const LANDMARK_MODES = ["point", "line", "spline", "shape"];
   const modes = [...INTERACTION_MODES, ...GEOMETRY_MODES, ...LANDMARK_MODES];
@@ -393,6 +393,7 @@ export function mountEngine({ model, host }) {
     n: "node",
     h: "move",
     p: "probe",
+    i: "inspect",
     l: "lasso",
     r: "rectangle",
     o: "ellipse",
@@ -2348,6 +2349,7 @@ export function mountEngine({ model, host }) {
     if (currentMode === "select") return "default";
     if (currentMode === "node") return "default";
     if (currentMode === "probe") return "crosshair";
+    if (currentMode === "inspect") return "crosshair";
     return "crosshair";
   }
 
@@ -3414,7 +3416,49 @@ export function mountEngine({ model, host }) {
       buildInspectHaloLayer(),
       ...buildLandmarkLayers(),
       ...buildDraftLayers(),
+      buildVolumeWindowLayer(),
     ].filter(Boolean);
+  }
+
+  let volumeWindow = null;
+  let volumeWindowSavedAt = 0;
+
+  function setVolumeWindow(x, y, flush) {
+    volumeWindow = { x, y };
+    model.set("inspect_cx", x);
+    model.set("inspect_cy", y);
+    const now = performance.now();
+    if (flush || now - volumeWindowSavedAt > 40) {
+      volumeWindowSavedAt = now;
+      model.save_changes();
+    }
+    setDeckLayers();
+  }
+
+  function buildVolumeWindowLayer() {
+    if (currentMode !== "inspect" || !volumeWindow || !deckModules) return null;
+    const { PolygonLayer } = deckModules;
+    const size = Number(model.get("inspect_size_um") || 100);
+    const half = size / 2;
+    const { x, y } = volumeWindow;
+    const ring = [
+      [x - half, y - half],
+      [x + half, y - half],
+      [x + half, y + half],
+      [x - half, y + half],
+    ];
+    return new PolygonLayer({
+      id: "volume-inspect-window",
+      data: [{ polygon: ring }],
+      getPolygon: (d) => d.polygon,
+      filled: true,
+      stroked: true,
+      getFillColor: [255, 255, 255, 36],
+      getLineColor: [255, 255, 255, 210],
+      getLineWidth: 2,
+      lineWidthUnits: "pixels",
+      pickable: false,
+    });
   }
 
   function computeDeckViewState(w, h) {
@@ -4668,6 +4712,15 @@ export function mountEngine({ model, host }) {
 
   function handleMouseDown(event) {
     if (currentMode === "move") return;
+    if (currentMode === "inspect") {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      webglCanvas.focus();
+      const pt = eventPoint(event);
+      if (!pt) return;
+      setVolumeWindow(pt.x, pt.y, true);
+      return;
+    }
     // Right/middle clicks must not preventDefault — that blocks contextmenu.
     if (event.button !== 0) return;
     // Select: landmark pick / whole-landmark drag only (no vertex hit-test).
@@ -4820,6 +4873,12 @@ export function mountEngine({ model, host }) {
     if (isLassoing) { lassoPath.push(pt); setDeckLayers(); return; }
     if (isBoxing) { boxCurrent = pt; setDeckLayers(); return; }
 
+    if (currentMode === "inspect") {
+      webglCanvas.style.cursor = "crosshair";
+      if (event.buttons === 1) setVolumeWindow(pt.x, pt.y, false);
+      return;
+    }
+
     if (probeModeOn()) {
       scrubProbeAtWorld(pt.x, pt.y);
       webglCanvas.style.cursor = "crosshair";
@@ -4896,7 +4955,7 @@ export function mountEngine({ model, host }) {
 
   function handleMouseUp(event) {
     const vertexDragActive = vertexDragIndex >= 0 || vertexDragLandmarkIndex >= 0;
-    if ((currentMode === "select" || currentMode === "node" || currentMode === "move" || currentMode === "probe") && !isDragging && !vertexDragActive) return;
+    if ((currentMode === "select" || currentMode === "node" || currentMode === "move" || currentMode === "probe" || currentMode === "inspect") && !isDragging && !vertexDragActive) return;
     const pt = eventPoint(event);
     if (isDragging && currentMode === "select") {
       isDragging = false;

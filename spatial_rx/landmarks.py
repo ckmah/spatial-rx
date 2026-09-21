@@ -285,7 +285,8 @@ class LandmarksWidget(AnyWidget):
     resizable. Marker radius comes from median nearest-neighbor distance.
 
     Notebook API (synced on every edit): ``landmarks``, ``selections``,
-    ``selected_kind``, ``selected_index``. UI chrome state (mode, genes, color,
+    ``selected_kind``, ``selected_index``, plus ``inspect_cx`` / ``inspect_cy`` /
+    ``inspect_size_um`` for the volume-cube window. UI chrome state (mode, genes, color,
     neighborhoods) stays in the browser; raster bin features and probe scores
     are built client-side from the eager gene / embedding / category packs.
     Persist hits with ``get_obs_names`` / ``assign_obs_mask`` (via
@@ -300,6 +301,10 @@ class LandmarksWidget(AnyWidget):
     landmarks = traitlets.List(traitlets.Dict(), default_value=[]).tag(sync=True)
     selected_kind = traitlets.Unicode("").tag(sync=True)
     selected_index = traitlets.Int(-1).tag(sync=True)
+    # Inspect mode: frozen 100 µm window for VolumeCubeWidget. None until the cursor moves.
+    inspect_cx = traitlets.Float(allow_none=True, default_value=None).tag(sync=True)
+    inspect_cy = traitlets.Float(allow_none=True, default_value=None).tag(sync=True)
+    inspect_size_um = traitlets.Float(100.0).tag(sync=True)
     active_category = traitlets.Unicode("").tag(sync=True)
     # View-only gene selection (chrome ↔ engine); not a notebook analysis API.
     active_genes = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
