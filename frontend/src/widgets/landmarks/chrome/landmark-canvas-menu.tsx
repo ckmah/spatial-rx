@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { Rise } from "cube-motion/react";
 import {
+  CircleMinusIcon,
   CopyPlusIcon,
   EyeIcon,
   EyeOffIcon,
   PencilIcon,
   Trash2Icon,
+  WaypointsIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 import type { EngineHandle } from "../engine";
+import { NODE_EDITABLE } from "../helpers";
 import type { LandmarksModel } from "../use-landmarks-model";
 import { chromeMenuClass } from "./primitives";
 
@@ -18,9 +22,16 @@ type MenuState = {
   index: number;
   x: number;
   y: number;
+  mode?: string;
+  hit?: "vertex" | "edge" | "body";
+  vertexIndex?: number;
+  afterIndex?: number;
+  insertX?: number | null;
+  insertY?: number | null;
 } | null;
 
-function MenuItem({
+/** Soft Float menu row — same tokens as shadcn DropdownMenuItem. */
+function SoftMenuItem({
   children,
   shortcut,
   destructive,
@@ -35,17 +46,20 @@ function MenuItem({
     <button
       type="button"
       role="menuitem"
+      data-slot="dropdown-menu-item"
+      data-variant={destructive ? "destructive" : "default"}
       className={cn(
         "relative flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-xs outline-hidden select-none",
-        destructive
-          ? "text-destructive hover:bg-destructive/10"
-          : "hover:bg-accent hover:text-accent-foreground",
+        "focus:bg-accent focus:text-accent-foreground hover:bg-accent hover:text-accent-foreground",
+        "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+        destructive &&
+          "text-destructive hover:bg-destructive/10 focus:bg-destructive/10 focus:text-destructive",
       )}
       onClick={onClick}
     >
       <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
       {shortcut ? (
-        <span className="shrink-0 font-normal text-muted-foreground tabular-nums">
+        <span className="ml-auto text-[0.625rem] tracking-widest text-muted-foreground">
           {shortcut}
         </span>
       ) : null}
@@ -53,7 +67,7 @@ function MenuItem({
   );
 }
 
-/** Right-click context menu for landmarks on the canvas. */
+/** Right-click context menu — Soft Float / shadcn-styled. */
 export function LandmarkCanvasMenu({
   lm,
   engine,
@@ -61,7 +75,6 @@ export function LandmarkCanvasMenu({
 }: {
   lm: LandmarksModel;
   engine: EngineHandle | null;
-  /** Widget root (must be passed — document.querySelector misses shadow DOM). */
   rootEl: HTMLElement | null;
 }) {
   const [menu, setMenu] = useState<MenuState>(null);
@@ -70,15 +83,22 @@ export function LandmarkCanvasMenu({
     if (!engine?.subscribeLandmarkMenu) return;
     return engine.subscribeLandmarkMenu((evt) => {
       const root = rootEl;
+      const base = {
+        index: evt.index,
+        mode: evt.mode,
+        hit: evt.hit,
+        vertexIndex: evt.vertexIndex,
+        afterIndex: evt.afterIndex,
+        insertX: evt.insertX,
+        insertY: evt.insertY,
+      };
       if (!root) {
-        setMenu({ index: evt.index, x: evt.clientX, y: evt.clientY });
+        setMenu({ ...base, x: evt.clientX, y: evt.clientY });
         return;
       }
       const rect = root.getBoundingClientRect();
-      // Position relative to the widget so theme tokens apply and transforms
-      // on ancestors do not offset fixed client coordinates.
       setMenu({
-        index: evt.index,
+        ...base,
         x: evt.clientX - rect.left,
         y: evt.clientY - rect.top,
       });
@@ -93,7 +113,6 @@ export function LandmarkCanvasMenu({
     let removeDown: (() => void) | undefined;
     const timer = window.setTimeout(() => {
       const onDown = (e: PointerEvent) => {
-        // Menu lives in the widget shadow root — document.getElementById misses it.
         const el = rootEl?.querySelector("#landmarks-canvas-menu");
         const path =
           typeof e.composedPath === "function" ? e.composedPath() : [];
@@ -127,24 +146,66 @@ export function LandmarkCanvasMenu({
     close();
   };
 
+  const inNodeMode = menu.mode === "node";
+  const nodeEditable = NODE_EDITABLE.includes(String(item.type || ""));
+  const showDeleteNode =
+    inNodeMode && nodeEditable && menu.hit === "vertex";
+  const showInsertNode =
+    inNodeMode &&
+    nodeEditable &&
+    menu.hit === "edge" &&
+    menu.afterIndex != null &&
+    menu.afterIndex >= 0 &&
+    menu.insertX != null &&
+    menu.insertY != null;
+
   return createPortal(
-    <div
+    <Rise
       id="landmarks-canvas-menu"
       role="menu"
-      className={cn(chromeMenuClass, "absolute z-[80]")}
+      className={cn(chromeMenuClass, "absolute z-[80] min-w-[10rem] p-1")}
       style={{ left: menu.x, top: menu.y }}
+      data-testid="landmarks-canvas-menu"
     >
-      <MenuItem
-        onClick={() => run(() => lm.toggleLandmarkHidden(menu.index))}
-      >
+      {showInsertNode ? (
+        <SoftMenuItem
+          onClick={() =>
+            run(() => {
+              engine?.insertVertexAt?.(
+                menu.index,
+                menu.afterIndex!,
+                [menu.insertX!, menu.insertY!],
+              );
+            })
+          }
+        >
+          <WaypointsIcon className="size-3.5" />
+          Insert node
+        </SoftMenuItem>
+      ) : null}
+      {showDeleteNode ? (
+        <SoftMenuItem
+          destructive
+          shortcut="⌫"
+          onClick={() =>
+            run(() => {
+              engine?.deleteActiveVertex?.();
+            })
+          }
+        >
+          <CircleMinusIcon className="size-3.5" />
+          Delete node
+        </SoftMenuItem>
+      ) : null}
+      <SoftMenuItem onClick={() => run(() => lm.toggleLandmarkHidden(menu.index))}>
         {item.hidden ? (
           <EyeIcon className="size-3.5" />
         ) : (
           <EyeOffIcon className="size-3.5" />
         )}
         {item.hidden ? "Show" : "Hide"}
-      </MenuItem>
-      <MenuItem
+      </SoftMenuItem>
+      <SoftMenuItem
         onClick={() =>
           run(() => {
             const next = window.prompt("Rename landmark", item.id);
@@ -154,22 +215,23 @@ export function LandmarkCanvasMenu({
       >
         <PencilIcon className="size-3.5" />
         Rename
-      </MenuItem>
-      <MenuItem
-        onClick={() => run(() => lm.duplicateLandmark(menu.index))}
-      >
+      </SoftMenuItem>
+      <SoftMenuItem onClick={() => run(() => lm.duplicateLandmark(menu.index))}>
         <CopyPlusIcon className="size-3.5" />
         Duplicate
-      </MenuItem>
-      <MenuItem
-        destructive
-        shortcut="⌫"
-        onClick={() => run(() => lm.deleteLandmark(menu.index))}
-      >
-        <Trash2Icon className="size-3.5" />
-        Delete
-      </MenuItem>
-    </div>,
+      </SoftMenuItem>
+      {/* In node mode, Delete node is enough — omit whole-landmark Delete. */}
+      {!inNodeMode ? (
+        <SoftMenuItem
+          destructive
+          shortcut="⌫"
+          onClick={() => run(() => lm.deleteLandmark(menu.index))}
+        >
+          <Trash2Icon className="size-3.5" />
+          Delete
+        </SoftMenuItem>
+      ) : null}
+    </Rise>,
     rootEl,
   );
 }

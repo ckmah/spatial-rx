@@ -31,6 +31,10 @@ const sharedResolve = {
     "@deck.gl/extensions": path.resolve(rootDir, "node_modules/@deck.gl/extensions"),
     "@deck.gl/widgets": path.resolve(rootDir, "node_modules/@deck.gl/widgets"),
     "@thi.ng/geom-accel": path.resolve(rootDir, "node_modules/@thi.ng/geom-accel"),
+    "polygon-clipping": path.resolve(
+      rootDir,
+      "node_modules/polygon-clipping/dist/polygon-clipping.esm.js",
+    ),
   },
 };
 
@@ -52,7 +56,14 @@ export default defineConfig(({ command }) => {
     plugins: [react(), tailwindcss()],
     resolve: sharedResolve,
     server: sharedServer,
-    define: { "process.env.NODE_ENV": JSON.stringify("production") },
+    // Browser ESM has no Node `process`. polygon-clipping reads optional
+    // POLYGON_CLIPPING_* limits via process.env — stub them so the bundled
+    // landmarks.mjs never contains a bare `process.env` (pytest guard).
+    define: {
+      "process.env.NODE_ENV": JSON.stringify("production"),
+      "process.env.POLYGON_CLIPPING_MAX_QUEUE_SIZE": "undefined",
+      "process.env.POLYGON_CLIPPING_MAX_SWEEPLINE_SEGMENTS": "undefined",
+    },
     build: {
       outDir,
       emptyOutDir: !buildWidget || buildWidget === "gallery",

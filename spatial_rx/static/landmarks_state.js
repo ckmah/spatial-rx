@@ -371,3 +371,128 @@ export function promoteNeighborhoodToSelection(model) {
   const tick = Number(model.get("promote_tick") || 0) + 1;
   model.set("promote_tick", tick);
 }
+
+/** Promote landmark buffer hits → selection (engine listens). */
+export function promoteBufferToSelection(model) {
+  const tick = Number(model.get("promote_buffer_tick") || 0) + 1;
+  model.set("promote_buffer_tick", tick);
+}
+
+export function reverseLandmark(model, index, landmarks) {
+  const lm = landmarks[index];
+  if (!lm || !Array.isArray(lm.vertices) || lm.vertices.length < 2) return;
+  const side = lm.buffer_side || "both";
+  let buffer_side = side;
+  if (side === "left") buffer_side = "right";
+  else if (side === "right") buffer_side = "left";
+  patchLandmark(
+    model,
+    index,
+    {
+      vertices: lm.vertices.slice().reverse(),
+      buffer_side,
+    },
+    landmarks,
+  );
+}
+
+export function convertLandmarkType(model, index, landmarks, nextType) {
+  const lm = landmarks[index];
+  if (!lm) return;
+  const allowed = ["point", "line", "spline", "shape"];
+  if (!allowed.includes(nextType) || lm.type === nextType) return;
+  const verts = (lm.vertices || []).slice();
+  const patch = { type: nextType };
+  if (nextType === "point") {
+    if (!verts.length) return;
+    patch.vertices = [verts[0]];
+    delete patch.tension;
+    patch.tension = undefined;
+  } else if (nextType === "line" || nextType === "spline") {
+    if (verts.length < 2) return;
+    if (nextType === "spline" && lm.tension == null) patch.tension = 0;
+    if (nextType === "line") patch.tension = 0;
+  } else if (nextType === "shape") {
+    if (verts.length < 3) return;
+    if (lm.tension == null) patch.tension = 0;
+  }
+  if (nextType === "point") {
+    patch.buffer_side = "both";
+  } else if (nextType === "shape") {
+    const side = lm.buffer_side;
+    if (side === "left" || side === "right") patch.buffer_side = "both";
+    else if (!side) patch.buffer_side = "both";
+  } else if (
+    (nextType === "line" || nextType === "spline") &&
+    (lm.buffer_side === "in" || lm.buffer_side === "out")
+  ) {
+    patch.buffer_side = "both";
+  }
+  const cleaned = { ...lm, ...patch };
+  if (nextType === "line" || nextType === "point") {
+    delete cleaned.tension;
+  }
+  if (nextType === "point" && cleaned.vertices.length > 1) {
+    cleaned.vertices = [cleaned.vertices[0]];
+  }
+  setLandmarks(
+    model,
+    landmarks.map((row, i) => (i === index ? cleaned : row)),
+  );
+  flushNotebook(model);
+}
+
+export function insertLandmarkVertex(model, index, landmarks, atIndex, xy) {
+  const lm = landmarks[index];
+  if (!lm) return;
+  const verts = (lm.vertices || []).slice();
+  const i = Math.max(0, Math.min(verts.length, atIndex));
+  verts.splice(i, 0, [xy[0], xy[1]]);
+  patchLandmark(model, index, { vertices: verts }, landmarks);
+}
+
+export function deleteLandmarkVertex(model, index, landmarks, vertexIndex) {
+  const lm = landmarks[index];
+  if (!lm) return false;
+  const verts = (lm.vertices || []).slice();
+  if (vertexIndex < 0 || vertexIndex >= verts.length) return false;
+  const minV =
+    lm.type === "shape" ? 3 : lm.type === "line" || lm.type === "spline" ? 2 : 1;
+  if (verts.length <= minV) return false;
+  verts.splice(vertexIndex, 1);
+  patchLandmark(model, index, { vertices: verts }, landmarks);
+  return true;
+}
+
+/** Apply the same patch to multiple landmark indices. */
+export function patchLandmarks(model, indices, patch, landmarks) {
+  const set = new Set(indices);
+  setLandmarks(
+    model,
+    landmarks.map((lm, i) => {
+      if (!set.has(i)) return lm;
+      return { ...lm, ...patch };
+    }),
+  );
+  flushNotebook(model);
+}
+
+export function deleteLandmarks(
+  model,
+  indices,
+  landmarks,
+  selectedKind,
+  selectedIndex,
+) {
+  const remove = new Set(indices);
+  const next = landmarks.filter((_, i) => !remove.has(i));
+  setLandmarks(model, next);
+  if (selectedKind === "landmark" && remove.has(selectedIndex)) {
+    model.set("selected_kind", "");
+    model.set("selected_index", -1);
+  } else if (selectedKind === "landmark" && selectedIndex >= 0) {
+    const shift = [...remove].filter((i) => i < selectedIndex).length;
+    model.set("selected_index", selectedIndex - shift);
+  }
+  flushNotebook(model);
+}

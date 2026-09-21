@@ -151,3 +151,48 @@ export declare function toggleSelectionHidden(
 ): void;
 
 export declare function promoteNeighborhoodToSelection(model: AnyModel): void;
+
+export declare function promoteBufferToSelection(model: AnyModel): void;
+
+export declare function reverseLandmark(
+  model: AnyModel,
+  index: number,
+  landmarks: LandmarkItem[],
+): void;
+
+export declare function convertLandmarkType(
+  model: AnyModel,
+  index: number,
+  landmarks: LandmarkItem[],
+  nextType: string,
+): void;
+
+export declare function insertLandmarkVertex(
+  model: AnyModel,
+  index: number,
+  landmarks: LandmarkItem[],
+  atIndex: number,
+  xy: [number, number],
+): void;
+
+export declare function deleteLandmarkVertex(
+  model: AnyModel,
+  index: number,
+  landmarks: LandmarkItem[],
+  vertexIndex: number,
+): boolean;
+
+export declare function patchLandmarks(
+  model: AnyModel,
+  indices: number[],
+  patch: Record<string, unknown>,
+  landmarks: LandmarkItem[],
+): void;
+
+export declare function deleteLandmarks(
+  model: AnyModel,
+  indices: number[],
+  landmarks: LandmarkItem[],
+  selectedKind: string,
+  selectedIndex: number,
+): void;

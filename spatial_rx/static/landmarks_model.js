@@ -12,12 +12,14 @@ export const NOTEBOOK_KEYS = new Set([
 ]);
 
 const DEFAULTS = {
-  mode: "pointer",
+  mode: "select",
   active_genes: [],
   gene_scale_mode: "independent",
   gene_log1p: false,
   type_neighborhoods: [],
   promote_tick: 0,
+  promote_buffer_tick: 0,
+  show_rulers: false,
   raster_query_bin: -1,
   raster_threshold: 0,
   raster_similarity_enabled: false,

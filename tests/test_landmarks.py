@@ -12,7 +12,7 @@ def test_constructor_defaults():
     y = np.array([0.0, 1.0, 0.0, 1.0])
     color = np.array(["a", "b", "a", "c"])
     w = LandmarksWidget(adata_xy(x, y, color=color), color="label")
-    assert w.mode == "pointer"
+    assert w.mode == "select"
     assert len(w._data_x) == 4
     assert len(w.point_palette) == 3
     assert w.points_data

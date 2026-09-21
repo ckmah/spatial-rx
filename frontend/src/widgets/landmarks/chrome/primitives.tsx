@@ -12,15 +12,16 @@ import {
   EllipsisIcon,
   EyeIcon,
   EyeOffIcon,
+  HandIcon,
   LassoIcon,
   LocateIcon,
   MousePointer2Icon,
-  MoveIcon,
   PencilIcon,
   PentagonIcon,
   ShapesIcon,
   MoveUpRightIcon,
   SplineIcon,
+  SplinePointerIcon,
   SquareIcon,
   Trash2Icon,
   type LucideProps,
@@ -46,8 +47,9 @@ function FilledCircleIcon(props: LucideProps) {
 }
 
 const MODE_ICONS: Record<string, ComponentType<LucideProps>> = {
-  pointer: MousePointer2Icon,
-  move: MoveIcon,
+  select: MousePointer2Icon,
+  node: SplinePointerIcon,
+  move: HandIcon,
   probe: LocateIcon,
   selection: LassoIcon,
   lasso: LassoIcon,
@@ -276,7 +278,7 @@ export function LayerRow({
   label: string;
   hidden?: boolean;
   disabled?: boolean;
-  onSelect: () => void;
+  onSelect: (e?: React.MouseEvent) => void;
   onRename?: (next: string) => void;
   onDelete?: () => void;
   onToggleHidden?: () => void;
@@ -303,8 +305,8 @@ export function LayerRow({
         hidden && "opacity-50",
       )}
       tabIndex={disabled ? -1 : 0}
-      onClick={() => {
-        if (!disabled) onSelect();
+      onClick={(e) => {
+        if (!disabled) onSelect(e);
       }}
       onKeyDown={(e) => {
         if (disabled) return;

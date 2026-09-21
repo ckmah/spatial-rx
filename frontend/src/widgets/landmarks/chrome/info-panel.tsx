@@ -23,7 +23,7 @@ import { FieldDescription } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 
 import { decodeI32Base64 } from "../binary";
-import { formatLegendValue } from "../helpers";
+import { formatLegendValue, formatParam, landmarkMeasure } from "../helpers";
 import type { EngineHandle } from "../engine";
 import type { LandmarksModel } from "../use-landmarks-model";
 import { colorSignal } from "./coloring";
@@ -590,6 +590,27 @@ export function InfoPanel({
 
   const body = (
     <div className="flex min-h-0 flex-1 flex-col">
+      {selected_kind === "landmark" && selected_index >= 0
+        ? (() => {
+            const row = lm.landmarks[selected_index];
+            const m = landmarkMeasure(row || null);
+            if (!m) return null;
+            const label =
+              m.kind === "radius"
+                ? "Buffer radius"
+                : m.kind === "area"
+                  ? "Area"
+                  : "Length";
+            return (
+              <FieldDescription
+                className="m-0 px-1 pb-1 text-[0.6875rem] tabular-nums"
+                data-testid="landmark-measure"
+              >
+                {label}: {formatParam(m.value, "0")}
+              </FieldDescription>
+            );
+          })()
+        : null}
       <InfoChartWell legend={<PlotChannelLegend lm={lm} />}>
         {charts}
       </InfoChartWell>
