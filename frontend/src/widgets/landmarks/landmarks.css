@@ -804,7 +804,8 @@
   box-sizing: border-box;
   height: var(--lm-slider-height);
   min-height: var(--lm-slider-height);
-  flex: none;
+  /* flex: none was forcing signed rows to ignore flex-1 and overflow Both/reset. */
+  flex: 1 1 auto;
   padding: 0;
   border-radius: var(--radius);
   /* Outer capsule — fill only; no inset ring (Soft Float elevation is shadow-only). */
@@ -812,6 +813,11 @@
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+/* Signed capsule in a toolbar row — keep a usable track width beside actions. */
+.landmarks-slider-control--signed {
+  min-width: 11rem;
 }
 
 .landmarks--dark .landmarks-slider-control {

@@ -220,7 +220,9 @@ function SignedBufferSlider({
         : `${signed < 0 ? "−" : "+"}${formatParam(Math.abs(signed), "0")}`;
   return (
     <div
-      className="flex min-w-[260px] items-center gap-1.5 px-0.5"
+      // Wide enough for signed capsule + Both + Reset so actions stay inside
+      // the Soft Float `landmarks-float--toolbar` pill (not floating beside it).
+      className="flex min-w-[20rem] items-center gap-1 px-0.5"
       data-testid="context-buffer-panel"
       title={
         isPoint
@@ -254,7 +256,7 @@ function SignedBufferSlider({
             displayValue={display}
             aria-label="Buffer width; negative is left or in, positive is right or out"
             testId="context-buffer-width"
-            className="min-w-[200px] flex-1"
+            className="min-w-0 flex-1"
           />
           <ToolbarDivider />
           <IconBtn
