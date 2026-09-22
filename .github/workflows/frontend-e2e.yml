@@ -74,6 +74,7 @@ jobs:
               - 'frontend/src/widgets/volume-cube/**'
               - 'frontend/e2e/volume-cube/**'
               - 'frontend/dev/volume-cube/**'
+              - 'frontend/dev/notebook-link/**'
               - 'spatial_rx/volume_cube.py'
             gallery:
               - 'frontend/src/widgets/gallery/**'

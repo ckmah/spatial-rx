@@ -1,10 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const harness = process.env.E2E_HARNESS === "volume-cube" ? "volume-cube" : "landmarks";
+const harness = process.env.E2E_HARNESS ?? "landmarks";
+const webServerCommands: Record<string, string> = {
+  landmarks: "npm run dev:landmarks -- --host 127.0.0.1 --port 5173 --strictPort",
+  "volume-cube":
+    "npm run dev:volume-cube -- --host 127.0.0.1 --port 5173 --strictPort",
+  "notebook-link":
+    "npm run dev:notebook-link -- --host 127.0.0.1 --port 5173 --strictPort",
+};
 const webServerCommand =
-  harness === "volume-cube"
-    ? "npm run dev:volume-cube -- --host 127.0.0.1 --port 5173 --strictPort"
-    : "npm run dev:landmarks -- --host 127.0.0.1 --port 5173 --strictPort";
+  webServerCommands[harness] ?? webServerCommands.landmarks;
 
 /** Canonical visual snapshots: Linux Chromium (CI). Mac soft-skips unless E2E_SCREENSHOTS=1. */
 export default defineConfig({

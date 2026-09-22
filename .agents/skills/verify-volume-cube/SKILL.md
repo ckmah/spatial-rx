@@ -44,7 +44,21 @@ Run a single spec or test grep:
 ```bash
 cd frontend
 npx playwright test e2e/volume-cube/volume-cube.spec.ts -g "harness boots"
-npx playwright test e2e/volume-cube/volume-cube.spec.ts -g "toy inspect drag"
+npx playwright test e2e/volume-cube/notebook-link.spec.ts -g "Landmarks inspect"
+```
+
+Notebook link (Landmarks Inspect → cube window):
+
+```bash
+cd frontend
+E2E_HARNESS=notebook-link npx playwright test e2e/volume-cube/notebook-link.spec.ts
+# or npm run test:e2e:volume-cube (runs both volume-cube + notebook-link tiers)
+```
+
+Manual harness mirroring `demos/volume-cube.py`:
+
+```bash
+cd frontend && npm run dev:notebook-link
 ```
 
 CI path: `frontend/e2e/volume-cube/` (see [`frontend/e2e/README.md`](../../frontend/e2e/README.md)).
@@ -102,10 +116,15 @@ In notebooks (`demos/volume-cube.py`), Landmarks **Inspect** mode writes
 traitlets directly.
 
 The Playwright harness simulates that one-way feed with **Toy inspect** (drag a
-100 µm square). Prove window placement via [`features/inspect-window-placement.md`](features/inspect-window-placement.md).
-Landmarks Inspect chrome itself is not mapped here until it has dedicated
-landmarks-tier e2e; do not duplicate inspect-mode steps under verify-landmarks
-and verify-volume-cube.
+100 µm square) in `dev/volume-cube/`. Prove window placement via
+[`features/inspect-window-placement.md`](features/inspect-window-placement.md).
+
+For the full Landmarks Inspect → cube path (same as `demos/volume-cube.py`), use
+[`features/landmarks-inspect-drives-cube.md`](features/landmarks-inspect-drives-cube.md)
+and `e2e/volume-cube/notebook-link.spec.ts` with `dev:notebook-link`.
+
+Landmarks Inspect chrome itself is not duplicated under verify-landmarks until it
+has dedicated landmarks-tier e2e beyond the notebook-link proof.
 
 ## Evidence
 

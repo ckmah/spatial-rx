@@ -75,6 +75,7 @@ Hooks:
 
 - Landmarks: `window.__landmarksEngine` / `__landmarksModel`
 - VolumeCube: `window.__volumeCubeModel` (harness exposes mock model)
+- Notebook link: both hooks + `data-testid="notebook-link-banner"` (`dev:notebook-link`)
 
 ## CI artifacts
 

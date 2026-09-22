@@ -16,6 +16,7 @@ capability** to existing Playwright coverage — not a product roadmap.
 | [window-trait-readout](window-trait-readout.md) | `volume-cube.spec.ts` — `"model patch updates window readout without inspect drag"` | — |
 | [labels-toggle](labels-toggle.md) | `volume-cube.spec.ts` — `"labels switch hides the labels VolumeViewer overlay"` | `labels-off` |
 | [z-range-sliders](z-range-sliders.md) | `volume-cube.spec.ts` — `"Z min slider narrows the displayed Z range readout"` | — |
+| [landmarks-inspect-drives-cube](landmarks-inspect-drives-cube.md) | `notebook-link.spec.ts` — `"Landmarks inspect click updates VolumeCube window readout"` | — |
 
 ## Not yet mapped (spec exists, no feature file)
 

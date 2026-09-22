@@ -115,6 +115,17 @@ export async function bootVolumeCubeHarness(page: Page) {
   await stabilizeUi(page);
 }
 
+export async function bootNotebookLinkHarness(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("spatial-rx-harness-theme", "dark");
+  });
+  await page.goto("/", { waitUntil: "networkidle" });
+  await page.getByTestId("notebook-link-banner").waitFor({ state: "visible" });
+  await waitForEngine(page);
+  await waitForVolumeCube(page);
+  await stabilizeUi(page);
+}
+
 export function volumeCubeWidget(page: Page) {
   return page.locator(".volume-cube").first();
 }
