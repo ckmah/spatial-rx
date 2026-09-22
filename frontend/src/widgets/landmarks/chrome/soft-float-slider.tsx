@@ -206,7 +206,9 @@ export function SoftFloatSignedSlider({
   return (
     <div
       className={cn(
-        "landmarks-slider-control landmarks-slider-control--signed group/slider relative flex h-7 w-full min-w-[180px] shrink-0 items-stretch",
+        // Prefer flex-1 from callers over w-full so sibling actions (Both/reset)
+        // stay inside the Soft Float toolbar pill instead of overflowing it.
+        "landmarks-slider-control landmarks-slider-control--signed group/slider relative flex h-7 min-w-0 flex-1 items-stretch",
         className,
       )}
       data-slot="slider"
