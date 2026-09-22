@@ -6,6 +6,16 @@ Domain language: [`CONTEXT.md`](CONTEXT.md).
 
 Before merging LandmarksWidget changes, verify behavior via Playwright e2e and the feature map in [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/).
 
+## Skills precedence
+
+When multiple skills could apply, follow this order:
+
+1. **Behavioral proof / before merge Landmarks changes** — [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/)
+2. **Widget chrome composition** — [`.agents/skills/shadcn-anywidget/SKILL.md`](.agents/skills/shadcn-anywidget/SKILL.md), then [`.agents/skills/shadcn/SKILL.md`](.agents/skills/shadcn/SKILL.md)
+3. **Motion primitives already in use** — [`.agents/skills/cube-motion/SKILL.md`](.agents/skills/cube-motion/SKILL.md) only when editing `Rise` / `Morph` / `leave` / `reveal` usage
+
+Do not install or re-add transitions.dev skills. Soft Float chrome plus Playwright proofs are the standard for LandmarksWidget work.
+
 ## Widgets
 
 React/shadcn widgets live in `frontend/src/widgets/`. Canvas drawing for landmarks
