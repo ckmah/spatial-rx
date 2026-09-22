@@ -7,6 +7,8 @@ description: >-
   modes — or when an agent needs to prove a LandmarksWidget change works end-to-end.
 ---
 
+**Authoritative for LandmarksWidget verification** — overrides generic UI-motion skills when proving behavior or before merge.
+
 # verify-landmarks
 
 Ground truth for LandmarksWidget verification is **existing Playwright e2e**, not
