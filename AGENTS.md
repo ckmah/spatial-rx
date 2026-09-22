@@ -4,7 +4,7 @@ Guidance for agents working in **spatial-rx**.
 
 Domain language: [`CONTEXT.md`](CONTEXT.md).
 
-Before merging LandmarksWidget changes, verify behavior via Playwright e2e and the feature map in [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/).
+Before merging LandmarksWidget changes, verify behavior via Playwright e2e and the feature map in [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/). Full gate: [Merge policy](#merge-policy).
 
 ## Skills precedence
 
@@ -15,6 +15,30 @@ When multiple skills could apply, follow this order:
 3. **Motion primitives already in use** — [`.agents/skills/cube-motion/SKILL.md`](.agents/skills/cube-motion/SKILL.md) only when editing `Rise` / `Morph` / `leave` / `reveal` usage
 
 Soft Float chrome plus Playwright proofs are the standard for LandmarksWidget work.
+
+## Merge policy
+
+Less-supervision gate for agents merging their own PRs. CI green alone is not a verdict.
+
+**Agents may merge their own PR only when all applicable gates pass:**
+
+1. CI green on the head commit.
+2. Merge conflicts resolved; PR not left as draft when intending to land.
+3. Verification PASS by change class:
+   - **LandmarksWidget / landmarks surface** (`frontend/src/widgets/landmarks/`, `spatial_rx/static/landmarks.js`, landmark traitlets, selection/neighborhood UX): run relevant Playwright + match [verify-landmarks feature map](.agents/skills/verify-landmarks/) proof criteria for touched mapped capabilities; update the map when adding coverage.
+   - **Other UI with a Playwright tier**: run the path-gated e2e that covers the change ([`frontend/e2e/README.md`](frontend/e2e/README.md), [`.github/workflows/frontend-e2e.yml`](.github/workflows/frontend-e2e.yml)).
+   - **Docs / AGENTS / skills / non-runtime only**: feature-map not required; CI + conflict-free is enough unless the PR also touches runtime UI.
+4. Visual evidence on the PR when the change is user-visible chrome or canvas ([`.github/scripts/post-playwright-visuals.sh`](.github/scripts/post-playwright-visuals.sh) or equivalent proof on the PR). Docs-only skips this.
+
+**Do not merge — stop and escalate to the human (Clarence):**
+
+- Unresolved review threads that need a product/design call
+- Scope creep outside product rules (Visium HD, speculative chrome, new panels without an issue/brief)
+- ADR / SpatialData / landmarks persistence contract breaks without an explicit decision
+- Verification failed, or the only way to pass would be inventing UI/tests that have no real product surface
+- Dependent/stacked PR whose ancestor is not yet merged and verified
+
+**How to merge:** prefer squash + delete branch. For Landmarks merges, leave a brief PR note of what was verified (spec names / feature map files).
 
 ## Patterns and anti-patterns
 
@@ -40,7 +64,7 @@ Durable do/don't rules for agents. Prefer short tables over prose; vocabulary ma
 
 | Prefer | Avoid |
 | --- | --- |
-| Before merge Landmarks changes: run relevant Playwright + match [verify-landmarks feature map](.agents/skills/verify-landmarks/) proofs; update the map when adding coverage | Merging on CI green alone without feature-map proof for touched capabilities |
+| Follow [Merge policy](#merge-policy) verification by change class; update verify-landmarks feature map when adding coverage | Merging on CI green alone — see [Merge policy](#merge-policy) |
 | Path-gated e2e tiers ([`frontend/e2e/README.md`](frontend/e2e/README.md), [`.github/workflows/frontend-e2e.yml`](.github/workflows/frontend-e2e.yml)) | Inventing UI in e2e/feature map that has no real product surface |
 | PR visual comments via [`.github/scripts/post-playwright-visuals.sh`](.github/scripts/post-playwright-visuals.sh) | — |
 | Resolve merge conflicts before marking a PR ready for review | — |
