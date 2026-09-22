@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,47 +25,48 @@ const entries =
     : widgetEntries;
 const singleWidget = Object.keys(entries).length === 1;
 
-const vivBundle =
-  buildWidget === "volume-cube" || process.env.DEV_WIDGET === "volume-cube";
-const harnessRoot =
-  process.env.DEV_WIDGET === "volume-cube"
-    ? path.resolve(devDir, "volume-cube")
-    : devDir;
+const devWidget = process.env.DEV_WIDGET;
+const harnessRoots: Record<string, string> = {
+  "volume-cube": path.resolve(devDir, "volume-cube"),
+  "notebook-link": path.resolve(devDir, "notebook-link"),
+};
+const harnessRoot = harnessRoots[devWidget ?? ""] ?? devDir;
 
-// Viv 0.21 ships deck.gl 9.2 / luma.gl 9.2. The landmarks widget pins 9.1.
-// Resolving the root copies into the volume cube blanks the raycaster.
-const vivNested = path.resolve(rootDir, "node_modules/@hms-dbmi/viv/node_modules");
-const vivPackages = [
+// Single deck.gl / luma.gl stack for all widgets (9.2.x). npm overrides dedupe
+// Viv's nested peers to these root copies; each widget bundle still ships its own
+// ESM chunk — there is no shared runtime Deck across anywidgets in a notebook cell.
+const deckPackages = [
   "@deck.gl/core",
   "@deck.gl/layers",
   "@deck.gl/extensions",
   "@deck.gl/widgets",
   "@deck.gl/mesh-layers",
+  "@deck.gl/geo-layers",
+  "@deck.gl/react",
+];
+const lumaPackages = [
   "@luma.gl/constants",
   "@luma.gl/core",
   "@luma.gl/engine",
   "@luma.gl/shadertools",
   "@luma.gl/webgl",
+  "@luma.gl/gltf",
 ];
 
 const sharedResolve = {
   alias: {
     "@": path.resolve(rootDir, "src"),
-    ...(vivBundle
-      ? Object.fromEntries(
-          vivPackages.map((name) => [name, path.resolve(vivNested, name)]),
-        )
-      : {
-          "@deck.gl/core": path.resolve(rootDir, "node_modules/@deck.gl/core"),
-          "@deck.gl/layers": path.resolve(rootDir, "node_modules/@deck.gl/layers"),
-          "@deck.gl/extensions": path.resolve(rootDir, "node_modules/@deck.gl/extensions"),
-          "@deck.gl/widgets": path.resolve(rootDir, "node_modules/@deck.gl/widgets"),
-          "@thi.ng/geom-accel": path.resolve(rootDir, "node_modules/@thi.ng/geom-accel"),
-          "polygon-clipping": path.resolve(
-            rootDir,
-            "node_modules/polygon-clipping/dist/polygon-clipping.esm.js",
-          ),
-        }),
+    ...Object.fromEntries(
+      [...deckPackages, ...lumaPackages].map((name) => [
+        name,
+        path.resolve(rootDir, "node_modules", name),
+      ]),
+    ),
+    "@thi.ng/geom-accel": path.resolve(rootDir, "node_modules/@thi.ng/geom-accel"),
+    "polygon-clipping": path.resolve(
+      rootDir,
+      "node_modules/polygon-clipping/dist/polygon-clipping.esm.js",
+    ),
   },
 };
 
@@ -72,11 +74,20 @@ const sharedServer = {
   fs: { allow: [repoRoot] },
 };
 
-// Viv's nested deck.gl 9.2 must not be re-optimized with the landmarks 9.1 aliases.
-const cacheDir = path.resolve(
-  rootDir,
-  vivBundle ? "node_modules/.vite-volume-cube" : "node_modules/.vite",
-);
+function serveNotebookLinkFixture() {
+  return {
+    name: "serve-notebook-link-fixture",
+    configureServer(server: { middlewares: { use: Function } }) {
+      if (devWidget !== "notebook-link") return;
+      server.middlewares.use("/fixture.json", (_req, res) => {
+        res.setHeader("Content-Type", "application/json");
+        fs.createReadStream(path.resolve(devDir, "fixture.json")).pipe(res);
+      });
+    },
+  };
+}
+
+const usesViv = devWidget === "volume-cube" || devWidget === "notebook-link";
 
 export default defineConfig(({ command }) => {
   if (command === "serve") {
@@ -84,11 +95,15 @@ export default defineConfig(({ command }) => {
       root: harnessRoot,
       // Missing OME-Zarr keys must 404. SPA fallback serves index.html (200),
       // and zarrita then fails to parse it instead of opening the v2 store.
-      appType: process.env.DEV_WIDGET === "volume-cube" ? "mpa" : "spa",
-      plugins: [react(), tailwindcss()],
+      appType: usesViv ? "mpa" : "spa",
+      publicDir:
+        devWidget === "notebook-link"
+          ? path.resolve(devDir, "volume-cube/public")
+          : undefined,
+      plugins: [react(), tailwindcss(), serveNotebookLinkFixture()],
       resolve: sharedResolve,
-      cacheDir,
-      optimizeDeps: vivBundle ? undefined : { exclude: ["@hms-dbmi/viv"] },
+      // Viv harnesses need default dep optimization; landmarks excludes Viv.
+      optimizeDeps: usesViv ? undefined : { exclude: ["@hms-dbmi/viv"] },
       server: sharedServer,
     };
   }
@@ -96,7 +111,6 @@ export default defineConfig(({ command }) => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: sharedResolve,
-    cacheDir,
     server: sharedServer,
     // Browser ESM has no Node `process`. polygon-clipping reads optional
     // POLYGON_CLIPPING_* limits via process.env — stub them so the bundled

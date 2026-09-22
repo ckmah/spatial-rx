@@ -46,7 +46,7 @@ import {
   defaultWindowRadius,
 } from "../../frontend/src/widgets/landmarks/spatial-raster.js";
 
-/** Pinned with frontend package.json (@deck.gl/*@9.1.14); bundled by Vite. */
+/** Pinned with frontend package.json (@deck.gl/*@9.2.11); bundled by Vite. */
 const DECK_MODULES = {
   Deck,
   OrthographicView,

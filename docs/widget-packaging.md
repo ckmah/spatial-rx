@@ -106,3 +106,12 @@ rewrite from `npm run watch:landmarks`.
 
 Use the [widget scaffold](./widget-scaffold.md) — do not copy an existing widget
 by hand. Gallery is one instance of the pattern, not the template.
+
+## deck.gl / luma.gl versions
+
+Landmarks (`landmarks.js` → `landmarks.mjs`) and VolumeCube (Viv → `volume-cube.mjs`)
+both resolve `@deck.gl/*` and `@luma.gl/*` to the **same root** versions in
+`frontend/package.json` (currently deck.gl 9.2.11 / luma.gl 9.2.6). npm `overrides`
+dedupe Viv’s nested peers. Each widget bundle embeds its own copy — there is no shared
+runtime Deck across anywidgets in a notebook cell. See `frontend/vite.config.ts` aliases
+and the `overrides` block in `frontend/package.json`.

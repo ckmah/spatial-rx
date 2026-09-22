@@ -74,9 +74,22 @@ ANYWIDGET_HMR=1 uv run --extra demo marimo edit demos/<demo>.py
 VolumeCube harness (Playwright / manual):
 
 ```bash
-cd frontend && npm run dev:volume-cube
-cd frontend && npm run test:e2e:volume-cube
+cd frontend && npm run dev:notebook-link
 ```
+
+## deck.gl / luma.gl (frontend)
+
+Landmarks and VolumeCube (Viv) share one **root** stack in `frontend/package.json`:
+
+- `@deck.gl/*@9.2.11`, `@luma.gl/*@9.2.6`, `@loaders.gl/core@4.3.4`
+- `overrides` dedupe Viv’s nested peers to those versions
+
+Each widget still ships as its **own** bundled `.mjs`; notebook cells do not share a
+runtime Deck instance. Vite aliases all `@deck.gl/*` and `@luma.gl/*` imports to the
+root copies during every widget build (`frontend/vite.config.ts`).
+
+Viv dev harnesses (`dev:volume-cube`, `dev:notebook-link`) use default Vite
+`optimizeDeps`; the landmarks harness excludes `@hms-dbmi/viv` from pre-bundling.
 
 `_esm` must remain a `pathlib.Path` to the bundled `.mjs`. Do not `.read_text()`
 it and do not point it at `http://localhost:5173`. Details:
