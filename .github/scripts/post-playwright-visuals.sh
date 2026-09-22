@@ -107,7 +107,7 @@ write_body_attach() {
     echo "${MARKER}"
     echo "## Playwright visuals"
     echo
-    echo "Sticky review surface for Landmarks UI e2e (snapshots + videos)."
+    echo "Sticky review surface for Playwright UI e2e (snapshots + videos)."
     echo "Artifacts remain a backup if anything below fails to render."
     echo
     echo "_SHA: \`${SHA}\`_"
@@ -160,7 +160,7 @@ write_body_raw() {
     echo "${MARKER}"
     echo "## Playwright visuals"
     echo
-    echo "Sticky review surface for Landmarks UI e2e."
+    echo "Sticky review surface for Playwright UI e2e."
     echo "Snapshots embed from the PR head commit; videos are on the workflow artifacts"
     echo "(Actions \`GITHUB_TOKEN\` cannot use \`gh --attach\` — set repo secret \`VISUALS_GH_TOKEN\`"
     echo "to a classic PAT with \`repo\` scope for inline uploads)."

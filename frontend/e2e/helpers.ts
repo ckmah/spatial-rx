@@ -80,3 +80,53 @@ export async function bootLandmarksHarness(page: Page) {
   await waitForEngine(page);
   await stabilizeUi(page);
 }
+
+export async function waitForVolumeCube(page: Page) {
+  const widget = page.locator(".volume-cube").first();
+  await widget.waitFor({ state: "visible" });
+  await page.getByRole("button", { name: "Iso" }).waitFor({ state: "visible" });
+  await expect(widget.getByText("Loading volume…")).toHaveCount(0);
+  await page.waitForFunction(() => {
+    const model = (window as any).__volumeCubeModel;
+    return Boolean(model?.get("image_url"));
+  });
+  // Let Viv/deck.gl finish first paint after OME-Zarr load.
+  await page.waitForTimeout(800);
+}
+
+export async function getVolumeModel(page: Page, key: string) {
+  return page.evaluate((k) => (window as any).__volumeCubeModel.get(k), key);
+}
+
+export async function setVolumeModel(page: Page, patch: Record<string, unknown>) {
+  await page.evaluate((p) => {
+    const model = (window as any).__volumeCubeModel;
+    for (const [k, v] of Object.entries(p)) model.set(k, v);
+    model.save_changes();
+  }, patch);
+}
+
+export async function bootVolumeCubeHarness(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("spatial-rx-harness-theme", "dark");
+  });
+  await page.goto("/", { waitUntil: "networkidle" });
+  await waitForVolumeCube(page);
+  await stabilizeUi(page);
+}
+
+export function volumeCubeWidget(page: Page) {
+  return page.locator(".volume-cube").first();
+}
+
+export async function toyInspectBox(page: Page) {
+  const panel = page
+    .locator("p")
+    .filter({ hasText: "Toy inspect. Drag the 100 µm square." })
+    .locator("..")
+    .locator(".cursor-crosshair")
+    .first();
+  const box = await panel.boundingBox();
+  expect(box).toBeTruthy();
+  return { panel, box: box! };
+}

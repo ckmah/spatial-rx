@@ -85,17 +85,17 @@ function ToyInspect({
 }
 
 function Harness() {
-  const model = useMemo(
-    () =>
-      mockModel({
-        image_url: "/toy.ome.zarr/",
-        labels_url: "/toy.ome.zarr/labels/cells/",
-        window_cx: EXTENT / 2,
-        window_cy: EXTENT / 2,
-        window_size_um: SIZE,
-      }),
-    [],
-  );
+  const model = useMemo(() => {
+    const m = mockModel({
+      image_url: "/toy.ome.zarr/",
+      labels_url: "/toy.ome.zarr/labels/cells/",
+      window_cx: EXTENT / 2,
+      window_cy: EXTENT / 2,
+      window_size_um: SIZE,
+    });
+    (window as unknown as { __volumeCubeModel?: Model }).__volumeCubeModel = m;
+    return m;
+  }, []);
   const host = useMemo(() => document.body, []);
   return (
     <div className="dark flex min-h-screen gap-4 bg-neutral-950 p-4 text-neutral-100">
