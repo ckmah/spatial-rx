@@ -4,6 +4,8 @@ Guidance for agents working in **spatial-rx**.
 
 Domain language: [`CONTEXT.md`](CONTEXT.md).
 
+Before merging LandmarksWidget changes, verify behavior via Playwright e2e and the feature map in [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/).
+
 ## Widgets
 
 React/shadcn widgets live in `frontend/src/widgets/`. Canvas drawing for landmarks
