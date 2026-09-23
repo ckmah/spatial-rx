@@ -7,14 +7,9 @@ See [`frontend/PRODUCT.md`](frontend/PRODUCT.md) for positioning and shipped cap
 
 ## Now
 
-**Landmarks↔VolumeCube analysis loop** — drive VolumeCube from Landmarks inspect and use window/slice state in Python analysis (not only visual sync).
-Active: [#40](https://github.com/ckmah/spatial-rx/issues/40).
-
-Verification: extend `.agents/skills/verify-volume-cube/` + `frontend/e2e/volume-cube/`; demo `demos/volume-cube.py`.
+TBD — pick from icebox.
 
 ## Next
-
-TBD — pick from icebox after #40.
 
 ## Later / icebox
 
@@ -23,4 +18,5 @@ TBD — pick from icebox after #40.
 
 ## Shipped recently
 
+- Landmarks↔VolumeCube analysis loop — [PR #42](https://github.com/ckmah/spatial-rx/pull/42): IDR Blin demo, `from_url`, Python inspect-window analysis, coord contract tests
 - VolumeCube (Viv) — [PR #35](https://github.com/ckmah/spatial-rx/pull/35): toy OME-Zarr, inspect→window, Marimo XYZ slices, labels lazy-off, yaw-only + Reset; verify-volume-cube feature map
