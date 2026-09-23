@@ -13,7 +13,7 @@ Harness toy inspect (100 µm square drag) updates synced `window_cx` / `window_c
 ## How to get to it (user POV)
 
 In the dev harness, use the **Toy inspect** panel on the left: click or drag on the
-256 µm tissue square. The VolumeCube status line updates with new window coordinates.
+512 µm tissue square. The VolumeCube status line updates with new window coordinates.
 
 In notebooks, the same traits are fed from Landmarks Inspect mode via Python
 (`inspect_cx` → `window_cx`, etc.) — see the cross-widget note in [`../SKILL.md`](../SKILL.md).
@@ -33,7 +33,7 @@ await page.waitForTimeout(200);
 
 const cx = Number(await getVolumeModel(page, "window_cx"));
 const cy = Number(await getVolumeModel(page, "window_cy"));
-// cx roughly 140–210, cy roughly 40–120 for the harness click above
+// cx roughly 280–420, cy roughly 80–240 for the harness click above
 
 await shot(page, "window-on-sphere", widget);
 ```

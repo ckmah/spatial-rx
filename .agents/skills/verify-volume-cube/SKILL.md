@@ -97,14 +97,15 @@ Every spec uses `test.beforeEach(async ({ page }) => bootVolumeCubeHarness(page)
 | `window.__volumeCubeModel` | Read/write synced traitlets (`getVolumeModel` / `setVolumeModel`) |
 | Toy inspect panel | Drag a 100 µm square on the harness-only tissue mock (sets `window_cx` / `window_cy`) |
 
-Common traitlet keys: `image_url`, `labels_url`, `window_cx`, `window_cy`, `window_size_um`.
+Common traitlet keys: `image_url`, `labels_url`, `window_cx`, `window_cy`, `window_size_um`,
+`slice_x_min`, `slice_x_max`, `slice_y_min`, `slice_y_max`, `slice_z_min`, `slice_z_max`.
 
 Common selectors:
 
 - Widget shell: `page.locator(".volume-cube").first()` or `volumeCubeWidget(page)`
 - Iso / Reset: `getByRole("button", { name: "Iso" \| "Reset" })`
 - Labels overlay: `getByRole("switch", { name: "Labels" })`
-- Window readout: text matching `/window \\d+, \\d+ · 100 µm · full Z/`
+- Window + slice readout: text matching `/window \\d+, \\d+ · 100 µm · X \\d+–\\d+ · Y \\d+–\\d+ · Z \\d+–\\d+/`
 - Toy inspect drag target: `toyInspectBox(page)` (harness-only; not shipped in the widget)
 
 ## Landmarks inspect-window contract (cross-widget)

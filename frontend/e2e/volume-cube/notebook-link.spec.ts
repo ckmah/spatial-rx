@@ -21,7 +21,9 @@ test.describe("VolumeCube notebook link", () => {
     page,
   }) => {
     const cube = volumeCubeWidget(page);
-    await expect(cube.getByText(/window 128, 128 · 100 µm · full Z/)).toBeVisible();
+    await expect(
+      cube.getByText(/window 256, 256 · 100 µm · X 0–512 · Y 0–512 · Z 0–128/),
+    ).toBeVisible();
 
     await page.getByRole("radio", { name: "Inspect", exact: true }).click();
     await page.waitForTimeout(150);
@@ -34,8 +36,8 @@ test.describe("VolumeCube notebook link", () => {
     const inspectCy = Number(await getModel(page, "inspect_cy"));
     expect(Number.isFinite(inspectCx)).toBe(true);
     expect(Number.isFinite(inspectCy)).toBe(true);
-    expect(inspectCx).not.toBeCloseTo(128, 0);
-    expect(inspectCy).not.toBeCloseTo(128, 0);
+    expect(inspectCx).not.toBeCloseTo(256, 0);
+    expect(inspectCy).not.toBeCloseTo(256, 0);
 
     const windowCx = Number(await getVolumeModel(page, "window_cx"));
     const windowCy = Number(await getVolumeModel(page, "window_cy"));
@@ -45,7 +47,7 @@ test.describe("VolumeCube notebook link", () => {
     await expect(
       cube.getByText(
         new RegExp(
-          `window ${Math.round(windowCx)}, ${Math.round(windowCy)} · 100 µm · full Z`,
+          `window ${Math.round(windowCx)}, ${Math.round(windowCy)} · 100 µm · X 0–512 · Y 0–512 · Z 0–128`,
         ),
       ),
     ).toBeVisible();

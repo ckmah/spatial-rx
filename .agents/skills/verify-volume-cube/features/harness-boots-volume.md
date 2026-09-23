@@ -8,7 +8,7 @@ VolumeCube harness loads the toy OME-Zarr and renders an isometric Viv volume wi
 
 - Vite harness serves toy OME-Zarr from `frontend/dev/volume-cube/public/`
 - `.volume-cube` shell mounts with Iso, Reset, Labels switch
-- Default window readout at center (128, 128) · 100 µm
+- Default window readout at center (256, 256) · 100 µm with full-volume slice ranges
 - WebGL canvas visible inside the volume host
 
 ## How to get to it (user POV)
@@ -26,7 +26,7 @@ await expect(widget).toBeVisible();
 await expect(page.getByRole("button", { name: "Iso" })).toBeVisible();
 await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
 await expect(page.getByRole("switch", { name: "Labels" })).toBeChecked();
-await expect(widget.getByText(/window 128, 128 · 100 µm · full Z/)).toBeVisible();
+await expect(widget.getByText(/window 256, 256 · 100 µm · X 0–512 · Y 0–512 · Z 0–128/)).toBeVisible();
 await expect(widget.locator("canvas").first()).toBeVisible();
 
 await shot(page, "rest", widget);
