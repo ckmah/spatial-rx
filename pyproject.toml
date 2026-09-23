@@ -46,6 +46,16 @@ test = [
     "shapely>=2.1.2",
     "spatialdata>=0.2",
 ]
+luxar = [
+    "luxar>=2026.9.22; python_version >= '3.12'",
+    "scikit-image>=0.22; python_version >= '3.12'",
+    "spatialdata>=0.2",
+]
+luxar-gsplats = [
+    "luxar[gsplats]>=2026.9.22; python_version >= '3.12'",
+    "scikit-image>=0.22; python_version >= '3.12'",
+    "spatialdata>=0.2",
+]
 
 [project.urls]
 Homepage = "https://github.com/ckmah/spatial-rx"
