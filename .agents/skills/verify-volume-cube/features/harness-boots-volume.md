@@ -7,7 +7,7 @@ VolumeCube harness loads the toy OME-Zarr and renders an isometric Viv volume wi
 ## Sub-features
 
 - Vite harness serves toy OME-Zarr from `frontend/dev/volume-cube/public/`
-- `.volume-cube` shell mounts with Iso, Reset, Labels switch
+- `.volume-cube` shell mounts with Reset, Labels switch
 - Default window readout at center (128, 128) · 100 µm with full-volume slice ranges
 - WebGL canvas visible inside the volume host
 
@@ -23,7 +23,7 @@ await bootVolumeCubeHarness(page);
 const widget = volumeCubeWidget(page);
 
 await expect(widget).toBeVisible();
-await expect(page.getByRole("button", { name: "Iso" })).toBeVisible();
+await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
 await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
 await expect(page.getByRole("switch", { name: "Labels" })).toBeChecked();
 await expect(widget.getByText(/window 128, 128 · 100 µm · X 0–256 · Y 0–256 · Z 0–64/)).toBeVisible();
@@ -34,13 +34,13 @@ await shot(page, "rest", widget);
 
 Helpers: `bootVolumeCubeHarness`, `volumeCubeWidget`, `shot`.
 
-Selectors: `.volume-cube`, `getByRole("button", { name: "Iso" })`.
+Selectors: `.volume-cube`, `getByRole("button", { name: "Reset" })`.
 
 Model keys: `image_url`, `window_cx`, `window_cy`, `window_size_um`.
 
 **Proof**
 
-- Functional: Iso/Reset/Labels visible; window readout at default center; canvas present.
+- Functional: Reset/Labels visible; window readout at default center; canvas present.
 - Visual: `shot(page, "rest", widget)` → snapshot `rest.png`.
 
 ## Gotchas

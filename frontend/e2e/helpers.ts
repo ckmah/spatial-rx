@@ -84,7 +84,7 @@ export async function bootLandmarksHarness(page: Page) {
 export async function waitForVolumeCube(page: Page) {
   const widget = page.locator(".volume-cube").first();
   await widget.waitFor({ state: "visible" });
-  await page.getByRole("button", { name: "Iso" }).waitFor({ state: "visible" });
+  await widget.getByRole("button", { name: "Reset", exact: true }).waitFor({ state: "visible" });
   await expect(widget.getByText("Loading volume…")).toHaveCount(0);
   await page.waitForFunction(() => {
     const model = (window as any).__volumeCubeModel;

@@ -194,7 +194,7 @@ export function VolumeCubeView({
     [slice_z_min, slice_z_max, depth],
   );
 
-  const goIso = useCallback(() => {
+  const resetView = useCallback(() => {
     if (source) setViewState(isoHome(source, box));
   }, [source, box]);
 
@@ -263,10 +263,7 @@ export function VolumeCubeView({
         ) : null}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-3">
-        <Button type="button" size="sm" variant="outline" onClick={goIso}>
-          Iso
-        </Button>
-        <Button type="button" size="sm" variant="outline" onClick={goIso}>
+        <Button type="button" size="sm" variant="outline" onClick={resetView}>
           Reset
         </Button>
         <div className="flex items-center gap-2">

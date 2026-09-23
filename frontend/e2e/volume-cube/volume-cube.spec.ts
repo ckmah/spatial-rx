@@ -21,7 +21,6 @@ test.describe("VolumeCubeWidget", () => {
   test("harness boots and OME-Zarr volume renders", async ({ page }) => {
     const widget = volumeCubeWidget(page);
     await expect(widget).toBeVisible();
-    await expect(page.getByRole("button", { name: "Iso" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
     await expect(page.getByRole("switch", { name: "Labels" })).not.toBeChecked();
     await expect(

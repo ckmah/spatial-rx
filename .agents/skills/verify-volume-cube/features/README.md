@@ -23,7 +23,6 @@ capability** to existing Playwright coverage — not a product roadmap.
 These tests have e2e coverage but no dedicated feature file yet. Extend the map
 when agents routinely need them:
 
-- Iso / Reset buttons (functional only today; no separate spec assertion beyond boot)
 
 ## Adding a feature
 

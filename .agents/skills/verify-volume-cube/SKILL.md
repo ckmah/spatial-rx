@@ -79,7 +79,7 @@ Run this before driving features manually or when e2e fails mysteriously:
    `http://127.0.0.1:5173` (Playwright `webServer` with `E2E_HARNESS=volume-cube`).
 3. **Volume alive** — after `bootVolumeCubeHarness(page)`:
    - `.volume-cube` visible
-   - `getByRole("button", { name: "Iso" })` visible
+   - `getByRole("button", { name: "Reset" })` visible
    - no `"Loading volume…"` text
    - at least one `canvas` inside `.volume-cube`
 4. **Model hooks present** — `window.__volumeCubeModel.get("window_cx")` is finite.
@@ -103,7 +103,7 @@ Common traitlet keys: `image_url`, `labels_url`, `window_cx`, `window_cy`, `wind
 Common selectors:
 
 - Widget shell: `page.locator(".volume-cube").first()` or `volumeCubeWidget(page)`
-- Iso / Reset: `getByRole("button", { name: "Iso" \| "Reset" })`
+- Reset: `getByRole("button", { name: "Reset" })`
 - Labels overlay: `getByRole("switch", { name: "Labels" })`
 - Window + slice readout: text matching `/window \\d+, \\d+ · 100 µm · X \\d+–\\d+ · Y \\d+–\\d+ · Z \\d+–\\d+/`
 - Toy inspect drag target: `toyInspectBox(page)` (harness-only; not shipped in the widget)
