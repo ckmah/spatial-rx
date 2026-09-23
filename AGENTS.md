@@ -4,17 +4,19 @@ Guidance for agents working in **spatial-rx**.
 
 Domain language: [`CONTEXT.md`](CONTEXT.md).
 
-Before merging LandmarksWidget changes, verify behavior via Playwright e2e and the feature map in [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/). Full gate: [Merge policy](#merge-policy).
+Before merging LandmarksWidget changes, verify behavior via Playwright e2e and the feature map in [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/). Before merging VolumeCubeWidget changes, use [`.agents/skills/verify-volume-cube/`](.agents/skills/verify-volume-cube/). Full gate: [Merge policy](#merge-policy). Active roadmap: [`ROADMAP.md`](ROADMAP.md).
 
 ## Skills precedence
 
 When multiple skills could apply, follow this order:
 
-1. **Behavioral proof / before merge Landmarks changes** — [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/)
+1. **Behavioral proof / before merge widget changes**
+   - Landmarks: [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/)
+   - VolumeCube: [`.agents/skills/verify-volume-cube/`](.agents/skills/verify-volume-cube/)
 2. **Widget chrome composition** — [`.agents/skills/shadcn-anywidget/SKILL.md`](.agents/skills/shadcn-anywidget/SKILL.md), then [`.agents/skills/shadcn/SKILL.md`](.agents/skills/shadcn/SKILL.md)
 3. **Motion primitives already in use** — [`.agents/skills/cube-motion/SKILL.md`](.agents/skills/cube-motion/SKILL.md) only when editing `Rise` / `Morph` / `leave` / `reveal` usage
 
-Soft Float chrome plus Playwright proofs are the standard for LandmarksWidget work.
+Soft Float chrome plus Playwright proofs are the standard for widget work on user-visible surfaces.
 
 ## Merge policy
 
@@ -26,6 +28,7 @@ Less-supervision gate for agents merging their own PRs. CI green alone is not a 
 2. Merge conflicts resolved; PR not left as draft when intending to land.
 3. Verification PASS by change class:
    - **LandmarksWidget / landmarks surface** (`frontend/src/widgets/landmarks/`, `spatial_rx/static/landmarks.js`, landmark traitlets, selection/neighborhood UX): run relevant Playwright + match [verify-landmarks feature map](.agents/skills/verify-landmarks/) proof criteria for touched mapped capabilities; update the map when adding coverage.
+   - **VolumeCubeWidget / volume-cube surface** (`frontend/src/widgets/volume-cube/`, `spatial_rx/volume_cube.py`, Viv/OME-Zarr wiring, `window_*` traitlets): run `npm run test:e2e:volume-cube` + match [verify-volume-cube feature map](.agents/skills/verify-volume-cube/) proof criteria for touched capabilities; update the map when adding coverage.
    - **Other UI with a Playwright tier**: run the path-gated e2e that covers the change ([`frontend/e2e/README.md`](frontend/e2e/README.md), [`.github/workflows/frontend-e2e.yml`](.github/workflows/frontend-e2e.yml)).
    - **Docs / AGENTS / skills / non-runtime only**: feature-map not required; CI + conflict-free is enough unless the PR also touches runtime UI.
 4. Visual evidence on the PR when the change is user-visible chrome or canvas ([`.github/scripts/post-playwright-visuals.sh`](.github/scripts/post-playwright-visuals.sh) or equivalent proof on the PR). Docs-only skips this.
@@ -38,7 +41,7 @@ Less-supervision gate for agents merging their own PRs. CI green alone is not a 
 - Verification failed, or the only way to pass would be inventing UI/tests that have no real product surface
 - Dependent/stacked PR whose ancestor is not yet merged and verified
 
-**How to merge:** prefer squash + delete branch. For Landmarks merges, leave a brief PR note of what was verified (spec names / feature map files).
+**How to merge:** prefer squash + delete branch. Leave a brief PR note of what was verified (spec names / feature map files).
 
 ## Patterns and anti-patterns
 
@@ -64,7 +67,7 @@ Durable do/don't rules for agents. Prefer short tables over prose; vocabulary ma
 
 | Prefer | Avoid |
 | --- | --- |
-| Follow [Merge policy](#merge-policy) verification by change class; update verify-landmarks feature map when adding coverage | Merging on CI green alone — see [Merge policy](#merge-policy) |
+| Follow [Merge policy](#merge-policy) verification by change class; update verify-landmarks / verify-volume-cube feature maps when adding coverage | Merging on CI green alone — see [Merge policy](#merge-policy) |
 | Path-gated e2e tiers ([`frontend/e2e/README.md`](frontend/e2e/README.md), [`.github/workflows/frontend-e2e.yml`](.github/workflows/frontend-e2e.yml)) | Inventing UI in e2e/feature map that has no real product surface |
 | PR visual comments via [`.github/scripts/post-playwright-visuals.sh`](.github/scripts/post-playwright-visuals.sh) | — |
 | Resolve merge conflicts before marking a PR ready for review | — |
@@ -111,6 +114,26 @@ Use anywidget file-watch HMR (not the Vite dev server):
 cd frontend && npm run watch:landmarks
 ANYWIDGET_HMR=1 uv run --extra demo marimo edit demos/<demo>.py
 ```
+
+VolumeCube harness (Playwright / manual):
+
+```bash
+cd frontend && npm run dev:notebook-link
+```
+
+## deck.gl / luma.gl (frontend)
+
+Landmarks and VolumeCube (Viv) share one **root** stack in `frontend/package.json`:
+
+- `@deck.gl/*@9.2.11`, `@luma.gl/*@9.2.6`, `@loaders.gl/core@4.3.4`
+- `overrides` dedupe Viv's nested peers to those versions
+
+Each widget still ships as its **own** bundled `.mjs`; notebook cells do not share a
+runtime Deck instance. Vite aliases all `@deck.gl/*` and `@luma.gl/*` imports to the
+root copies during every widget build (`frontend/vite.config.ts`).
+
+Viv dev harnesses (`dev:volume-cube`, `dev:notebook-link`) use default Vite
+`optimizeDeps`; the landmarks harness excludes `@hms-dbmi/viv` from pre-bundling.
 
 `_esm` must remain a `pathlib.Path` to the bundled `.mjs` — see
 [Chrome and packaging](#chrome-and-packaging) and [`docs/widget-packaging.md`](docs/widget-packaging.md).

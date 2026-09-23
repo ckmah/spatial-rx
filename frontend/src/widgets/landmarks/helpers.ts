@@ -35,6 +35,7 @@ export const MODE_SHORTCUTS: Record<string, string> = {
   node: "N",
   move: "H",
   probe: "P",
+  inspect: "I",
   lasso: "L",
   rectangle: "R",
   ellipse: "O",
@@ -98,6 +99,7 @@ export const MODE_LABELS: Record<string, string> = {
   node: "Node",
   move: "Move",
   probe: "Probe",
+  inspect: "Inspect",
   selection: "Selection",
   lasso: "Lasso",
   polygon: "Shape",
@@ -110,7 +112,7 @@ export const MODE_LABELS: Record<string, string> = {
 };
 
 /** Top-level interaction tools (left ToggleGroup). */
-export const INTERACTION_MODE_IDS = ["select", "node", "move", "probe"];
+export const INTERACTION_MODE_IDS = ["select", "node", "move", "probe", "inspect"];
 /** Selection geometry modes (lasso dropdown on Topbar). */
 export const GEOMETRY_MODE_IDS = ["lasso", "rectangle", "ellipse", "polygon"];
 export const LANDMARK_MODE_IDS = ["point", "line", "spline", "shape"];
@@ -125,7 +127,8 @@ export function interactionFromMode(mode: string) {
     mode === "select" ||
     mode === "node" ||
     mode === "move" ||
-    mode === "probe"
+    mode === "probe" ||
+    mode === "inspect"
   )
     return mode;
   return "";
