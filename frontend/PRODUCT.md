@@ -39,6 +39,7 @@ Notebook-native toolkit: best-in-class marimo/Jupyter widgets for spatial omics,
 
 - `LandmarksWidget` — draw selections and landmarks on tissue coordinates (lasso, rectangle, ellipse; point, line, spline, shape); gene/color controls; selection hits via `get_obs_names` / `assign_obs_mask`; landmarks are durable SpatialData annotations per `docs/landmarks-spatialdata-contract.md` (M1).
 - `GalleryWidget` — selectable image cards for recipes or use cases; synced selection via `selected_index`.
+- `VolumeCubeWidget` — OME-Zarr detail cube (Viv); Landmarks inspect drives `window_cx` / `window_cy`; Marimo XYZ slice traits (`slice_x`, `slice_y`, `slice_z`).
 
 **Technical constraints**
 
@@ -71,6 +72,7 @@ Use domain language from `CONTEXT.md` (widget, synced state, traitlet, widget co
 | Landmarks demo | `demos/landmarks.py` |
 | Gallery demo | `demos/gallery.py` |
 | Gut study demo | `demos/gut_study.py` |
+| Volume cube demo | `demos/volume-cube.py` |
 | Landmarks screenshot | `assets/landmarks_widget_{light,dark}.png` |
 | Gallery screenshot | `assets/gallery_widget_{light,dark}.png` |
 | Demo data notes | `demos/data/README.md` |
