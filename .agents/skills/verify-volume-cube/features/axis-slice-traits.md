@@ -29,7 +29,7 @@ await setVolumeModel(page, {
 });
 await page.waitForTimeout(150);
 
-await expect(widget.getByText(/X 64–192 · Y 0–512 · Z 8–96/)).toBeVisible();
+await expect(widget.getByText(/X 64–192 · Y 0–256 · Z 8–48/)).toBeVisible();
 ```
 
 Helpers: `bootVolumeCubeHarness`, `setVolumeModel`, `volumeCubeWidget`.
@@ -43,4 +43,4 @@ Model keys: `slice_x_min`, `slice_x_max`, `slice_y_min`, `slice_y_max`, `slice_z
 ## Gotchas
 
 - Slice traits are independent of `window_cx` / `window_cy` (Landmarks inspect contract). Notebook link still copies inspect center onto window traits only.
-- Defaults on `VolumeCubeWidget.toy()` span the full toy volume (512×512×128 µm).
+- Defaults on `VolumeCubeWidget.toy()` span the full toy volume (256×256×64 µm).

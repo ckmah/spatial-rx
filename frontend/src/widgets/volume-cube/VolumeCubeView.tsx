@@ -118,7 +118,7 @@ export function VolumeCubeView({
   const [image, setImage] = useState<Loader[] | null>(null);
   const [labels, setLabels] = useState<Loader[] | null>(null);
   const [error, setError] = useState("");
-  const [showLabels, setShowLabels] = useState(true);
+  const [showLabels, setShowLabels] = useState(false);
   const [viewState, setViewState] = useState<ViewState | null>(null);
 
   useEffect(() => {
@@ -141,7 +141,6 @@ export function VolumeCubeView({
     let cancelled = false;
     setError("");
     setImage(null);
-    setLabels(null);
     if (!image_url) return;
     (async () => {
       try {
@@ -150,10 +149,6 @@ export function VolumeCubeView({
         const pyramid = loaded.data as Loader[];
         setImage(pyramid);
         setViewState(isoHome(pyramid[0]!, boxRef.current));
-        if (labels_url) {
-          const lab = await loadOmeZarr(absoluteUrl(labels_url), { type: "multiscales" });
-          if (!cancelled) setLabels(lab.data as Loader[]);
-        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
@@ -161,7 +156,26 @@ export function VolumeCubeView({
     return () => {
       cancelled = true;
     };
-  }, [image_url, labels_url]);
+  }, [image_url]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!showLabels || !labels_url) {
+      setLabels(null);
+      return;
+    }
+    (async () => {
+      try {
+        const lab = await loadOmeZarr(absoluteUrl(labels_url), { type: "multiscales" });
+        if (!cancelled) setLabels(lab.data as Loader[]);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showLabels, labels_url]);
 
   const source = image?.[0];
   const width = source ? axisSize(source, "x") : 1;

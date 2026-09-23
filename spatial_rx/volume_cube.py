@@ -21,7 +21,7 @@ from anywidget import AnyWidget
 
 from spatial_rx._assets import widget_css, widget_esm
 
-TOY_SHAPE_ZYX = (128, 512, 512)
+TOY_SHAPE_ZYX = (64, 256, 256)
 TOY_CHUNK_ZYX = (32, 64, 64)
 TOY_UM_PER_VOXEL = 1.0
 DEFAULT_WINDOW_UM = 100.0
@@ -83,9 +83,9 @@ def toy_volumes() -> tuple[np.ndarray, np.ndarray]:
     labels = np.zeros((z, y, x), dtype=np.uint8)
     zz, yy, xx = np.ogrid[:z, :y, :x]
     blobs = (
-        (32, 160, 140, 36, 200, 1),
-        (64, 300, 320, 44, 240, 2),
-        (96, 420, 200, 32, 180, 3),
+        (16, 80, 70, 22, 200, 1),
+        (32, 150, 160, 28, 240, 2),
+        (48, 190, 100, 18, 160, 3),
     )
     for cz, cy, cx, radius, value, label_id in blobs:
         mask = (zz - cz) ** 2 + (yy - cy) ** 2 + (xx - cx) ** 2 <= radius**2
@@ -166,8 +166,8 @@ class VolumeCubeWidget(AnyWidget):
 
     image_url = traitlets.Unicode("").tag(sync=True)
     labels_url = traitlets.Unicode("").tag(sync=True)
-    window_cx = traitlets.Float(256.0).tag(sync=True)
-    window_cy = traitlets.Float(256.0).tag(sync=True)
+    window_cx = traitlets.Float(128.0).tag(sync=True)
+    window_cy = traitlets.Float(128.0).tag(sync=True)
     window_size_um = traitlets.Float(DEFAULT_WINDOW_UM).tag(sync=True)
     slice_x_min = traitlets.Float(0.0).tag(sync=True)
     slice_x_max = traitlets.Float(float(TOY_SHAPE_ZYX[2])).tag(sync=True)
@@ -180,8 +180,8 @@ class VolumeCubeWidget(AnyWidget):
         self,
         image_url: str = "",
         labels_url: str = "",
-        window_cx: float = 256.0,
-        window_cy: float = 256.0,
+        window_cx: float = 128.0,
+        window_cy: float = 128.0,
         window_size_um: float = DEFAULT_WINDOW_UM,
         slice_x_min: float = 0.0,
         slice_x_max: float = float(TOY_SHAPE_ZYX[2]),

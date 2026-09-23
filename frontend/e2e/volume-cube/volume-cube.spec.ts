@@ -23,9 +23,9 @@ test.describe("VolumeCubeWidget", () => {
     await expect(widget).toBeVisible();
     await expect(page.getByRole("button", { name: "Iso" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
-    await expect(page.getByRole("switch", { name: "Labels" })).toBeChecked();
+    await expect(page.getByRole("switch", { name: "Labels" })).not.toBeChecked();
     await expect(
-      widget.getByText(/window 256, 256 · 100 µm · X 0–512 · Y 0–512 · Z 0–128/),
+      widget.getByText(/window 128, 128 · 100 µm · X 0–256 · Y 0–256 · Z 0–64/),
     ).toBeVisible();
     await expect(widget.locator("canvas").first()).toBeVisible();
     await shot(page, "rest", widget);
@@ -43,14 +43,14 @@ test.describe("VolumeCubeWidget", () => {
 
     const cx = Number(await getVolumeModel(page, "window_cx"));
     const cy = Number(await getVolumeModel(page, "window_cy"));
-    expect(cx).toBeGreaterThan(280);
-    expect(cx).toBeLessThan(420);
-    expect(cy).toBeGreaterThan(80);
-    expect(cy).toBeLessThan(240);
+    expect(cx).toBeGreaterThan(140);
+    expect(cx).toBeLessThan(210);
+    expect(cy).toBeGreaterThan(40);
+    expect(cy).toBeLessThan(120);
     await expect(
       widget.getByText(
         new RegExp(
-          `window ${Math.round(cx)}, ${Math.round(cy)} · 100 µm · X 0–512 · Y 0–512 · Z 0–128`,
+          `window ${Math.round(cx)}, ${Math.round(cy)} · 100 µm · X 0–256 · Y 0–256 · Z 0–64`,
         ),
       ),
     ).toBeVisible();
@@ -61,12 +61,12 @@ test.describe("VolumeCubeWidget", () => {
     page,
   }) => {
     const widget = volumeCubeWidget(page);
-    await setVolumeModel(page, { window_cx: 128, window_cy: 384 });
+    await setVolumeModel(page, { window_cx: 64, window_cy: 192 });
     await page.waitForTimeout(150);
-    expect(Number(await getVolumeModel(page, "window_cx"))).toBeCloseTo(128, 0);
-    expect(Number(await getVolumeModel(page, "window_cy"))).toBeCloseTo(384, 0);
+    expect(Number(await getVolumeModel(page, "window_cx"))).toBeCloseTo(64, 0);
+    expect(Number(await getVolumeModel(page, "window_cy"))).toBeCloseTo(192, 0);
     await expect(
-      widget.getByText(/window 128, 384 · 100 µm · X 0–512 · Y 0–512 · Z 0–128/),
+      widget.getByText(/window 64, 192 · 100 µm · X 0–256 · Y 0–256 · Z 0–64/),
     ).toBeVisible();
   });
 
@@ -76,17 +76,24 @@ test.describe("VolumeCubeWidget", () => {
       slice_x_min: 64,
       slice_x_max: 192,
       slice_z_min: 8,
-      slice_z_max: 96,
+      slice_z_max: 48,
     });
     await page.waitForTimeout(150);
     expect(Number(await getVolumeModel(page, "slice_x_min"))).toBeCloseTo(64, 0);
-    expect(Number(await getVolumeModel(page, "slice_z_max"))).toBeCloseTo(96, 0);
-    await expect(widget.getByText(/X 64–192 · Y 0–512 · Z 8–96/)).toBeVisible();
+    expect(Number(await getVolumeModel(page, "slice_z_max"))).toBeCloseTo(48, 0);
+    await expect(widget.getByText(/X 64–192 · Y 0–256 · Z 8–48/)).toBeVisible();
   });
 
-  test("labels switch hides the labels VolumeViewer overlay", async ({ page }) => {
+  test("labels switch shows and hides the labels VolumeViewer overlay", async ({
+    page,
+  }) => {
     const widget = volumeCubeWidget(page);
     const canvases = widget.locator("canvas");
+    await expect(canvases).toHaveCount(1);
+
+    await page.getByRole("switch", { name: "Labels" }).click();
+    await page.waitForTimeout(400);
+    await expect(page.getByRole("switch", { name: "Labels" })).toBeChecked();
     await expect(canvases).toHaveCount(2);
 
     await page.getByRole("switch", { name: "Labels" }).click();

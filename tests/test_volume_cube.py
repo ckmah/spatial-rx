@@ -41,8 +41,8 @@ def test_volume_cube_toy_urls(tmp_path):
         assert widget.image_url.endswith("/")
         assert widget.labels_url.endswith("/labels/cells/")
         assert widget.window_size_um == 100
-        assert widget.window_cx == 256
-        assert widget.slice_z_max == 128
+        assert widget.window_cx == 128
+        assert widget.slice_z_max == 64
     finally:
         assert widget._server is not None
         widget._server.shutdown()

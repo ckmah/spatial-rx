@@ -25,7 +25,7 @@ await page.waitForTimeout(150);
 
 expect(Number(await getVolumeModel(page, "window_cx"))).toBeCloseTo(64, 0);
 expect(Number(await getVolumeModel(page, "window_cy"))).toBeCloseTo(192, 0);
-await expect(widget.getByText(/window 64, 192 · 100 µm · X 0–512 · Y 0–512 · Z 0–128/)).toBeVisible();
+await expect(widget.getByText(/window 64, 192 · 100 µm · X 0–256 · Y 0–256 · Z 0–64/)).toBeVisible();
 ```
 
 Helpers: `bootVolumeCubeHarness`, `setVolumeModel`, `getVolumeModel`, `volumeCubeWidget`.

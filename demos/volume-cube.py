@@ -19,7 +19,7 @@ def _():
 @app.cell
 def _(VolumeCubeWidget, ad, np):
     cube = VolumeCubeWidget.toy()
-    xy = np.random.default_rng(0).uniform(20, 492, size=(600, 2))
+    xy = np.random.default_rng(0).uniform(20, 236, size=(600, 2))
     adata = ad.AnnData(np.zeros((xy.shape[0], 1), dtype=np.float32))
     adata.obsm["spatial"] = xy
     return adata, cube

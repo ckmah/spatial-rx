@@ -6,8 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { VolumeCubeView } from "@/widgets/volume-cube/VolumeCubeView";
 
-const EXTENT_XY = 512;
-const EXTENT_Z = 128;
+const EXTENT_XY = 256;
+const EXTENT_Z = 64;
 const SIZE = 100;
 
 type Model = {

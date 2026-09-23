@@ -9,8 +9,8 @@ import { VolumeCubeView } from "@/widgets/volume-cube/VolumeCubeView";
 
 import { createMockModel, loadFixtureModel } from "../mock-model";
 
-const EXTENT_XY = 512;
-const EXTENT_Z = 128;
+const EXTENT_XY = 256;
+const EXTENT_Z = 64;
 
 function linkInspectToCube(landmarks: AnyModel, cube: AnyModel) {
   const sync = () => {
