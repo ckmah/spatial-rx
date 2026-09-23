@@ -6,6 +6,9 @@ Offline / CI: set ``USE_TOY_VOLUME = True`` to use ``VolumeCubeWidget.toy()``.
 GPU note: the Blin volume is 236 Z planes × 2 channels; the demo defaults to a
 64-plane mid-Z slab and renders one channel in Viv to stay within GPU budget
 alongside Landmarks.
+
+Inspect mode crops the cube XY slices to the 100-voxel inspect window (``slice_*``
+traits drive Viv; ``window_cx`` / ``window_cy`` are the readout center).
 """
 
 import marimo
@@ -15,6 +18,7 @@ app = marimo.App(width="full")
 
 # Offline fallback for CI / no-network environments (Playwright uses harness toy).
 USE_TOY_VOLUME = False
+
 
 @app.cell
 def _():
@@ -110,23 +114,25 @@ def _(cube, mo):
 
 
 @app.cell
-def _(cube, cube_ui, landmarks, mo, x_slice, y_slice, z_slice):
-    cube.slice_x_min = float(x_slice.value[0])
-    cube.slice_x_max = float(x_slice.value[1])
-    cube.slice_y_min = float(y_slice.value[0])
-    cube.slice_y_max = float(y_slice.value[1])
+def _(cube, height, landmarks, width, x_slice, y_slice, z_slice):
     cube.slice_z_min = float(z_slice.value[0])
     cube.slice_z_max = float(z_slice.value[1])
     if landmarks.inspect_cx is not None:
-        cube.window_cx = float(landmarks.inspect_cx)
-        cube.window_cy = float(landmarks.inspect_cy)
-    return mo.vstack(
-        [
-            mo.hstack([landmarks, cube_ui], widths="equal"),
-            mo.hstack([x_slice, y_slice, z_slice], widths="equal"),
-        ],
-        gap=1,
-    )
+        cx = float(landmarks.inspect_cx)
+        cy = float(landmarks.inspect_cy)
+        half = float(landmarks.inspect_size_um) / 2
+        cube.window_cx = cx
+        cube.window_cy = cy
+        cube.slice_x_min = max(0.0, cx - half)
+        cube.slice_x_max = min(float(width), cx + half)
+        cube.slice_y_min = max(0.0, cy - half)
+        cube.slice_y_max = min(float(height), cy + half)
+    else:
+        cube.slice_x_min = float(x_slice.value[0])
+        cube.slice_x_max = float(x_slice.value[1])
+        cube.slice_y_min = float(y_slice.value[0])
+        cube.slice_y_max = float(y_slice.value[1])
+    return
 
 
 @app.cell
@@ -152,8 +158,15 @@ def _(adata, cells_in_inspect_window, cube, landmarks, mo):
 
 
 @app.cell
-def _(analysis):
-    analysis
+def _(analysis, cube_ui, landmarks, mo, x_slice, y_slice, z_slice):
+    mo.vstack(
+        [
+            mo.hstack([landmarks, cube_ui], widths=[3, 1]),
+            mo.hstack([x_slice, y_slice, z_slice], widths="equal"),
+            analysis,
+        ],
+        gap=1,
+    )
     return
 
 
