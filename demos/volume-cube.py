@@ -19,6 +19,13 @@ app = marimo.App(width="full")
 
 @app.cell
 def _():
+    # Offline fallback for CI / no-network (Playwright uses harness toy).
+    USE_TOY_VOLUME = False
+    return (USE_TOY_VOLUME,)
+
+
+@app.cell
+def _():
     import anndata as ad
     import marimo as mo
     import numpy as np
@@ -31,14 +38,50 @@ def _():
         cells_in_inspect_window,
     )
 
-    return LandmarksWidget, cells_in_inspect_window, mo
+    return (
+        BLIN_IDR_IMAGE_URL,
+        BLIN_SHAPE_ZYX,
+        LandmarksWidget,
+        TOY_SHAPE_ZYX,
+        VolumeCubeWidget,
+        ad,
+        cells_in_inspect_window,
+        mo,
+        np,
+    )
 
 
 @app.cell
-def _():
-    # Offline fallback for CI / no-network (Playwright uses harness toy).
-    USE_TOY_VOLUME = False
-    return
+def _(
+    BLIN_IDR_IMAGE_URL,
+    BLIN_SHAPE_ZYX,
+    TOY_SHAPE_ZYX,
+    USE_TOY_VOLUME,
+    VolumeCubeWidget,
+    ad,
+    np,
+):
+    if USE_TOY_VOLUME:
+        cube = VolumeCubeWidget.toy()
+        depth, height, width = TOY_SHAPE_ZYX
+    else:
+        cube = VolumeCubeWidget.from_url(
+            BLIN_IDR_IMAGE_URL,
+            labels_url="",
+            shape_zyx=BLIN_SHAPE_ZYX,
+        )
+        depth, height, width = BLIN_SHAPE_ZYX
+
+    rng = np.random.default_rng(0)
+    xy = np.column_stack(
+        [
+            rng.uniform(20, width - 20, 600),
+            rng.uniform(20, height - 20, 600),
+        ]
+    )
+    adata = ad.AnnData(np.zeros((xy.shape[0], 1), dtype=np.float32))
+    adata.obsm["spatial"] = xy
+    return adata, cube, depth, height, width
 
 
 @app.cell
@@ -105,7 +148,17 @@ def _(cube, height, landmarks, width, x_slice, y_slice, z_slice):
 
 
 @app.cell
-def _(adata, cells_in_inspect_window, cube, landmarks, mo):
+def _(
+    adata,
+    cells_in_inspect_window,
+    cube,
+    cube_ui,
+    landmarks,
+    mo,
+    x_slice,
+    y_slice,
+    z_slice,
+):
     if landmarks.inspect_cx is None:
         analysis = mo.md(
             "Click **Inspect** on tissue to drive the cube window and run analysis."
@@ -123,11 +176,7 @@ def _(adata, cells_in_inspect_window, cube, landmarks, mo):
             f"inspect window at ({landmarks.inspect_cx:.0f}, {landmarks.inspect_cy:.0f}) "
             f"· cube Z {cube.slice_z_min:.0f}–{cube.slice_z_max:.0f}"
         )
-    return (analysis,)
 
-
-@app.cell
-def _(analysis, cube_ui, landmarks, mo, x_slice, y_slice, z_slice):
     mo.vstack(
         [
             mo.hstack([landmarks, cube_ui], widths=[3, 1]),
