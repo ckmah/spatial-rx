@@ -104,7 +104,121 @@
 }
 
 @layer base {
-  .spatial-rx-widget * {
+  .spatial-rx-widget *:not([class*="luxar-"]) {
     @apply border-border outline-ring/50;
   }
+}
+
+/*
+ * Luxar embed: height is driven by React resize state + applyLuxarHostBounds().
+ * Do not cap .luxar-viewer with a fixed max-height here — that clips resize.
+ */
+.spatial-rx-luxar-host {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.spatial-rx-widget.luxar-viewer {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.luxar-viewer-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Spatial-rx owns chrome. Hide Luxar's built-in rail and panels. */
+.luxar-viewer-shell > .luxar-control-rail,
+.luxar-viewer-shell > .luxar-control-rail-hint,
+.luxar-viewer-shell .luxar-layers-panel,
+.luxar-viewer-shell .luxar-gui,
+.luxar-viewer-shell .luxar-dimension-sliders,
+.luxar-viewer-shell .luxar-dataset-browser,
+.luxar-viewer-shell .luxar-data-monitor,
+.luxar-viewer-shell .luxar-help-overlay,
+.luxar-viewer-shell .luxar-debug-console,
+.luxar-viewer-shell .luxar-recording-panel,
+.luxar-viewer-shell .luxar-colormap-legend,
+.luxar-viewer-shell .luxar-toast {
+  display: none !important;
+}
+
+.luxar-embed-canvas-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.luxar-viewer-shell > .luxar-embed-canvas-frame .luxar-embed-canvas,
+.luxar-viewer-shell > canvas,
+.luxar-viewer-shell > .luxar-embed-canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 100%;
+  pointer-events: auto;
+}
+
+.luxar-viewer-shell > .luxar-embed-canvas {
+  outline: none;
+}
+
+.luxar-viewer--fs .luxar__resize,
+.luxar-viewer--overlay-fs .luxar__resize {
+  display: none;
+}
+
+.luxar__resize {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  z-index: 25;
+  width: 56px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+  pointer-events: auto;
+  background: transparent;
+}
+
+.luxar__resize::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 4px;
+  border-radius: 9999px;
+  transform: translate(-50%, -50%);
+  background: rgb(163 163 163);
+  opacity: 0.45;
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, #0a0a0a 80%, transparent),
+    0 1px 4px rgba(0, 0, 0, 0.12);
+  transition: opacity 0.15s ease;
+}
+
+.luxar__resize:hover::after,
+.luxar__resize:focus-visible::after {
+  opacity: 0.75;
+}
+
+.luxar__resize:focus-visible {
+  outline: none;
 }

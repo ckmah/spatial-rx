@@ -76,7 +76,7 @@ Durable do/don't rules for agents. Prefer short tables over prose; vocabulary ma
 
 | Prefer | Avoid |
 | --- | --- |
-| Imaging / single-molecule resolved platforms; expand live landmarks chrome ([`frontend/PRODUCT.md`](frontend/PRODUCT.md)) | Visium HD / spot-parity UX; speculative overview mockups as the design process (use [`frontend/DESIGN.md`](frontend/DESIGN.md) + harness; see [`docs/widget-ui-dev.md`](docs/widget-ui-dev.md)) |
+| Imaging / single-molecule resolved platforms; expand live landmarks chrome ([`frontend/PRODUCT.md`](frontend/PRODUCT.md)); Luxar for SpatialData explore/share ([`spatial_rx/luxar_viewer.py`](spatial_rx/luxar_viewer.py)) | Visium HD / spot-parity UX; speculative overview mockups as the design process (use [`frontend/DESIGN.md`](frontend/DESIGN.md) + harness; see [`docs/widget-ui-dev.md`](docs/widget-ui-dev.md)); wiring Luxar into VolumeCube or Landmarks inspect |
 
 ### Architecture (ADRs)
 

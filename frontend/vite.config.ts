@@ -13,6 +13,7 @@ const outDir = path.resolve(repoRoot, "spatial_rx/static/bundled");
 
 /** One entry per anywidget that uses shadcn/React. */
 const widgetEntries = {
+  luxar: path.resolve(rootDir, "src/widgets/luxar/index.tsx"),
   "volume-cube": path.resolve(rootDir, "src/widgets/volume-cube/index.tsx"),
   gallery: path.resolve(rootDir, "src/widgets/gallery/index.tsx"),
   landmarks: path.resolve(rootDir, "src/widgets/landmarks/index.tsx"),
@@ -27,6 +28,7 @@ const singleWidget = Object.keys(entries).length === 1;
 
 const devWidget = process.env.DEV_WIDGET;
 const harnessRoots: Record<string, string> = {
+  luxar: path.resolve(devDir, "luxar"),
   "volume-cube": path.resolve(devDir, "volume-cube"),
   "notebook-link": path.resolve(devDir, "notebook-link"),
 };

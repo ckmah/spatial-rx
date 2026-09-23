@@ -5,6 +5,7 @@ import json
 import numpy as np
 from urllib.request import urlopen
 
+from spatial_rx.http_serve import serve_directory
 from spatial_rx.volume_cube import (
     BLIN_IDR_IMAGE_URL,
     BLIN_SHAPE_ZYX,
@@ -14,7 +15,6 @@ from spatial_rx.volume_cube import (
     VolumeCubeWidget,
     cells_in_inspect_window,
     mid_z_slab,
-    serve_directory,
     write_toy_ome_zarr,
 )
 
