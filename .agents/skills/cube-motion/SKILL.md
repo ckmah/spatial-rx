@@ -1,6 +1,10 @@
 ---
 name: cube-motion
-description: Use when adding UI motion with cube-motion. Four fixed motions (rise, leave, morph, reveal) on the Web Animations API with React and Solid components. Nothing to tune; pick the job.
+description: >-
+  Use only when adding or changing cube-motion primitives already in the codebase:
+  `rise`, `leave`, `morph`, `reveal` and their React/Solid components (`<Rise>`,
+  `<Morph>`, `<Reveal>`). Does not own behavioral verification — for LandmarksWidget
+  proof use verify-landmarks.
 ---
 
 # cube-motion

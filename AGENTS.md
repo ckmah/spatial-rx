@@ -4,19 +4,19 @@ Guidance for agents working in **spatial-rx**.
 
 Domain language: [`CONTEXT.md`](CONTEXT.md).
 
-Before merging LandmarksWidget changes, verify behavior via Playwright e2e and the feature map in [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/) (on `main`). Before merging VolumeCubeWidget changes, use [`.agents/skills/verify-volume-cube/`](.agents/skills/verify-volume-cube/). Active roadmap: [`ROADMAP.md`](ROADMAP.md).
+Before merging LandmarksWidget changes, verify behavior via Playwright e2e and the feature map in [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/). Before merging VolumeCubeWidget changes, use [`.agents/skills/verify-volume-cube/`](.agents/skills/verify-volume-cube/). Full gate: [Merge policy](#merge-policy). Active roadmap: [`ROADMAP.md`](ROADMAP.md).
 
 ## Skills precedence
 
 When multiple skills could apply, follow this order:
 
 1. **Behavioral proof / before merge widget changes**
-   - Landmarks: [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/) (on `main`)
+   - Landmarks: [`.agents/skills/verify-landmarks/`](.agents/skills/verify-landmarks/)
    - VolumeCube: [`.agents/skills/verify-volume-cube/`](.agents/skills/verify-volume-cube/)
 2. **Widget chrome composition** — [`.agents/skills/shadcn-anywidget/SKILL.md`](.agents/skills/shadcn-anywidget/SKILL.md), then [`.agents/skills/shadcn/SKILL.md`](.agents/skills/shadcn/SKILL.md)
 3. **Motion primitives already in use** — [`.agents/skills/cube-motion/SKILL.md`](.agents/skills/cube-motion/SKILL.md) only when editing `Rise` / `Morph` / `leave` / `reveal` usage
 
-Playwright proofs plus feature maps are the standard for widget work on user-visible surfaces.
+Soft Float chrome plus Playwright proofs are the standard for widget work on user-visible surfaces.
 
 ## Merge policy
 
@@ -27,7 +27,7 @@ Less-supervision gate for agents merging their own PRs. CI green alone is not a 
 1. CI green on the head commit.
 2. Merge conflicts resolved; PR not left as draft when intending to land.
 3. Verification PASS by change class:
-   - **LandmarksWidget / landmarks surface** (`frontend/src/widgets/landmarks/`, `spatial_rx/static/landmarks.js`, landmark traitlets, selection/neighborhood UX): run relevant Playwright + match verify-landmarks feature map proof criteria for touched mapped capabilities (on `main`).
+   - **LandmarksWidget / landmarks surface** (`frontend/src/widgets/landmarks/`, `spatial_rx/static/landmarks.js`, landmark traitlets, selection/neighborhood UX): run relevant Playwright + match [verify-landmarks feature map](.agents/skills/verify-landmarks/) proof criteria for touched mapped capabilities; update the map when adding coverage.
    - **VolumeCubeWidget / volume-cube surface** (`frontend/src/widgets/volume-cube/`, `spatial_rx/volume_cube.py`, Viv/OME-Zarr wiring, `window_*` traitlets): run `npm run test:e2e:volume-cube` + match [verify-volume-cube feature map](.agents/skills/verify-volume-cube/) proof criteria for touched capabilities; update the map when adding coverage.
    - **Other UI with a Playwright tier**: run the path-gated e2e that covers the change ([`frontend/e2e/README.md`](frontend/e2e/README.md), [`.github/workflows/frontend-e2e.yml`](.github/workflows/frontend-e2e.yml)).
    - **Docs / AGENTS / skills / non-runtime only**: feature-map not required; CI + conflict-free is enough unless the PR also touches runtime UI.
@@ -42,6 +42,50 @@ Less-supervision gate for agents merging their own PRs. CI green alone is not a 
 - Dependent/stacked PR whose ancestor is not yet merged and verified
 
 **How to merge:** prefer squash + delete branch. Leave a brief PR note of what was verified (spec names / feature map files).
+
+## Patterns and anti-patterns
+
+Durable do/don't rules for agents. Prefer short tables over prose; vocabulary matches [`CONTEXT.md`](CONTEXT.md).
+
+### Data and Python
+
+| Prefer | Avoid |
+| --- | --- |
+| Hold a **reference** to the caller's AnnData; pack genes at construct as designed ([`CONTEXT.md`](CONTEXT.md)) | `obs.copy()`, densifying full `X`, inventing a second CRS for landmarks ([`docs/landmarks-spatialdata-contract.md`](docs/landmarks-spatialdata-contract.md)) |
+| Landmark persistence via `landmarks_to_geodataframe` / `geodataframe_to_landmarks` | Treating selections as SpatialData geometry export (M1 contract) |
+| Selection hits via `obs_names` / `get_obs_names` / `assign_obs_mask` | Positional indices for selection membership |
+| Neighborhood expand in the browser from coordinates | Required or synced `obsp` neighbor graphs |
+
+### Chrome and packaging
+
+| Prefer | Avoid |
+| --- | --- |
+| shadcn/ReUI primitives for chrome; Soft Float patterns already in landmarks ([`frontend/DESIGN.md`](frontend/DESIGN.md), [Widgets](#widgets)) | Hand-rolled buttons/panels when a UI primitive exists; painting host `:root` (scope tokens under widget / Soft Float) |
+| `_esm` as `pathlib.Path` to bundled `.mjs`; anywidget HMR watch flow ([Widget UI development](#widget-ui-development), [`docs/widget-packaging.md`](docs/widget-packaging.md)) | `.read_text()` on bundle; pointing `_esm` at Vite `localhost:5173` |
+
+### Verification and PRs
+
+| Prefer | Avoid |
+| --- | --- |
+| Follow [Merge policy](#merge-policy) verification by change class; update verify-landmarks / verify-volume-cube feature maps when adding coverage | Merging on CI green alone — see [Merge policy](#merge-policy) |
+| Path-gated e2e tiers ([`frontend/e2e/README.md`](frontend/e2e/README.md), [`.github/workflows/frontend-e2e.yml`](.github/workflows/frontend-e2e.yml)) | Inventing UI in e2e/feature map that has no real product surface |
+| PR visual comments via [`.github/scripts/post-playwright-visuals.sh`](.github/scripts/post-playwright-visuals.sh) | — |
+| Resolve merge conflicts before marking a PR ready for review | — |
+
+### Product scope
+
+| Prefer | Avoid |
+| --- | --- |
+| Imaging / single-molecule resolved platforms; expand live landmarks chrome ([`frontend/PRODUCT.md`](frontend/PRODUCT.md)) | Visium HD / spot-parity UX; speculative overview mockups as the design process (use [`frontend/DESIGN.md`](frontend/DESIGN.md) + harness; see [`docs/widget-ui-dev.md`](docs/widget-ui-dev.md)) |
+
+### Architecture (ADRs)
+
+| Prefer | Avoid |
+| --- | --- |
+| Prebuilt bundles in the wheel; consumers never need Node ([ADR 0001](docs/adr/0001-prebuilt-bundles-node-free-install.md)) | Node at `pip install`, CDN runtime bundles, or EsmWidget CDN imports without a build step |
+| Named traitlets as the widget contract ([ADR 0002](docs/adr/0002-named-traitlets-as-widget-contract.md)) | Single generic `data` JSON blob for library widgets |
+| One deck.gl orthographic `Deck` for all geometry ([ADR 0003](docs/adr/0003-deckgl-landmarks-renderer.md)) | A second 2D canvas camera that drifts from the deck.gl viewport |
+| Client-side neighborhood overlay from coordinates ([ADR 0004](docs/adr/0004-neighborhood-visuals.md)) | Syncing or requiring `obsp` CSR graphs for expand visuals |
 
 ## Widgets
 
@@ -82,7 +126,7 @@ cd frontend && npm run dev:notebook-link
 Landmarks and VolumeCube (Viv) share one **root** stack in `frontend/package.json`:
 
 - `@deck.gl/*@9.2.11`, `@luma.gl/*@9.2.6`, `@loaders.gl/core@4.3.4`
-- `overrides` dedupe Viv’s nested peers to those versions
+- `overrides` dedupe Viv's nested peers to those versions
 
 Each widget still ships as its **own** bundled `.mjs`; notebook cells do not share a
 runtime Deck instance. Vite aliases all `@deck.gl/*` and `@luma.gl/*` imports to the
@@ -91,6 +135,5 @@ root copies during every widget build (`frontend/vite.config.ts`).
 Viv dev harnesses (`dev:volume-cube`, `dev:notebook-link`) use default Vite
 `optimizeDeps`; the landmarks harness excludes `@hms-dbmi/viv` from pre-bundling.
 
-`_esm` must remain a `pathlib.Path` to the bundled `.mjs`. Do not `.read_text()`
-it and do not point it at `http://localhost:5173`. Details:
-[`docs/widget-packaging.md`](docs/widget-packaging.md).
+`_esm` must remain a `pathlib.Path` to the bundled `.mjs` — see
+[Chrome and packaging](#chrome-and-packaging) and [`docs/widget-packaging.md`](docs/widget-packaging.md).
