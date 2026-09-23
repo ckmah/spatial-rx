@@ -32,6 +32,17 @@ def require_luxar() -> None:
         ) from exc
 
 
+def luxar_supported() -> bool:
+    """Return True when this Python can compile Luxar scenes (3.12+ and luxar installed)."""
+    if sys.version_info < (3, 12):
+        return False
+    try:
+        require_luxar()
+    except LuxarUnavailableError:
+        return False
+    return True
+
+
 def gsplats_available() -> bool:
     """Return True when the optional Luxar gsplats stack is importable."""
     require_luxar()
@@ -210,3 +221,7 @@ def compile_spatialdata(
                 )
 
     return dest
+
+
+to_luxar_zarr = compile_spatialdata
+compile_scene = compile_spatialdata

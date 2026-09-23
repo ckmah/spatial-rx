@@ -1,4 +1,4 @@
-"""Luxar SpatialData compiler and widget (CPU path, no GPU)."""
+"""Luxar SpatialData compiler and view-only widget (CPU path, no GPU)."""
 
 import json
 import sys
@@ -10,13 +10,15 @@ import pytest
 from spatial_rx.blobs_3d import blobs_3d
 from spatial_rx.luxar_scene import (
     LuxarUnavailableError,
-    compile_spatialdata,
+    compile_scene,
     gsplats_available,
     labels_to_mesh,
+    luxar_supported,
     require_luxar,
     shapes_to_mesh,
+    to_luxar_zarr,
 )
-from spatial_rx.luxar_viewer import LuxarWidget, luxar_supported
+from spatial_rx.luxar_viewer import LuxarWidget, view_luxar_zarr
 
 
 def test_blobs_3d_fixture():
@@ -53,11 +55,15 @@ def test_shapes_to_mesh():
     assert len(faces) > 0
 
 
+def test_to_luxar_zarr_aliases_compile_scene():
+    assert to_luxar_zarr is compile_scene
+
+
 @pytest.mark.skipif(not luxar_supported(), reason="luxar optional extra not installed")
-def test_compile_spatialdata_points_and_meshes(tmp_path):
+def test_to_luxar_zarr_points_and_meshes(tmp_path):
     sdata = blobs_3d(length=32, n_points=12, n_shapes=2, seed=2)
     dest = tmp_path / "scene.luxar.zarr"
-    compile_spatialdata(sdata, dest, include_gsplats=False)
+    to_luxar_zarr(sdata, dest, include_gsplats=False)
     assert (dest / "zarr.json").is_file()
     assert (dest / "blobs_points").is_dir()
     assert (dest / "blobs_spheres_mesh").is_dir()
@@ -65,11 +71,14 @@ def test_compile_spatialdata_points_and_meshes(tmp_path):
 
 
 @pytest.mark.skipif(not luxar_supported(), reason="luxar optional extra not installed")
-def test_luxar_widget_serves_scene(tmp_path):
-    widget = LuxarWidget.from_blobs_3d(dest=tmp_path / "scene.luxar.zarr")
+def test_luxar_widget_views_served_scene(tmp_path):
+    sdata = blobs_3d(length=32, n_points=12, n_shapes=2, seed=3)
+    dest = tmp_path / "scene.luxar.zarr"
+    to_luxar_zarr(sdata, dest, include_gsplats=False)
+    widget = view_luxar_zarr(dest)
     try:
         assert widget.src.endswith("/")
-        assert widget.status == "compiled"
+        assert isinstance(widget, LuxarWidget)
         with urlopen(f"{widget.src}zarr.json") as resp:
             body = json.loads(resp.read().decode("utf-8"))
         assert body["attributes"]["format_type"] == "luxar_zarr"

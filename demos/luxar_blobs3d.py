@@ -11,9 +11,10 @@ def _():
     import marimo as mo
 
     from spatial_rx.blobs_3d import blobs_3d
-    from spatial_rx.luxar_viewer import LuxarWidget, luxar_supported
+    from spatial_rx.luxar_scene import luxar_supported, to_luxar_zarr
+    from spatial_rx.luxar_viewer import view_luxar_zarr
 
-    return LuxarWidget, blobs_3d, luxar_supported, mo
+    return blobs_3d, luxar_supported, mo, to_luxar_zarr, view_luxar_zarr
 
 
 @app.cell(hide_code=True)
@@ -30,17 +31,22 @@ def _(luxar_supported, mo):
     # Luxar blobs (3D)
 
     Parallel explore/share viewer for SpatialData — separate from VolumeCube/Viv.
-    This demo compiles points, shape meshes, label isosurfaces, and (optionally)
-    image Gaussian splats from the synthetic ``blobs_3d`` fixture.
+    **Compile** the synthetic ``blobs_3d`` fixture to ``.luxar.zarr`` in Python,
+    then **view** the served archive in the widget (no fitting inside the widget).
     """)
     return
 
 
 @app.cell
-def _(LuxarWidget, blobs_3d):
+def _(blobs_3d, to_luxar_zarr, view_luxar_zarr):
+    import tempfile
+    from pathlib import Path
+
     sdata = blobs_3d(length=48, n_points=60, n_shapes=4, seed=0)
-    widget = LuxarWidget.from_spatialdata(sdata, include_gsplats=False)
-    return sdata, widget
+    dest = Path(tempfile.mkdtemp()) / "blobs3d.luxar.zarr"
+    to_luxar_zarr(sdata, dest, include_gsplats=False)
+    widget = view_luxar_zarr(dest)
+    return dest, sdata, widget
 
 
 @app.cell

@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 
 type LuxarModel = {
   src: string;
-  status: string;
 };
 
 function absoluteUrl(url: string): string {
@@ -29,7 +28,7 @@ export function LuxarView({
   };
 }) {
   const dark = useNotebookTheme(hostEl.parentElement);
-  const { src, status } = useModel<LuxarModel>(model, ["src", "status"]);
+  const { src } = useModel<LuxarModel>(model, ["src"]);
   const shellRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const appRef = useRef<LuxarApp | null>(null);
@@ -87,7 +86,6 @@ export function LuxarView({
           </p>
         ) : null}
       </div>
-      {status ? <p className="mt-2 text-xs text-muted-foreground">Scene: {status}</p> : null}
     </div>
   );
 }
