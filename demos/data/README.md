@@ -26,6 +26,12 @@ export_from_raw.py         # regenerate ileum/*.csv from a source .h5ad
   cross-section `20211215_WT_ile1_slice_4` (pre-cropped).
 - **figure1_spatial_analogy.png** — from Zormpas et al., *Cell* (2023)
   (geography ↔ spatial transcriptomics analogy).
+- **Volume cube demo** (`demos/volume-cube.py`) — IDR study
+  [idr0062](https://idr.openmicroscopy.org/search/?query=Name:idr0062) (Blin
+  nuclear segmentation), OME-Zarr served from
+  `https://minio-dev.openmicroscopy.org/idr/v0.3/idr0062-blin-nuclearsegmentation/6001240.zarr`
+  (level 0: 2 × 236 × 275 × 271, c/z/y/x, LaminB1 + DAPI). Not committed to
+  git; offline fallback is `VolumeCubeWidget.toy()`.
 
 To regenerate CSVs from a source panel `.h5ad`:
 

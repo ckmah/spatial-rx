@@ -81,7 +81,9 @@ function serveNotebookLinkFixture() {
       if (devWidget !== "notebook-link") return;
       server.middlewares.use("/fixture.json", (_req, res) => {
         res.setHeader("Content-Type", "application/json");
-        fs.createReadStream(path.resolve(devDir, "fixture.json")).pipe(res);
+        fs.createReadStream(
+          path.resolve(devDir, "volume-cube-fixture.json"),
+        ).pipe(res);
       });
     },
   };
