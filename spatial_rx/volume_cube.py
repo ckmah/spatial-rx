@@ -4,6 +4,11 @@ Competes with PolyrenderWidget (Fiber + GLB). A Landmarks inspect window
 (fixed 100 µm square) is consumed one-way via ``window_cx`` / ``window_cy``.
 The toy fixture is a small OME-Zarr (1 µm/voxel) served over loopback HTTP
 so Viv can ``fetch`` it.
+
+Landmarks ``obsm["spatial"]`` XY and cube ``window_cx`` / ``window_cy`` /
+``slice_*`` traits share the same coordinate frame: **one unit = one voxel**
+unless OME metadata supplies physical scales (the Blin IDR demo uses voxel
+indices directly; x=271, y=275, z=236).
 """
 
 from __future__ import annotations
@@ -25,6 +30,40 @@ TOY_SHAPE_ZYX = (64, 256, 256)
 TOY_CHUNK_ZYX = (32, 64, 64)
 TOY_UM_PER_VOXEL = 1.0
 DEFAULT_WINDOW_UM = 100.0
+
+# IDR Blin nuclear segmentation (idr0062) — public OME-Zarr for demos.
+# Level 0 shape (c, z, y, x): 2 × 236 × 275 × 271, uint16, LaminB1 + DAPI.
+# No /labels group; browser CORS OK. Playwright / CI use ``toy()`` instead.
+BLIN_IDR_IMAGE_URL = (
+    "https://minio-dev.openmicroscopy.org/idr/v0.3/"
+    "idr0062-blin-nuclearsegmentation/6001240.zarr"
+)
+BLIN_SHAPE_CZYX = (2, 236, 275, 271)
+BLIN_SHAPE_ZYX = (236, 275, 271)
+DEFAULT_Z_SLAB = 64
+
+
+def mid_z_slab(depth: int, slab: int = DEFAULT_Z_SLAB) -> tuple[float, float]:
+    """Return ``(z_min, z_max)`` for a centered Z slab (GPU-safe default)."""
+    slab = min(slab, depth)
+    z_min = (depth - slab) / 2.0
+    return z_min, z_min + slab
+
+
+def cells_in_inspect_window(
+    spatial_xy: np.ndarray,
+    cx: float,
+    cy: float,
+    size: float = DEFAULT_WINDOW_UM,
+) -> np.ndarray:
+    """Boolean mask of ``spatial_xy`` points inside the square inspect window."""
+    half = size / 2.0
+    return (
+        (spatial_xy[:, 0] >= cx - half)
+        & (spatial_xy[:, 0] <= cx + half)
+        & (spatial_xy[:, 1] >= cy - half)
+        & (spatial_xy[:, 1] <= cy + half)
+    )
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -204,6 +243,54 @@ class VolumeCubeWidget(AnyWidget):
             slice_y_max=slice_y_max,
             slice_z_min=slice_z_min,
             slice_z_max=slice_z_max,
+            **kwargs,
+        )
+
+    @classmethod
+    def from_url(
+        cls,
+        image_url: str,
+        labels_url: str = "",
+        *,
+        shape_zyx: tuple[int, int, int] | None = None,
+        z_slab: int | None = DEFAULT_Z_SLAB,
+        window_cx: float | None = None,
+        window_cy: float | None = None,
+        **kwargs: Any,
+    ) -> VolumeCubeWidget:
+        """Point at a remote or local OME-Zarr URL with slice defaults from shape.
+
+        When ``shape_zyx`` is known, ``slice_*`` maxima and window center default
+        to the volume extents. ``z_slab`` limits the Z range to a centered slab
+        (``DEFAULT_Z_SLAB`` planes) to reduce GPU memory next to Landmarks.
+        Pass ``z_slab=None`` to use the full Z extent.
+        """
+        slice_kwargs: dict[str, float] = {}
+        if shape_zyx is not None:
+            depth, height, width = shape_zyx
+            slice_kwargs = {
+                "slice_x_min": 0.0,
+                "slice_x_max": float(width),
+                "slice_y_min": 0.0,
+                "slice_y_max": float(height),
+            }
+            if z_slab is None:
+                slice_kwargs["slice_z_min"] = 0.0
+                slice_kwargs["slice_z_max"] = float(depth)
+            else:
+                z_min, z_max = mid_z_slab(depth, z_slab)
+                slice_kwargs["slice_z_min"] = z_min
+                slice_kwargs["slice_z_max"] = z_max
+            if window_cx is None:
+                window_cx = width / 2.0
+            if window_cy is None:
+                window_cy = height / 2.0
+        return cls(
+            image_url=image_url,
+            labels_url=labels_url,
+            window_cx=window_cx if window_cx is not None else 128.0,
+            window_cy=window_cy if window_cy is not None else 128.0,
+            **slice_kwargs,
             **kwargs,
         )
 

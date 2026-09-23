@@ -17,6 +17,8 @@ capability** to existing Playwright coverage — not a product roadmap.
 | [labels-toggle](labels-toggle.md) | `volume-cube.spec.ts` — `"labels switch shows and hides the labels VolumeViewer overlay"` | `labels-off` |
 | [axis-slice-traits](axis-slice-traits.md) | `volume-cube.spec.ts` — `"model patch updates axis slice readout"` | — |
 | [landmarks-inspect-drives-cube](landmarks-inspect-drives-cube.md) | `notebook-link.spec.ts` — `"Landmarks inspect click updates VolumeCube window readout"` | — |
+| [coord-contract-xy-frame](coord-contract-xy-frame.md) | `notebook-link.spec.ts` — `"inspect traits stay within volume XY extents"`; `test_coord_contract_landmarks_cube_xy` | — |
+| [python-analysis-inspect-window](python-analysis-inspect-window.md) | `test_coord_contract_landmarks_cube_xy`; `demos/volume-cube.py` analysis cell | — |
 
 ## Not yet mapped (spec exists, no feature file)
 

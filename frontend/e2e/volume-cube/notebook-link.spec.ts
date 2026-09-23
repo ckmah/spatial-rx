@@ -52,4 +52,23 @@ test.describe("VolumeCube notebook link", () => {
       ),
     ).toBeVisible();
   });
+
+  test("inspect traits stay within volume XY extents", async ({ page }) => {
+    await page.getByRole("radio", { name: "Inspect", exact: true }).click();
+    const box = await canvasBox(page);
+    await page.mouse.click(box.x + box.width * 0.62, box.y + box.height * 0.38);
+    await page.waitForTimeout(400);
+
+    const inspectCx = Number(await getModel(page, "inspect_cx"));
+    const inspectCy = Number(await getModel(page, "inspect_cy"));
+    const windowCx = Number(await getVolumeModel(page, "window_cx"));
+    const windowCy = Number(await getVolumeModel(page, "window_cy"));
+
+    expect(windowCx).toBeCloseTo(inspectCx, 0);
+    expect(windowCy).toBeCloseTo(inspectCy, 0);
+    expect(inspectCx).toBeGreaterThan(0);
+    expect(inspectCx).toBeLessThan(256);
+    expect(inspectCy).toBeGreaterThan(0);
+    expect(inspectCy).toBeLessThan(256);
+  });
 });
