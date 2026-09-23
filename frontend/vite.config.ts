@@ -13,6 +13,7 @@ const outDir = path.resolve(repoRoot, "spatial_rx/static/bundled");
 
 /** One entry per anywidget that uses shadcn/React. */
 const widgetEntries = {
+  luxar: path.resolve(rootDir, "src/widgets/luxar/index.tsx"),
   "volume-cube": path.resolve(rootDir, "src/widgets/volume-cube/index.tsx"),
   gallery: path.resolve(rootDir, "src/widgets/gallery/index.tsx"),
   landmarks: path.resolve(rootDir, "src/widgets/landmarks/index.tsx"),

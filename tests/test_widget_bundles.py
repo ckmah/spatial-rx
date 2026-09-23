@@ -17,3 +17,8 @@ def test_landmarks_bundle_does_not_reference_process_env():
 def test_volume_cube_bundle_does_not_reference_process_env():
     text = (BUNDLED / "volume-cube.mjs").read_text(encoding="utf-8")
     assert "process.env" not in text
+
+
+def test_luxar_bundle_does_not_reference_process_env():
+    text = (BUNDLED / "luxar.mjs").read_text(encoding="utf-8")
+    assert "process.env" not in text
