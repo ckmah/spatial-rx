@@ -11,13 +11,13 @@ def _():
     import marimo as mo
 
     from spatial_rx.blobs_3d import blobs_3d
-    from spatial_rx.luxar_scene import luxar_supported, to_luxar_zarr
+    from spatial_rx.luxar_scene import gsplats_available, luxar_supported, to_luxar_zarr
     from spatial_rx.luxar_viewer import view_luxar_zarr
 
-    return blobs_3d, luxar_supported, mo, to_luxar_zarr, view_luxar_zarr
+    return blobs_3d, gsplats_available, luxar_supported, mo, to_luxar_zarr, view_luxar_zarr
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(luxar_supported, mo):
     if not luxar_supported():
         mo.stop(
@@ -31,20 +31,31 @@ def _(luxar_supported, mo):
     # Luxar blobs (3D)
 
     Parallel explore/share viewer for SpatialData — separate from VolumeCube/Viv.
-    **Compile** the synthetic ``blobs_3d`` fixture to ``.luxar.zarr`` in Python,
-    then **view** the served archive in the widget (no fitting inside the widget).
+
+    1. **Compile** — `to_luxar_zarr(sdata, dest, points=[...], shapes=[...], labels=[...], images=[...])`
+    2. **View** — `view_luxar_zarr(dest)` serves the archive; widget shows **Layers** + **Reset view**
+
+    Rebuild frontend after widget changes: `cd frontend && npm run build:luxar`
     """)
     return
 
 
 @app.cell
-def _(blobs_3d, to_luxar_zarr, view_luxar_zarr):
+def _(blobs_3d, gsplats_available, to_luxar_zarr, view_luxar_zarr):
     import tempfile
     from pathlib import Path
 
     sdata = blobs_3d(length=48, n_points=60, n_shapes=4, seed=0)
     dest = Path(tempfile.mkdtemp()) / "blobs3d.luxar.zarr"
-    to_luxar_zarr(sdata, dest, include_gsplats=False)
+    image_keys = ["blobs_image"] if gsplats_available() else ()
+    to_luxar_zarr(
+        sdata,
+        dest,
+        points=["blobs_points"],
+        shapes=["blobs_spheres"],
+        labels=["blobs_labels"],
+        images=image_keys,
+    )
     widget = view_luxar_zarr(dest)
     return dest, sdata, widget
 

@@ -59,27 +59,50 @@ def test_to_luxar_zarr_aliases_compile_scene():
     assert to_luxar_zarr is compile_scene
 
 
+def _layer_attrs(dest, node_name: str) -> dict:
+    with (dest / "zarr.json").open(encoding="utf-8") as fh:
+        meta = json.load(fh)
+    return meta["consolidated_metadata"]["metadata"][node_name]["attributes"]
+
+
 @pytest.mark.skipif(not luxar_supported(), reason="luxar optional extra not installed")
 def test_to_luxar_zarr_points_and_meshes(tmp_path):
     sdata = blobs_3d(length=32, n_points=12, n_shapes=2, seed=2)
     dest = tmp_path / "scene.luxar.zarr"
-    to_luxar_zarr(sdata, dest, include_gsplats=False)
+    to_luxar_zarr(
+        sdata,
+        dest,
+        points=["blobs_points"],
+        shapes=["blobs_spheres"],
+        labels=["blobs_labels"],
+        images=(),
+    )
     assert (dest / "zarr.json").is_file()
     assert (dest / "blobs_points").is_dir()
     assert (dest / "blobs_spheres_mesh").is_dir()
     assert (dest / "blobs_labels_isosurface").is_dir()
+    assert _layer_attrs(dest, "blobs_points")["layer"] is True
+    assert _layer_attrs(dest, "blobs_spheres_mesh")["layer"] is True
+    assert _layer_attrs(dest, "blobs_labels_isosurface")["layer"] is True
 
 
 @pytest.mark.skipif(not luxar_supported(), reason="luxar optional extra not installed")
 def test_luxar_widget_views_served_scene(tmp_path):
     sdata = blobs_3d(length=32, n_points=12, n_shapes=2, seed=3)
     dest = tmp_path / "scene.luxar.zarr"
-    to_luxar_zarr(sdata, dest, include_gsplats=False)
+    to_luxar_zarr(
+        sdata,
+        dest,
+        points=["blobs_points"],
+        shapes=["blobs_spheres"],
+        labels=["blobs_labels"],
+        images=(),
+    )
     widget = view_luxar_zarr(dest)
     try:
-        assert widget.src.endswith("/")
+        assert not widget.src.endswith("/")
         assert isinstance(widget, LuxarWidget)
-        with urlopen(f"{widget.src}zarr.json") as resp:
+        with urlopen(f"{widget.src}/zarr.json") as resp:
             body = json.loads(resp.read().decode("utf-8"))
         assert body["attributes"]["format_type"] == "luxar_zarr"
         assert resp.headers["Access-Control-Allow-Origin"] == "*"
@@ -102,3 +125,21 @@ def test_require_luxar_fails_when_missing():
 @pytest.mark.skipif(not luxar_supported(), reason="luxar optional extra not installed")
 def test_gsplats_optional_by_default():
     assert gsplats_available() is False or gsplats_available() is True
+
+
+@pytest.mark.skipif(not gsplats_available(), reason="luxar-gsplats extra not installed")
+def test_gsplats_nodes_are_layers(tmp_path):
+    sdata = blobs_3d(length=16, n_points=4, n_shapes=1, seed=4)
+    dest = tmp_path / "scene.luxar.zarr"
+    to_luxar_zarr(
+        sdata,
+        dest,
+        points=(),
+        shapes=(),
+        labels=(),
+        images=["blobs_image"],
+        gsplat_seeds=20,
+        gsplat_iters=5,
+    )
+    assert (dest / "blobs_image_gsplats").is_dir()
+    assert _layer_attrs(dest, "blobs_image_gsplats")["layer"] is True

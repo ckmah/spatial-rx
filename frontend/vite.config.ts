@@ -28,6 +28,7 @@ const singleWidget = Object.keys(entries).length === 1;
 
 const devWidget = process.env.DEV_WIDGET;
 const harnessRoots: Record<string, string> = {
+  luxar: path.resolve(devDir, "luxar"),
   "volume-cube": path.resolve(devDir, "volume-cube"),
   "notebook-link": path.resolve(devDir, "notebook-link"),
 };

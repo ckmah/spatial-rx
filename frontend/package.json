@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "SPATIAL_RX_BUILD_WIDGET=gallery vite build && SPATIAL_RX_BUILD_WIDGET=luxar vite build && SPATIAL_RX_BUILD_WIDGET=volume-cube vite build && SPATIAL_RX_BUILD_WIDGET=landmarks vite build",
+    "build": "SPATIAL_RX_BUILD_WIDGET=gallery vite build && npm run build:luxar && SPATIAL_RX_BUILD_WIDGET=volume-cube vite build && SPATIAL_RX_BUILD_WIDGET=landmarks vite build",
+    "build:luxar": "SPATIAL_RX_BUILD_WIDGET=luxar vite build && node scripts/copy-luxar-css.mjs && node scripts/concat-luxar-widget-css.mjs",
     "dev:landmarks": "vite",
     "dev:fixture": "uv run --directory .. python frontend/dev/export-fixture.py",
     "watch": "SPATIAL_RX_BUILD_WIDGET=landmarks vite build --watch",
@@ -12,6 +13,7 @@
     "watch:luxar": "SPATIAL_RX_BUILD_WIDGET=luxar vite build --watch",
     "watch:volume-cube": "SPATIAL_RX_BUILD_WIDGET=volume-cube vite build --watch",
     "dev:volume-cube": "DEV_WIDGET=volume-cube vite",
+    "dev:luxar": "DEV_WIDGET=luxar vite",
     "dev:notebook-link": "DEV_WIDGET=notebook-link vite",
     "typecheck": "tsc --noEmit",
     "test:e2e": "npm run test:e2e:core && npm run test:e2e:landmarks && npm run test:e2e:volume-cube",
