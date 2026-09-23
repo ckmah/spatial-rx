@@ -115,3 +115,9 @@ both resolve `@deck.gl/*` and `@luma.gl/*` to the **same root** versions in
 dedupe Viv’s nested peers. Each widget bundle embeds its own copy — there is no shared
 runtime Deck across anywidgets in a notebook cell. See `frontend/vite.config.ts` aliases
 and the `overrides` block in `frontend/package.json`.
+
+**anywidget constraint:** `_esm` as a `pathlib.Path` is read as text and loaded via a
+blob URL in the browser. Relative imports to sibling chunks (e.g. `./deck-luma.mjs`) will
+fail with “Failed to fetch dynamically imported module”. Each shipped widget must be one
+self-contained `.mjs`. Dual-widget pages that need a single luma runtime (e.g.
+landmarks + volume-cube) require a combined bundle or a dev harness URL (`_esm` href).

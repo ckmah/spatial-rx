@@ -1,11 +1,11 @@
 """Landmarks inspect drives VolumeCube; Python reacts to window and slice state.
 
-Default data: IDR Blin nuclear-segmentation OME-Zarr (idr0062) over HTTPS.
-Offline / CI: set ``USE_TOY_VOLUME = True`` to use ``VolumeCubeWidget.toy()``.
+Uses the IDR Blin nuclear-segmentation OME-Zarr (idr0062): LaminB1 + DAPI,
+271×275×236 voxels. Spatial points are a random XY overlay in the same voxel
+frame (this IDR release has no matching cell table).
 
-GPU note: the Blin volume is 236 Z planes × 2 channels; the demo defaults to a
-64-plane mid-Z slab and renders one channel in Viv to stay within GPU budget
-alongside Landmarks.
+A mid-Z slab (64 planes) keeps GPU use reasonable alongside Landmarks. The cube
+shows the 100-voxel inspect window in XY; Z is controlled by the slider below.
 """
 
 import marimo
@@ -13,8 +13,6 @@ import marimo
 __generated_with = "0.24.0"
 app = marimo.App(width="full")
 
-# Offline fallback for CI / no-network environments (Playwright uses harness toy).
-USE_TOY_VOLUME = False
 
 @app.cell
 def _():
@@ -26,7 +24,6 @@ def _():
     from spatial_rx.volume_cube import (
         BLIN_IDR_IMAGE_URL,
         BLIN_SHAPE_ZYX,
-        TOY_SHAPE_ZYX,
         cells_in_inspect_window,
     )
 
@@ -34,7 +31,6 @@ def _():
         BLIN_IDR_IMAGE_URL,
         BLIN_SHAPE_ZYX,
         LandmarksWidget,
-        TOY_SHAPE_ZYX,
         VolumeCubeWidget,
         ad,
         cells_in_inspect_window,
@@ -44,17 +40,13 @@ def _():
 
 
 @app.cell
-def _(BLIN_IDR_IMAGE_URL, BLIN_SHAPE_ZYX, TOY_SHAPE_ZYX, VolumeCubeWidget, ad, np):
-    if USE_TOY_VOLUME:
-        cube = VolumeCubeWidget.toy()
-        depth, height, width = TOY_SHAPE_ZYX
-    else:
-        cube = VolumeCubeWidget.from_url(
-            BLIN_IDR_IMAGE_URL,
-            labels_url="",
-            shape_zyx=BLIN_SHAPE_ZYX,
-        )
-        depth, height, width = BLIN_SHAPE_ZYX
+def _(BLIN_IDR_IMAGE_URL, BLIN_SHAPE_ZYX, VolumeCubeWidget, ad, np):
+    cube = VolumeCubeWidget.from_url(
+        BLIN_IDR_IMAGE_URL,
+        labels_url="",
+        shape_zyx=BLIN_SHAPE_ZYX,
+    )
+    depth, height, width = BLIN_SHAPE_ZYX
 
     rng = np.random.default_rng(0)
     xy = np.column_stack(
@@ -65,33 +57,29 @@ def _(BLIN_IDR_IMAGE_URL, BLIN_SHAPE_ZYX, TOY_SHAPE_ZYX, VolumeCubeWidget, ad, n
     )
     adata = ad.AnnData(np.zeros((xy.shape[0], 1), dtype=np.float32))
     adata.obsm["spatial"] = xy
-    return adata, cube, depth, height, width
+    adata.obs["region"] = rng.choice(["a", "b", "c"], xy.shape[0])
+    return adata, cube, depth
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    # Volume cube + landmarks
+
+    **Inspect** on the tissue map drives the detail cube window. The cube shows
+    that 100-voxel square in XY; adjust Z with the slider below.
+    """)
+    return
 
 
 @app.cell
 def _(LandmarksWidget, adata, mo):
-    landmarks = mo.ui.anywidget(LandmarksWidget(adata))
+    landmarks = mo.ui.anywidget(LandmarksWidget(adata, color="region"))
     return (landmarks,)
 
 
 @app.cell
-def _(cube, depth, height, mo, width):
-    x_slice = mo.ui.range_slider(
-        0,
-        width,
-        value=[int(cube.slice_x_min), int(cube.slice_x_max)],
-        step=1,
-        label="X slice (voxel)",
-        show_value=True,
-    )
-    y_slice = mo.ui.range_slider(
-        0,
-        height,
-        value=[int(cube.slice_y_min), int(cube.slice_y_max)],
-        step=1,
-        label="Y slice (voxel)",
-        show_value=True,
-    )
+def _(cube, depth, mo):
     z_slice = mo.ui.range_slider(
         0,
         depth,
@@ -100,7 +88,7 @@ def _(cube, depth, height, mo, width):
         label="Z slice (voxel)",
         show_value=True,
     )
-    return x_slice, y_slice, z_slice
+    return (z_slice,)
 
 
 @app.cell
@@ -110,30 +98,17 @@ def _(cube, mo):
 
 
 @app.cell
-def _(cube, cube_ui, landmarks, mo, x_slice, y_slice, z_slice):
-    cube.slice_x_min = float(x_slice.value[0])
-    cube.slice_x_max = float(x_slice.value[1])
-    cube.slice_y_min = float(y_slice.value[0])
-    cube.slice_y_max = float(y_slice.value[1])
+def _(adata, cells_in_inspect_window, cube, cube_ui, landmarks, mo, z_slice):
     cube.slice_z_min = float(z_slice.value[0])
     cube.slice_z_max = float(z_slice.value[1])
     if landmarks.inspect_cx is not None:
         cube.window_cx = float(landmarks.inspect_cx)
         cube.window_cy = float(landmarks.inspect_cy)
-    return mo.vstack(
-        [
-            mo.hstack([landmarks, cube_ui], widths="equal"),
-            mo.hstack([x_slice, y_slice, z_slice], widths="equal"),
-        ],
-        gap=1,
-    )
 
-
-@app.cell
-def _(adata, cells_in_inspect_window, cube, landmarks, mo):
     if landmarks.inspect_cx is None:
         analysis = mo.md(
-            "Click **Inspect** on tissue to drive the cube window and run analysis."
+            "Choose **Inspect** on the tissue map, then click to drive the "
+            "detail cube and run analysis here."
         )
     else:
         mask = cells_in_inspect_window(
@@ -142,18 +117,20 @@ def _(adata, cells_in_inspect_window, cube, landmarks, mo):
             landmarks.inspect_cy,
             landmarks.inspect_size_um,
         )
-        n_cells = int(mask.sum())
+        n_points = int(mask.sum())
         analysis = mo.md(
-            f"**{n_cells}** synthetic cells inside the {landmarks.inspect_size_um:g} "
+            f"**{n_points}** spatial points in the {landmarks.inspect_size_um:g}-voxel "
             f"inspect window at ({landmarks.inspect_cx:.0f}, {landmarks.inspect_cy:.0f}) "
             f"· cube Z {cube.slice_z_min:.0f}–{cube.slice_z_max:.0f}"
         )
-    return (analysis,)
 
-
-@app.cell
-def _(analysis):
-    analysis
+    mo.vstack(
+        [
+            mo.hstack([landmarks, cube_ui], widths=[1, 1]),
+            z_slice,
+            analysis,
+        ],
+    )
     return
 
 
