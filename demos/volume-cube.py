@@ -1,7 +1,7 @@
 """Landmarks inspect drives VolumeCube; Python reacts to window and slice state.
 
 Default data: IDR Blin nuclear-segmentation OME-Zarr (idr0062) over HTTPS.
-Offline / CI: set ``USE_TOY_VOLUME = True`` to use ``VolumeCubeWidget.toy()``.
+Offline / CI: set ``USE_TOY_VOLUME = True`` in the config cell to use ``VolumeCubeWidget.toy()``.
 
 GPU note: the Blin volume is 236 Z planes × 2 channels; the demo defaults to a
 64-plane mid-Z slab and renders one channel in Viv to stay within GPU budget
@@ -15,9 +15,6 @@ import marimo
 
 __generated_with = "0.24.0"
 app = marimo.App(width="full")
-
-# Offline fallback for CI / no-network environments (Playwright uses harness toy).
-USE_TOY_VOLUME = False
 
 
 @app.cell
@@ -34,42 +31,14 @@ def _():
         cells_in_inspect_window,
     )
 
-    return (
-        BLIN_IDR_IMAGE_URL,
-        BLIN_SHAPE_ZYX,
-        LandmarksWidget,
-        TOY_SHAPE_ZYX,
-        VolumeCubeWidget,
-        ad,
-        cells_in_inspect_window,
-        mo,
-        np,
-    )
+    return LandmarksWidget, cells_in_inspect_window, mo
 
 
 @app.cell
-def _(BLIN_IDR_IMAGE_URL, BLIN_SHAPE_ZYX, TOY_SHAPE_ZYX, VolumeCubeWidget, ad, np):
-    if USE_TOY_VOLUME:
-        cube = VolumeCubeWidget.toy()
-        depth, height, width = TOY_SHAPE_ZYX
-    else:
-        cube = VolumeCubeWidget.from_url(
-            BLIN_IDR_IMAGE_URL,
-            labels_url="",
-            shape_zyx=BLIN_SHAPE_ZYX,
-        )
-        depth, height, width = BLIN_SHAPE_ZYX
-
-    rng = np.random.default_rng(0)
-    xy = np.column_stack(
-        [
-            rng.uniform(20, width - 20, 600),
-            rng.uniform(20, height - 20, 600),
-        ]
-    )
-    adata = ad.AnnData(np.zeros((xy.shape[0], 1), dtype=np.float32))
-    adata.obsm["spatial"] = xy
-    return adata, cube, depth, height, width
+def _():
+    # Offline fallback for CI / no-network (Playwright uses harness toy).
+    USE_TOY_VOLUME = False
+    return
 
 
 @app.cell
