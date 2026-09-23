@@ -3,7 +3,6 @@ import { VolumeViewer, getDefaultInitialViewState, loadOmeZarr } from "@hms-dbmi
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useNotebookTheme } from "@/hooks/use-notebook-theme";
 import { useModel } from "@/hooks/use-model";
@@ -15,6 +14,12 @@ type VolumeCubeModel = {
   window_cx: number;
   window_cy: number;
   window_size_um: number;
+  slice_x_min: number;
+  slice_x_max: number;
+  slice_y_min: number;
+  slice_y_max: number;
+  slice_z_min: number;
+  slice_z_max: number;
 };
 
 type Loader = {
@@ -32,6 +37,8 @@ type ViewState = {
   maxZoom: number;
 };
 
+const ISO_PITCH = 35;
+
 function absoluteUrl(url: string): string {
   if (!url) return url;
   return new URL(url, window.location.href).href;
@@ -42,23 +49,10 @@ function axisSize(loader: Loader, axis: string): number {
   return i >= 0 ? loader.shape[i]! : 1;
 }
 
-function clampRange(center: number, size: number, limit: number): [number, number] {
-  const half = size / 2;
-  let a = center - half;
-  let b = center + half;
-  if (b - a > limit) {
-    a = 0;
-    b = limit;
-  }
-  if (a < 0) {
-    b -= a;
-    a = 0;
-  }
-  if (b > limit) {
-    a -= b - limit;
-    b = limit;
-  }
-  return [Math.max(0, a), Math.min(limit, b)];
+function orderedSlice(min: number, max: number, limit: number): [number, number] {
+  const lo = Math.max(0, Math.min(min, max));
+  const hi = Math.min(limit, Math.max(min, max));
+  return [lo, hi];
 }
 
 function isoHome(loader: Loader, view: { width: number; height: number }): ViewState {
@@ -70,7 +64,7 @@ function isoHome(loader: Loader, view: { width: number; height: number }): ViewS
     id: "3d",
     target: base.target,
     zoom: base.zoom,
-    rotationX: 35,
+    rotationX: ISO_PITCH,
     rotationOrbit: 45,
     minZoom: base.zoom - 2,
     maxZoom: base.zoom + 4,
@@ -91,14 +85,31 @@ export function VolumeCubeView({
   };
 }) {
   const dark = useNotebookTheme(hostEl.parentElement);
-  const { image_url, labels_url, window_cx, window_cy, window_size_um } =
-    useModel<VolumeCubeModel>(model, [
-      "image_url",
-      "labels_url",
-      "window_cx",
-      "window_cy",
-      "window_size_um",
-    ]);
+  const {
+    image_url,
+    labels_url,
+    window_cx,
+    window_cy,
+    window_size_um,
+    slice_x_min,
+    slice_x_max,
+    slice_y_min,
+    slice_y_max,
+    slice_z_min,
+    slice_z_max,
+  } = useModel<VolumeCubeModel>(model, [
+    "image_url",
+    "labels_url",
+    "window_cx",
+    "window_cy",
+    "window_size_um",
+    "slice_x_min",
+    "slice_x_max",
+    "slice_y_min",
+    "slice_y_max",
+    "slice_z_min",
+    "slice_z_max",
+  ]);
 
   const hostRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ width: 640, height: 520 });
@@ -109,8 +120,6 @@ export function VolumeCubeView({
   const [error, setError] = useState("");
   const [showLabels, setShowLabels] = useState(true);
   const [viewState, setViewState] = useState<ViewState | null>(null);
-  const [zMin, setZMin] = useState(0);
-  const [zMax, setZMax] = useState(1);
 
   useEffect(() => {
     const node = hostRef.current;
@@ -140,9 +149,6 @@ export function VolumeCubeView({
         if (cancelled) return;
         const pyramid = loaded.data as Loader[];
         setImage(pyramid);
-        const depth = axisSize(pyramid[0]!, "z");
-        setZMin(0);
-        setZMax(depth);
         setViewState(isoHome(pyramid[0]!, boxRef.current));
         if (labels_url) {
           const lab = await loadOmeZarr(absoluteUrl(labels_url), { type: "multiscales" });
@@ -162,16 +168,16 @@ export function VolumeCubeView({
   const height = source ? axisSize(source, "y") : 1;
   const depth = source ? axisSize(source, "z") : 1;
   const xSlice = useMemo(
-    () => clampRange(window_cx, window_size_um, width),
-    [window_cx, window_size_um, width],
+    () => orderedSlice(slice_x_min, slice_x_max, width),
+    [slice_x_min, slice_x_max, width],
   );
   const ySlice = useMemo(
-    () => clampRange(window_cy, window_size_um, height),
-    [window_cy, window_size_um, height],
+    () => orderedSlice(slice_y_min, slice_y_max, height),
+    [slice_y_min, slice_y_max, height],
   );
   const zSlice = useMemo(
-    (): [number, number] => [Math.min(zMin, zMax), Math.max(zMin, zMax)],
-    [zMin, zMax],
+    () => orderedSlice(slice_z_min, slice_z_max, depth),
+    [slice_z_min, slice_z_max, depth],
   );
 
   const goIso = useCallback(() => {
@@ -193,13 +199,14 @@ export function VolumeCubeView({
         id: "3d",
         target: [0, 0, 0],
         zoom: 0,
-        rotationX: 35,
+        rotationX: ISO_PITCH,
         rotationOrbit: 45,
         minZoom: -4,
         maxZoom: 6,
       }),
       ...next.viewState,
       id: "3d",
+      rotationX: ISO_PITCH,
     }));
   }, []);
 
@@ -214,6 +221,8 @@ export function VolumeCubeView({
     viewStates: viewState ? [viewState] : undefined,
     onViewStateChange,
   };
+
+  const sliceReadout = `X ${Math.round(xSlice[0])}–${Math.round(xSlice[1])} · Y ${Math.round(ySlice[0])}–${Math.round(ySlice[1])} · Z ${Math.round(zSlice[0])}–${Math.round(zSlice[1])}`;
 
   return (
     <div className={cn("spatial-rx-widget volume-cube relative min-w-0 w-full", dark && "dark")}>
@@ -255,28 +264,8 @@ export function VolumeCubeView({
           />
           <Label htmlFor="volume-cube-labels">Labels</Label>
         </div>
-        <div className="flex min-w-40 items-center gap-2">
-          <Label className="shrink-0">Z min</Label>
-          <Slider
-            min={0}
-            max={depth}
-            step={1}
-            value={[zMin]}
-            onValueChange={(v) => setZMin(v[0] ?? 0)}
-          />
-        </div>
-        <div className="flex min-w-40 items-center gap-2">
-          <Label className="shrink-0">Z max</Label>
-          <Slider
-            min={0}
-            max={depth}
-            step={1}
-            value={[zMax]}
-            onValueChange={(v) => setZMax(v[0] ?? depth)}
-          />
-        </div>
         <p className="text-xs text-muted-foreground">
-          window {Math.round(window_cx)}, {Math.round(window_cy)} · {window_size_um} µm · full Z
+          window {Math.round(window_cx)}, {Math.round(window_cy)} · {window_size_um} µm · {sliceReadout}
         </p>
       </div>
     </div>

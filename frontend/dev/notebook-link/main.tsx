@@ -9,7 +9,8 @@ import { VolumeCubeView } from "@/widgets/volume-cube/VolumeCubeView";
 
 import { createMockModel, loadFixtureModel } from "../mock-model";
 
-const EXTENT = 256;
+const EXTENT_XY = 512;
+const EXTENT_Z = 128;
 
 function linkInspectToCube(landmarks: AnyModel, cube: AnyModel) {
   const sync = () => {
@@ -35,9 +36,15 @@ function NotebookLinkHarness() {
     const model = createMockModel({
       image_url: "/toy.ome.zarr/",
       labels_url: "/toy.ome.zarr/labels/cells/",
-      window_cx: EXTENT / 2,
-      window_cy: EXTENT / 2,
+      window_cx: EXTENT_XY / 2,
+      window_cy: EXTENT_XY / 2,
       window_size_um: 100,
+      slice_x_min: 0,
+      slice_x_max: EXTENT_XY,
+      slice_y_min: 0,
+      slice_y_max: EXTENT_XY,
+      slice_z_min: 0,
+      slice_z_max: EXTENT_Z,
     });
     (window as unknown as { __volumeCubeModel?: AnyModel }).__volumeCubeModel = model;
     return model;
