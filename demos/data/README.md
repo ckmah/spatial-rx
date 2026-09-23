@@ -31,7 +31,7 @@ export_from_raw.py         # regenerate ileum/*.csv from a source .h5ad
   nuclear segmentation), OME-Zarr served from
   `https://minio-dev.openmicroscopy.org/idr/v0.3/idr0062-blin-nuclearsegmentation/6001240.zarr`
   (level 0: 2 × 236 × 275 × 271, c/z/y/x, LaminB1 + DAPI). Not committed to
-  git; offline fallback is `VolumeCubeWidget.toy()`.
+  git. Playwright/CI use the toy OME-Zarr in `frontend/dev/volume-cube/public/`.
 
 To regenerate CSVs from a source panel `.h5ad`:
 

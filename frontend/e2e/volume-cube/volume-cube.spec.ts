@@ -24,7 +24,7 @@ test.describe("VolumeCubeWidget", () => {
     await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
     await expect(page.getByRole("switch", { name: "Labels" })).not.toBeChecked();
     await expect(
-      widget.getByText(/window 128, 128 · 100 µm · X 0–256 · Y 0–256 · Z 0–64/),
+      widget.getByText(/window 128, 128 · 100 µm · X 78–178 · Y 78–178 · Z 0–64/),
     ).toBeVisible();
     await expect(widget.locator("canvas").first()).toBeVisible();
     await shot(page, "rest", widget);
@@ -46,10 +46,14 @@ test.describe("VolumeCubeWidget", () => {
     expect(cx).toBeLessThan(210);
     expect(cy).toBeGreaterThan(40);
     expect(cy).toBeLessThan(120);
+    const xLo = Math.max(0, Math.round(cx - 50));
+    const xHi = Math.min(256, Math.round(cx + 50));
+    const yLo = Math.max(0, Math.round(cy - 50));
+    const yHi = Math.min(256, Math.round(cy + 50));
     await expect(
       widget.getByText(
         new RegExp(
-          `window ${Math.round(cx)}, ${Math.round(cy)} · 100 µm · X 0–256 · Y 0–256 · Z 0–64`,
+          `window ${Math.round(cx)}, ${Math.round(cy)} · 100 µm · X ${xLo}–${xHi} · Y ${yLo}–${yHi} · Z 0–64`,
         ),
       ),
     ).toBeVisible();
@@ -65,22 +69,22 @@ test.describe("VolumeCubeWidget", () => {
     expect(Number(await getVolumeModel(page, "window_cx"))).toBeCloseTo(64, 0);
     expect(Number(await getVolumeModel(page, "window_cy"))).toBeCloseTo(192, 0);
     await expect(
-      widget.getByText(/window 64, 192 · 100 µm · X 0–256 · Y 0–256 · Z 0–64/),
+      widget.getByText(/window 64, 192 · 100 µm · X 14–114 · Y 142–242 · Z 0–64/),
     ).toBeVisible();
   });
 
   test("model patch updates axis slice readout", async ({ page }) => {
     const widget = volumeCubeWidget(page);
     await setVolumeModel(page, {
-      slice_x_min: 64,
-      slice_x_max: 192,
+      window_cx: 160,
+      window_cy: 96,
       slice_z_min: 8,
       slice_z_max: 48,
     });
     await page.waitForTimeout(150);
-    expect(Number(await getVolumeModel(page, "slice_x_min"))).toBeCloseTo(64, 0);
+    expect(Number(await getVolumeModel(page, "window_cx"))).toBeCloseTo(160, 0);
     expect(Number(await getVolumeModel(page, "slice_z_max"))).toBeCloseTo(48, 0);
-    await expect(widget.getByText(/X 64–192 · Y 0–256 · Z 8–48/)).toBeVisible();
+    await expect(widget.getByText(/X 110–210 · Y 46–146 · Z 8–48/)).toBeVisible();
   });
 
   test("labels switch shows and hides the labels VolumeViewer overlay", async ({

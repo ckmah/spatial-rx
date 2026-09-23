@@ -46,7 +46,7 @@
     "@deck.gl/extensions": "9.2.11",
     "@deck.gl/layers": "9.2.11",
     "@deck.gl/widgets": "9.2.11",
-    "@hms-dbmi/viv": "^0.21.0",
+    "@hms-dbmi/viv": "^0.22.1",
     "@loaders.gl/core": "4.3.4",
     "@luma.gl/constants": "9.2.6",
     "@luma.gl/core": "9.2.6",

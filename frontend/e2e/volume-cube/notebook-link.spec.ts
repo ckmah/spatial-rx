@@ -22,7 +22,7 @@ test.describe("VolumeCube notebook link", () => {
   }) => {
     const cube = volumeCubeWidget(page);
     await expect(
-      cube.getByText(/window 128, 128 · 100 µm · X 0–256 · Y 0–256 · Z 0–64/),
+      cube.getByText(/window 128, 128 · 100 µm · X 78–178 · Y 78–178 · Z 0–64/),
     ).toBeVisible();
 
     await page.getByRole("radio", { name: "Inspect", exact: true }).click();
@@ -47,7 +47,7 @@ test.describe("VolumeCube notebook link", () => {
     await expect(
       cube.getByText(
         new RegExp(
-          `window ${Math.round(windowCx)}, ${Math.round(windowCy)} · 100 µm · X 0–256 · Y 0–256 · Z 0–64`,
+          `window ${Math.round(windowCx)}, ${Math.round(windowCy)} · 100 µm · X ${Math.max(0, Math.round(windowCx - 50))}–${Math.min(256, Math.round(windowCx + 50))} · Y ${Math.max(0, Math.round(windowCy - 50))}–${Math.min(256, Math.round(windowCy + 50))} · Z 0–64`,
         ),
       ),
     ).toBeVisible();

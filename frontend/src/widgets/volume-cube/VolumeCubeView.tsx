@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { VolumeViewer, getDefaultInitialViewState, loadOmeZarr } from "@hms-dbmi/viv";
+import {
+  ColorPalette3DExtensions,
+  VolumeViewer,
+  getDefaultInitialViewState,
+  loadOmeZarr,
+} from "@hms-dbmi/viv";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -39,6 +44,9 @@ type ViewState = {
 
 const ISO_PITCH = 35;
 
+/** Viv volume raycast: additive compositing (not maximum-intensity projection). */
+const VOLUME_EXTENSIONS = [new ColorPalette3DExtensions.AdditiveBlendExtension()];
+
 function absoluteUrl(url: string): string {
   if (!url) return url;
   return new URL(url, window.location.href).href;
@@ -53,6 +61,28 @@ function orderedSlice(min: number, max: number, limit: number): [number, number]
   const lo = Math.max(0, Math.min(min, max));
   const hi = Math.min(limit, Math.max(min, max));
   return [lo, hi];
+}
+
+function windowAxisSlice(center: number, sizeUm: number, limit: number): [number, number] {
+  const half = sizeUm / 2;
+  return orderedSlice(center - half, center + half, limit);
+}
+
+function windowTarget(cx: number, cy: number, zSlice: [number, number]): number[] {
+  return [Math.round(cx), Math.round(cy), (zSlice[0] + zSlice[1]) / 2];
+}
+
+function viewStatesEqual(a: ViewState, b: ViewState): boolean {
+  return (
+    a.zoom === b.zoom &&
+    a.rotationOrbit === b.rotationOrbit &&
+    a.rotationX === b.rotationX &&
+    a.minZoom === b.minZoom &&
+    a.maxZoom === b.maxZoom &&
+    a.target[0] === b.target[0] &&
+    a.target[1] === b.target[1] &&
+    a.target[2] === b.target[2]
+  );
 }
 
 function isoHome(loader: Loader, view: { width: number; height: number }): ViewState {
@@ -120,21 +150,31 @@ export function VolumeCubeView({
   const [error, setError] = useState("");
   const [showLabels, setShowLabels] = useState(false);
   const [viewState, setViewState] = useState<ViewState | null>(null);
+  /** Pan must not drift the cube; slice traits move the visible content instead. */
+  const fixedTargetRef = useRef<number[] | null>(null);
 
   useEffect(() => {
     const node = hostRef.current;
     if (!node) return;
+    let raf = 0;
     const apply = () => {
-      const rect = node.getBoundingClientRect();
-      setBox({
-        width: Math.max(320, Math.round(rect.width)),
-        height: Math.max(360, Math.round(rect.height)),
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const rect = node.getBoundingClientRect();
+        const width = Math.max(320, Math.round(rect.width));
+        const height = Math.max(360, Math.round(rect.height));
+        setBox((prev) =>
+          prev.width === width && prev.height === height ? prev : { width, height },
+        );
       });
     };
     apply();
     const obs = new ResizeObserver(apply);
     obs.observe(node);
-    return () => obs.disconnect();
+    return () => {
+      cancelAnimationFrame(raf);
+      obs.disconnect();
+    };
   }, []);
 
   useEffect(() => {
@@ -147,8 +187,12 @@ export function VolumeCubeView({
         const loaded = await loadOmeZarr(absoluteUrl(image_url), { type: "multiscales" });
         if (cancelled) return;
         const pyramid = loaded.data as Loader[];
+        const zMid = (slice_z_min + slice_z_max) / 2;
+        const target = [Math.round(window_cx), Math.round(window_cy), zMid];
+        fixedTargetRef.current = target;
+        const home = isoHome(pyramid[0]!, boxRef.current);
         setImage(pyramid);
-        setViewState(isoHome(pyramid[0]!, boxRef.current));
+        setViewState({ ...home, target });
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
@@ -181,22 +225,38 @@ export function VolumeCubeView({
   const width = source ? axisSize(source, "x") : 1;
   const height = source ? axisSize(source, "y") : 1;
   const depth = source ? axisSize(source, "z") : 1;
+  const winX = Math.round(window_cx);
+  const winY = Math.round(window_cy);
   const xSlice = useMemo(
-    () => orderedSlice(slice_x_min, slice_x_max, width),
-    [slice_x_min, slice_x_max, width],
+    () => windowAxisSlice(winX, window_size_um, width),
+    [winX, window_size_um, width],
   );
   const ySlice = useMemo(
-    () => orderedSlice(slice_y_min, slice_y_max, height),
-    [slice_y_min, slice_y_max, height],
+    () => windowAxisSlice(winY, window_size_um, height),
+    [winY, window_size_um, height],
   );
   const zSlice = useMemo(
     () => orderedSlice(slice_z_min, slice_z_max, depth),
     [slice_z_min, slice_z_max, depth],
   );
 
+  const aimTarget = useMemo(
+    () => windowTarget(winX, winY, zSlice),
+    [winX, winY, zSlice[0], zSlice[1]],
+  );
+  fixedTargetRef.current = aimTarget;
+
+  const displayViewStates = useMemo(() => {
+    if (!viewState) return undefined;
+    return [{ ...viewState, id: "3d", target: aimTarget, rotationX: ISO_PITCH }];
+  }, [viewState, aimTarget]);
+
   const resetView = useCallback(() => {
-    if (source) setViewState(isoHome(source, box));
-  }, [source, box]);
+    if (!source) return;
+    fixedTargetRef.current = aimTarget;
+    const home = isoHome(source, box);
+    setViewState({ ...home, target: aimTarget });
+  }, [source, box, aimTarget]);
 
   // New array identities make VolumeLayer refetch the whole OME-Zarr.
   const selections = useMemo(() => [{}], []);
@@ -206,35 +266,52 @@ export function VolumeCubeView({
   const labelContrast = useMemo(() => [[0, 3]] as [number, number][], []);
   const labelColors = useMemo(() => [[255, 96, 48]] as [number, number, number][], []);
 
-  const onViewStateChange = useCallback((next: { viewState?: Partial<ViewState> }) => {
-    if (!next.viewState) return;
-    setViewState((prev) => ({
-      ...(prev ?? {
+  const onViewStateChange = useCallback(
+    ({
+      viewState: next,
+    }: {
+      viewId: string;
+      viewState: ViewState;
+      interactionState?: Record<string, unknown>;
+      oldViewState?: ViewState;
+    }) => {
+      const fixedTarget = fixedTargetRef.current;
+      const clamped: ViewState = {
+        ...next,
         id: "3d",
-        target: [0, 0, 0],
-        zoom: 0,
+        target: fixedTarget ?? next.target,
         rotationX: ISO_PITCH,
-        rotationOrbit: 45,
-        minZoom: -4,
-        maxZoom: 6,
-      }),
-      ...next.viewState,
-      id: "3d",
-      rotationX: ISO_PITCH,
-    }));
-  }, []);
+      };
+      setViewState((prev) => (prev && viewStatesEqual(prev, clamped) ? prev : clamped));
+      return clamped;
+    },
+    [],
+  );
 
-  const sharedView = {
-    channelsVisible,
-    selections,
-    xSlice,
-    ySlice,
-    zSlice,
-    height: box.height,
-    width: box.width,
-    viewStates: viewState ? [viewState] : undefined,
-    onViewStateChange,
-  };
+  const sharedView = useMemo(
+    () => ({
+      channelsVisible,
+      selections,
+      extensions: VOLUME_EXTENSIONS,
+      useFixedAxis: true,
+      xSlice,
+      ySlice,
+      zSlice,
+      height: box.height,
+      width: box.width,
+      viewStates: displayViewStates,
+      onViewStateChange,
+    }),
+    [
+      box.height,
+      box.width,
+      displayViewStates,
+      onViewStateChange,
+      xSlice,
+      ySlice,
+      zSlice,
+    ],
+  );
 
   const sliceReadout = `X ${Math.round(xSlice[0])}–${Math.round(xSlice[1])} · Y ${Math.round(ySlice[0])}–${Math.round(ySlice[1])} · Z ${Math.round(zSlice[0])}–${Math.round(zSlice[1])}`;
 
@@ -252,7 +329,7 @@ export function VolumeCubeView({
           <p className="p-4 text-sm text-neutral-400">{error || "Loading volume…"}</p>
         )}
         {showLabels && labels && image ? (
-          <div className="pointer-events-none absolute inset-0 mix-blend-screen">
+          <div className="pointer-events-none absolute inset-0">
             <VolumeViewer
               loader={labels}
               contrastLimits={labelContrast}
