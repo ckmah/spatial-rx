@@ -108,6 +108,8 @@ export function VolumeCubeView({ model, hostEl }: { hostEl: HTMLElement; model: 
     winX: clampRange(window_cx - half, window_cx + half, oxUm, oxUm),
     winY: clampRange(window_cy - half, window_cy + half, oyUm, oyUm),
     stackZ: [ozUm, ozUm],
+    volumeX: [oxUm, oxUm],
+    volumeY: [oyUm, oyUm],
     contrastMax: Math.max(255, Math.ceil(contrastHi * 4)),
   };
   const { winX, winY, stackZ } = bounds;

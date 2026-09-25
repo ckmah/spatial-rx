@@ -4,6 +4,7 @@ import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { HighlightGroup } from "@/widgets/volume-cube/cell-lut-extension";
+import type { CubeCut } from "@/widgets/volume-cube/VolumeCube";
 
 import type { CubeSettings, CubeSettingsPatch } from "../use-cube-settings";
 import type { LandmarksModel } from "../use-landmarks-model";
@@ -42,12 +43,15 @@ export function CubeWindow({
   lm,
   settings,
   patch,
+  cut,
   dark,
   groups,
 }: {
   lm: LandmarksModel;
   settings: CubeSettings;
   patch: (p: CubeSettingsPatch) => void;
+  /** The cut inside the current window (absolute µm). */
+  cut: CubeCut;
   dark: boolean;
   groups: HighlightGroup[];
 }) {
@@ -118,7 +122,9 @@ export function CubeWindow({
       ref={ref}
       role="dialog"
       aria-label="Cube"
-      className={cn(FLOAT_PANEL, "landmarks__cube-window pointer-events-auto absolute flex flex-col")}
+      // Focusable, so Esc pressed after clicking the cube reaches the widget.
+      tabIndex={-1}
+      className={cn(FLOAT_PANEL, "landmarks__cube-window pointer-events-auto absolute flex flex-col outline-none")}
       style={
         rect
           ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
@@ -156,7 +162,7 @@ export function CubeWindow({
             windowCx={lm.inspect_cx ?? 0}
             windowCy={lm.inspect_cy ?? 0}
             windowSizeUm={size}
-            cut={settings.cut}
+            cut={cut}
             contrast={settings.contrast}
             mode={settings.mode}
             preset={settings.preset}

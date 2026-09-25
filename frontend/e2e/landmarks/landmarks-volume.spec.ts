@@ -13,6 +13,15 @@ import { bootLandmarksVolumeHarness, canvasBox, getModel, setModel } from "../he
  * window at the canvas centre (~(115, 135)) covers all three: both types.
  */
 const cubeWindow = (page: Page) => page.getByRole("dialog", { name: "Cube" });
+const cutOf = async (page: Page) => (await getModel(page, "volume_cut")) as number[];
+
+type Box = { x: number; y: number; width: number; height: number };
+async function dragOnMap(page: Page, box: Box, from: [number, number], to: [number, number]) {
+  await page.mouse.move(box.x + box.width * from[0], box.y + box.height * from[1]);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * to[0], box.y + box.height * to[1], { steps: 3 });
+  await page.mouse.up();
+}
 
 async function openCubeAtCentre(page: Page) {
   await page.getByRole("radio", { name: "Inspect", exact: true }).click();
@@ -113,25 +122,118 @@ test.describe("Landmarks inspect cube", () => {
     await expect.poll(async () => ((await getModel(page, "volume_cut")) as number[])[5]).toBe(54);
   });
 
-  test("a partial X cut moves with the window", async ({ page }) => {
+  test("a partial X cut keeps its place in a moved window; open edges stay open", async ({ page }) => {
     const box = await openCubeAtCentre(page);
     await page.getByTestId("context-inspect-toolbar").getByRole("button", { name: "Cuts" }).click();
     const xHi = page.getByRole("slider", { name: "X cut" }).nth(1);
     await xHi.focus();
     for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowLeft");
     const cx0 = Number(await getModel(page, "inspect_cx"));
-    await expect.poll(async () => ((await getModel(page, "volume_cut")) as number[])[1]).toBeCloseTo(cx0 + 40, 3);
-    expect(((await getModel(page, "volume_cut")) as number[])[0]).toBeCloseTo(cx0 - 50, 3);
+    await expect.poll(async () => (await cutOf(page))[1]).toBeCloseTo(cx0 + 40, 3);
+    // The untouched low edge is open: written as the volume's edge, not the window's.
+    expect(await cutOf(page)).toEqual([0, cx0 + 40, 0, 256, 0, 64].map((v) => expect.closeTo(v, 3)));
 
-    await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.5, { steps: 3 });
-    await page.mouse.up();
+    await dragOnMap(page, box, [0.5, 0.5], [0.55, 0.5]);
     await expect.poll(async () => Number(await getModel(page, "inspect_cx"))).toBeGreaterThan(cx0);
     const cx1 = Number(await getModel(page, "inspect_cx"));
-    await expect.poll(async () => ((await getModel(page, "volume_cut")) as number[])[1]).toBeCloseTo(cx1 + 40, 3);
-    // Both edges keep their place in the window: 0-90 µm from its left edge.
-    expect(((await getModel(page, "volume_cut")) as number[])[0]).toBeCloseTo(cx1 - 50, 3);
+    await expect.poll(async () => (await cutOf(page))[1]).toBeCloseTo(cx1 + 40, 3);
+    expect((await cutOf(page))[0]).toBe(0);
+    // The slider still shows the cut 0-90 µm from the new window's edge.
+    const xLo = page.getByRole("slider", { name: "X cut" }).nth(0);
+    expect(Number(await xLo.getAttribute("aria-valuenow"))).toBeCloseTo(cx1 - 50, 3);
+    expect(Number(await xLo.getAttribute("aria-valuemin"))).toBeCloseTo(cx1 - 50, 3);
+  });
+
+  test("a partial Y cut follows a vertical window move", async ({ page }) => {
+    const box = await openCubeAtCentre(page);
+    await page.getByTestId("context-inspect-toolbar").getByRole("button", { name: "Cuts" }).click();
+    const yLo = page.getByRole("slider", { name: "Y cut" }).nth(0);
+    await yLo.focus();
+    for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowRight");
+    const cy0 = Number(await getModel(page, "inspect_cy"));
+    await expect.poll(async () => (await cutOf(page))[2]).toBeCloseTo(cy0 - 40, 3);
+    expect((await cutOf(page))[3]).toBe(256);
+
+    await dragOnMap(page, box, [0.5, 0.5], [0.5, 0.44]);
+    await expect.poll(async () => Number(await getModel(page, "inspect_cy"))).not.toBeCloseTo(cy0, 1);
+    const cy1 = Number(await getModel(page, "inspect_cy"));
+    await expect.poll(async () => (await cutOf(page))[2]).toBeCloseTo(cy1 - 40, 3);
+    expect((await cutOf(page))[3]).toBe(256);
+  });
+
+  test("Python's inspect and volume_cut writes are followed, never written back", async ({ page }) => {
+    await openCubeAtCentre(page);
+    await page.getByTestId("context-inspect-toolbar").getByRole("button", { name: "Cuts" }).click();
+    const x = page.getByRole("slider", { name: "X cut" });
+    await x.nth(1).focus();
+    for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowLeft");
+    const cx0 = Number(await getModel(page, "inspect_cx"));
+    await expect.poll(async () => (await cutOf(page))[1]).toBeCloseTo(cx0 + 40, 3);
+    const committed = await cutOf(page);
+
+    // Python moves the window: the cut stays in place in it, no volume_cut write.
+    await setModel(page, { inspect_cx: cx0 + 20 });
+    await expect.poll(async () => Number(await x.nth(1).getAttribute("aria-valuenow"))).toBeCloseTo(cx0 + 60, 3);
+    await page.waitForTimeout(600);
+    expect(await cutOf(page)).toEqual(committed);
+
+    // Python sets a cut: adopted (X open again), and not echoed.
+    await setModel(page, { volume_cut: [0, 256, 0, 256, 10, 40] });
+    const z = page.getByRole("slider", { name: "Z cut" });
+    await expect(z.nth(0)).toHaveAttribute("aria-valuenow", "10");
+    await expect(z.nth(1)).toHaveAttribute("aria-valuenow", "40");
+    expect(await x.nth(1).getAttribute("aria-valuenow")).toBe(await x.nth(1).getAttribute("aria-valuemax"));
+    await page.waitForTimeout(600);
+    expect(await cutOf(page)).toEqual([0, 256, 0, 256, 10, 40]);
+  });
+
+  test("a Z-only cut leaves X and Y whole for any window, edge windows too", async ({ page }) => {
+    const box = await openCubeAtCentre(page);
+    await page.getByTestId("context-inspect-toolbar").getByRole("button", { name: "Cuts" }).click();
+    const zHi = page.getByRole("slider", { name: "Z cut" }).nth(1);
+    await zHi.focus();
+    for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowLeft");
+    await expect.poll(async () => cutOf(page)).toEqual([0, 256, 0, 256, 0, 54]);
+
+    // Zoom out so a click lands a window that the volume's left edge clamps.
+    await page.evaluate(() => (window as any).__landmarksEngine.zoomBy(-2, { animate: false }));
+    await page.waitForTimeout(300);
+    await page.mouse.click(box.x + box.width * 0.25, box.y + box.height * 0.5);
+    await expect.poll(async () => Number(await getModel(page, "inspect_cx"))).toBeLessThan(50);
+    await page.waitForTimeout(600); // past the settle commit
+    expect(await cutOf(page)).toEqual([0, 256, 0, 256, 0, 54]);
+
+    const cx = Number(await getModel(page, "inspect_cx"));
+    const x = page.getByRole("slider", { name: "X cut" });
+    await expect(x.nth(0)).toHaveAttribute("aria-valuemin", "0");
+    await expect(x.nth(0)).toHaveAttribute("aria-valuenow", "0");
+    expect(Number(await x.nth(1).getAttribute("aria-valuenow"))).toBeCloseTo(cx + 50, 3);
+    for (const i of [0, 1]) {
+      const y = page.getByRole("slider", { name: "Y cut" }).nth(i);
+      expect(await y.getAttribute("aria-valuenow")).toBe(await y.getAttribute(i ? "aria-valuemax" : "aria-valuemin"));
+    }
+    await expect(page.getByRole("slider", { name: "Z cut" }).nth(1)).toHaveAttribute("aria-valuenow", "54");
+  });
+
+  test("the cube stays open after switching tool; Esc from its chrome closes it", async ({ page }) => {
+    const box = await openCubeAtCentre(page);
+    await page.getByRole("radio", { name: "Select", exact: true }).click();
+    await expect(cubeWindow(page)).toBeVisible();
+    await expect(page.getByTestId("context-inspect-toolbar")).toHaveCount(0);
+    expect((await page.evaluate(() => (window as any).__landmarksEngine.getInspectOverlay())).placed).not.toBeNull();
+
+    // Esc with focus in the Inspect toolbar.
+    await page.getByRole("radio", { name: "Inspect", exact: true }).click();
+    await page.getByTestId("context-inspect-toolbar").getByRole("radio", { name: "Top view" }).click();
+    await page.keyboard.press("Escape");
+    await expect(cubeWindow(page)).toHaveCount(0);
+
+    // Esc after clicking into the cube window.
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    await expect(cubeWindow(page)).toBeVisible();
+    await cubeWindow(page).getByText("Cube · 100 µm").click();
+    await page.keyboard.press("Escape");
+    await expect(cubeWindow(page)).toHaveCount(0);
   });
 
   test("highlight follows focus: everything, a category, a Selection", async ({ page }) => {

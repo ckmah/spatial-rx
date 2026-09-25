@@ -30,11 +30,6 @@ const GAMMA_LOG2 = 2.32;
 
 type Panel = "cuts" | "image" | "cells";
 
-function clamp(lo: number, hi: number, [min, max]: Range): Range {
-  const a = Math.max(min, Math.min(lo, hi));
-  return [a, Math.max(a, Math.min(max, Math.max(lo, hi)))];
-}
-
 function gradientCss(name: PaletteName): string {
   const { data } = paletteLut(name);
   const stops = Array.from({ length: 9 }, (_, i) => {
@@ -94,53 +89,52 @@ function ValueControl({
 /**
  * Context bar while Inspect has a cube open: camera, projection, palette,
  * labels, then Cuts / Image / Cells panels that rise above their buttons.
- * Cuts render live and commit `volume_cut` on release (`onCommitCut`).
+ * Cuts render live and commit `volume_cut` on release (`onCutCommit`).
  */
 export function InspectToolbar({
   settings,
   patch,
   labelsAvailable,
-  onCommitCut,
+  cut,
+  cutRanges,
+  onCutLive,
+  onCutCommit,
 }: {
   settings: CubeSettings;
   patch: (p: CubeSettingsPatch) => void;
   labelsAvailable: boolean;
-  onCommitCut: (cut: CubeCut) => void;
+  /** The cut as shown, inside the window (absolute µm). */
+  cut: CubeCut;
+  /** Clamped window X/Y and the stack's Z; null until the volume is open. */
+  cutRanges: { x: Range; y: Range; z: Range } | null;
+  onCutLive: (cut: CubeCut) => void;
+  onCutCommit: (cut: CubeCut) => void;
 }) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [menuContainer, setMenuContainer] = useState<HTMLElement | null>(null);
   // The cube sizes the contrast range from the contrast it draws; hold the max
   // from pointer down to commit so it cannot run away under the dragged thumb.
   const [heldContrastMax, setHeldContrastMax] = useState<number | null>(null);
-  const { bounds, cut, render } = settings;
+  const { bounds, render } = settings;
   const toggle = (p: Panel) => setPanel((cur) => (cur === p ? null : p));
 
-  const xShown = bounds ? clamp(cut[0], cut[1], bounds.winX) : null;
-  const yShown = bounds ? clamp(cut[2], cut[3], bounds.winY) : null;
-  const zShown = bounds ? clamp(cut[4], cut[5], bounds.stackZ) : null;
-  const shownCut = (axis: 0 | 1 | 2, v: Range): CubeCut | null => {
-    if (!xShown || !yShown || !zShown) return null;
-    const next: [Range, Range, Range] = [xShown, yShown, zShown];
-    next[axis] = v;
-    return [...next[0], ...next[1], ...next[2]] as CubeCut;
+  const withAxis = (axis: 0 | 1 | 2, v: Range): CubeCut => {
+    const next = [...cut] as CubeCut;
+    next[axis * 2] = v[0];
+    next[axis * 2 + 1] = v[1];
+    return next;
   };
-  const cutRow = (axis: 0 | 1 | 2, label: string, value: Range, range: Range, fromEdge: boolean) => (
+  const cutRow = (axis: 0 | 1 | 2, label: string, range: Range, fromEdge: boolean) => (
     <RangeControl
       label={label}
       unit="µm"
       min={range[0]}
       max={range[1]}
       step={1}
-      value={value}
+      value={[cut[axis * 2]!, cut[axis * 2 + 1]!]}
       offset={fromEdge ? range[0] : 0}
-      onLive={(v) => {
-        const next = shownCut(axis, v);
-        if (next) patch({ cut: next });
-      }}
-      onCommit={(v) => {
-        const next = shownCut(axis, v);
-        if (next) onCommitCut(next);
-      }}
+      onLive={(v) => onCutLive(withAxis(axis, v))}
+      onCommit={(v) => onCutCommit(withAxis(axis, v))}
     />
   );
 
@@ -254,11 +248,11 @@ export function InspectToolbar({
             open={panel === "cuts"}
             panel={
               <div className="flex w-80 flex-col gap-1.5 px-1 py-1" data-testid="context-cube-cuts">
-                {bounds && xShown && yShown && zShown ? (
+                {cutRanges ? (
                   <>
-                    {cutRow(0, "X cut", xShown, bounds.winX, true)}
-                    {cutRow(1, "Y cut", yShown, bounds.winY, true)}
-                    {cutRow(2, "Z cut", zShown, bounds.stackZ, false)}
+                    {cutRow(0, "X cut", cutRanges.x, true)}
+                    {cutRow(1, "Y cut", cutRanges.y, true)}
+                    {cutRow(2, "Z cut", cutRanges.z, false)}
                   </>
                 ) : (
                   <p className="m-0 text-xs text-muted-foreground">Loading volume…</p>

@@ -41,9 +41,13 @@ export type CubeLoadState = {
 };
 
 export type CubeBounds = {
+  /** The window clamped to the volume (µm). */
   winX: [number, number];
   winY: [number, number];
   stackZ: [number, number];
+  /** The volume's XY extent (µm). */
+  volumeX: [number, number];
+  volumeY: [number, number];
   contrastMax: number;
 };
 
@@ -561,9 +565,10 @@ export function VolumeCube({
   const onBoundsRef = useLatest(onBounds);
   const hasExtent = Boolean(base);
   useLayoutEffect(() => {
-    if (hasExtent) onBoundsRef.current?.({ winX, winY, stackZ, contrastMax });
+    if (!hasExtent) return;
+    onBoundsRef.current?.({ winX, winY, stackZ, volumeX: [oxUm, extentX], volumeY: [oyUm, extentY], contrastMax });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasExtent, winX[0], winX[1], winY[0], winY[1], stackZ[0], stackZ[1], contrastMax, onBoundsRef]);
+  }, [hasExtent, winX[0], winX[1], winY[0], winY[1], stackZ[0], stackZ[1], extentX, extentY, contrastMax, onBoundsRef]);
 
   return (
     <div

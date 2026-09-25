@@ -4,7 +4,6 @@ import { useNotebookTheme } from "@/hooks/use-notebook-theme";
 import { cn } from "@/lib/utils";
 
 import type { HighlightGroup } from "@/widgets/volume-cube/cell-lut-extension";
-import type { CubeCut } from "@/widgets/volume-cube/VolumeCube";
 
 import { decodeF32Base64, decodeI32Base64 } from "./binary";
 import {
@@ -30,7 +29,7 @@ import {
   type AnyModel,
 } from "./helpers";
 import { wrapLandmarksModel } from "./model";
-import { followWindowCut, useCubeSettings } from "./use-cube-settings";
+import { useInspectCube } from "./use-inspect-cube";
 import { useLandmarksModel } from "./use-landmarks-model";
 import { useWidgetFullscreen } from "./use-widget-fullscreen";
 
@@ -38,9 +37,6 @@ const SHELL_HEIGHT = 550;
 const MIN_HEIGHT = 400;
 const MAX_HEIGHT = 1400;
 const NARROW_BREAKPOINT = 640;
-/** No cut yet (e.g. `volume_cut == []`): the cube clamps it to the window and stack. */
-const UNCUT: CubeCut = [-Infinity, Infinity, -Infinity, Infinity, -Infinity, Infinity];
-const DEFAULT_CONTRAST: [number, number] = [0, 255];
 const NO_GROUPS: HighlightGroup[] = [];
 
 const ALL_MODES = [
@@ -72,50 +68,8 @@ export function LandmarksView({
   const savedHeightRef = useRef<number | null>(null);
   const wasFullscreenRef = useRef(false);
 
-  // Inspect cube: open on a placement, closed by Esc or the window's close button.
-  const hasVolume = Boolean(lm.volume?.image_url);
-  const volumeCut = lm.volume_cut?.length === 6 ? (lm.volume_cut as CubeCut) : null;
-  const [cube, patchCube] = useCubeSettings(
-    lm.volume?.contrast_limits ?? DEFAULT_CONTRAST,
-    volumeCut ?? UNCUT,
-  );
-  const volumeCutKey = volumeCut?.join(",") ?? "";
-  useEffect(() => {
-    if (volumeCut) patchCube({ cut: volumeCut });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [volumeCutKey, patchCube]);
-  useEffect(() => {
-    if (!engine || !hasVolume) return;
-    return engine.subscribeInspect((e) => patchCube({ open: e.type === "place" }));
-  }, [engine, hasVolume, patchCube]);
-  useEffect(() => {
-    engine?.setInspectWindowVisible(cube.open);
-    // A reopened cube reloads; its cut ranges wait for the new bounds.
-    if (!cube.open) patchCube({ bounds: null });
-  }, [engine, cube.open, patchCube]);
-
-  const onCommitCut = useCallback(
-    (cut: CubeCut) => {
-      patchCube({ cut });
-      facade.set("volume_cut", cut);
-      facade.save_changes();
-    },
-    [facade, patchCube],
-  );
-
-  // Partial X/Y cuts keep their place in the window as it moves (a cut across
-  // the whole window stays whole), so a pan never cuts the cube away.
-  const windowRef = useRef<{ cx: number; cy: number } | null>(null);
-  useEffect(() => {
-    const { inspect_cx: cx, inspect_cy: cy } = lm;
-    if (cx == null || cy == null) return;
-    const prev = windowRef.current;
-    windowRef.current = { cx, cy };
-    if (!prev) return;
-    const next = followWindowCut(cube.cut, prev, { cx, cy }, lm.inspect_size_um || 100);
-    if (next) onCommitCut(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lm.inspect_cx, lm.inspect_cy]);
+  const inspectCube = useInspectCube(facade, lm, engine);
+  const { hasVolume, cube, patchCube } = inspectCube;
 
   // Decode each packed buffer once per string, and only when there is a cube.
   const points = useMemo(
@@ -279,6 +233,7 @@ export function LandmarksView({
         lm.show_rulers && "landmarks--rulers",
       )}
       data-rulers={lm.show_rulers ? "on" : "off"}
+      onKeyDown={inspectCube.onKeyDown}
     >
       <div
         className="landmarks__body"
@@ -328,7 +283,10 @@ export function LandmarksView({
             settings={cube}
             patch={patchCube}
             labelsAvailable={Boolean(lm.volume?.labels_url)}
-            onCommitCut={onCommitCut}
+            cut={inspectCube.cut}
+            cutRanges={inspectCube.cutRanges}
+            onCutLive={inspectCube.onCutLive}
+            onCutCommit={inspectCube.onCutCommit}
           />
         ) : inspecting && !hasVolume ? (
           <InspectNoVolumePill />
@@ -337,7 +295,14 @@ export function LandmarksView({
         )}
 
         {hasVolume && cube.open ? (
-          <CubeWindow lm={lm} settings={cube} patch={patchCube} dark={dark} groups={groups} />
+          <CubeWindow
+            lm={lm}
+            settings={cube}
+            patch={patchCube}
+            cut={inspectCube.cut}
+            dark={dark}
+            groups={groups}
+          />
         ) : null}
 
         <div
