@@ -18,6 +18,8 @@ import {
   CubeWindow,
   InspectToolbar,
   InspectNoVolumePill,
+  PanelCollapseButton,
+  PanelPeekTab,
 } from "./chrome";
 import { FLOAT_PANEL } from "./chrome/sections";
 import { cubeHighlightGroups } from "./cube-highlight";
@@ -65,6 +67,7 @@ export function LandmarksView({
   const [engine, setEngine] = useState<EngineHandle | null>(null);
   const [shellHeight, setShellHeight] = useState(defaultHeight);
   const [narrow, setNarrow] = useState(false);
+  const [collapsed, setCollapsed] = useState({ left: false, right: false });
   const savedHeightRef = useRef<number | null>(null);
   const wasFullscreenRef = useRef(false);
 
@@ -153,6 +156,29 @@ export function LandmarksView({
     ro.observe(el);
     setNarrow(el.clientWidth < NARROW_BREAKPOINT);
     return () => ro.disconnect();
+  }, []);
+
+  // "[" / "]" toggle the left / right dock's collapsed state. Ignore key
+  // events aimed at text entry so shortcuts don't fire while typing.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "[" && e.key !== "]") return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const editable =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        target?.isContentEditable ||
+        Boolean(target?.closest?.("[contenteditable]"));
+      if (editable) return;
+      e.preventDefault();
+      const side = e.key === "[" ? "left" : "right";
+      setCollapsed((c) => ({ ...c, [side]: !c[side] }));
+    };
+    el.addEventListener("keydown", onKeyDown);
+    return () => el.removeEventListener("keydown", onKeyDown);
   }, []);
 
   useEffect(() => {
@@ -314,36 +340,74 @@ export function LandmarksView({
         </div>
 
         {narrow ? (
-          <div
-            className="landmarks__chrome-dock landmarks__chrome-dock--left landmarks__chrome-dock--narrow-stack"
-            onMouseDown={(e) => e.stopPropagation()}
-            onWheel={(e) => e.stopPropagation()}
-          >
+          <>
             <div
               className={cn(
-                FLOAT_PANEL,
-                "flex h-full min-h-0 max-h-full flex-1 flex-col",
+                "landmarks__chrome-dock landmarks__chrome-dock--left landmarks__chrome-dock--narrow-stack",
+                collapsed.left && "landmarks__chrome-dock--collapsed",
               )}
-              data-testid="info-explore-stack"
+              data-collapsed={collapsed.left ? "true" : "false"}
+              onMouseDown={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
             >
-              <RightChromeStack lm={lm} engine={engine} />
+              <PanelCollapseButton
+                side="left"
+                onCollapse={() => setCollapsed((c) => ({ ...c, left: true }))}
+              />
+              <div
+                className={cn(
+                  FLOAT_PANEL,
+                  "flex h-full min-h-0 max-h-full flex-1 flex-col",
+                )}
+                data-testid="info-explore-stack"
+              >
+                <RightChromeStack lm={lm} engine={engine} />
+              </div>
+              <LayersPanel lm={lm} />
             </div>
-            <LayersPanel lm={lm} />
-          </div>
+            {collapsed.left ? (
+              <PanelPeekTab
+                side="left"
+                onExpand={() => setCollapsed((c) => ({ ...c, left: false }))}
+              />
+            ) : null}
+          </>
         ) : (
           <>
             <div
-              className="landmarks__chrome-dock landmarks__chrome-dock--left"
+              className={cn(
+                "landmarks__chrome-dock landmarks__chrome-dock--left",
+                collapsed.left && "landmarks__chrome-dock--collapsed",
+              )}
+              data-collapsed={collapsed.left ? "true" : "false"}
               onMouseDown={(e) => e.stopPropagation()}
               onWheel={(e) => e.stopPropagation()}
             >
+              <PanelCollapseButton
+                side="left"
+                onCollapse={() => setCollapsed((c) => ({ ...c, left: true }))}
+              />
               <LayersPanel lm={lm} />
             </div>
+            {collapsed.left ? (
+              <PanelPeekTab
+                side="left"
+                onExpand={() => setCollapsed((c) => ({ ...c, left: false }))}
+              />
+            ) : null}
             <div
-              className="landmarks__chrome-dock landmarks__chrome-dock--right"
+              className={cn(
+                "landmarks__chrome-dock landmarks__chrome-dock--right",
+                collapsed.right && "landmarks__chrome-dock--collapsed",
+              )}
+              data-collapsed={collapsed.right ? "true" : "false"}
               onMouseDown={(e) => e.stopPropagation()}
               onWheel={(e) => e.stopPropagation()}
             >
+              <PanelCollapseButton
+                side="right"
+                onCollapse={() => setCollapsed((c) => ({ ...c, right: true }))}
+              />
               <div
                 className={cn(
                   FLOAT_PANEL,
@@ -354,6 +418,12 @@ export function LandmarksView({
                 <RightChromeStack lm={lm} engine={engine} />
               </div>
             </div>
+            {collapsed.right ? (
+              <PanelPeekTab
+                side="right"
+                onExpand={() => setCollapsed((c) => ({ ...c, right: false }))}
+              />
+            ) : null}
             <div
               className="landmarks__chrome-minimap"
               onMouseDown={(e) => e.stopPropagation()}

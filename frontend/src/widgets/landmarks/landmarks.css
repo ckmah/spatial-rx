@@ -1604,7 +1604,37 @@
     right 400ms cubic-bezier(0.2, 0, 0, 1),
     bottom 400ms cubic-bezier(0.2, 0, 0, 1),
     margin 400ms cubic-bezier(0.2, 0, 0, 1),
-    transform 400ms cubic-bezier(0.2, 0, 0, 1);
+    transform 180ms ease,
+    opacity 180ms ease;
+}
+
+/* Dock collapses off-screen to its outer edge; the peek tab takes over. */
+.landmarks__chrome-dock--left.landmarks__chrome-dock--collapsed {
+  transform: translateX(calc(-100% - var(--lm-chrome-inset)));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.landmarks__chrome-dock--right.landmarks__chrome-dock--collapsed {
+  transform: translateX(calc(100% + var(--lm-chrome-inset)));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.landmarks__peek-tab {
+  position: absolute;
+  top: calc(var(--lm-chrome-band) + var(--lm-chrome-gap));
+  z-index: 17;
+}
+
+.landmarks__peek-tab--left {
+  left: 0;
+  border-radius: 0 9999px 9999px 0;
+}
+
+.landmarks__peek-tab--right {
+  right: 0;
+  border-radius: 9999px 0 0 9999px;
 }
 
 .landmarks--rulers .landmarks__chrome-tools {

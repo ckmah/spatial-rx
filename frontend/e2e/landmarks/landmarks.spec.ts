@@ -475,4 +475,18 @@ test.describe("LandmarksWidget", () => {
     await lasso.click(); await lasso.hover();
     expect(await lasso.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(onBg);
   });
+
+  test("side panels collapse to a peek tab and come back", async ({ page }) => {
+    const left = page.locator(".landmarks__chrome-dock--left");
+    await page.getByRole("button", { name: "Collapse left panel" }).click();
+    await expect(left).toHaveAttribute("data-collapsed", "true");
+    await page.getByRole("button", { name: "Show left panel" }).click();
+    await expect(left).toHaveAttribute("data-collapsed", "false");
+    const box = await canvasBox(page);
+    await page.mouse.click(box.x + 5, box.y + box.height - 5); // focus the widget
+    await page.keyboard.press("]");
+    await expect(page.locator(".landmarks__chrome-dock--right")).toHaveAttribute("data-collapsed", "true");
+    await page.keyboard.press("]");
+    await expect(page.locator(".landmarks__chrome-dock--right")).toHaveAttribute("data-collapsed", "false");
+  });
 });
