@@ -26,6 +26,17 @@ export async function getZoom(page: Page) {
   );
 }
 
+/** Landmark tool (Point/Line/Spline/Shape) lives behind a dropdown; open it and pick `name`. */
+export async function clickLandmarkTool(page: Page, name: string) {
+  const trigger = page.getByRole("button", {
+    name: /Right-click for landmark menu/,
+  });
+  await trigger.click({ button: "right" });
+  // Accessible name also carries the shortcut glyph (e.g. "Point 1"), so anchor
+  // only the start rather than requiring an exact match.
+  await page.getByRole("menuitem", { name: new RegExp(`^${name}\\b`) }).click();
+}
+
 export async function getModel(page: Page, key: string) {
   return page.evaluate((k) => (window as any).__landmarksModel.get(k), key);
 }

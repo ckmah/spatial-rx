@@ -8,6 +8,7 @@ import {
   type Ref,
 } from "react";
 import {
+  BoxIcon,
   CircleIcon,
   EllipsisIcon,
   EyeIcon,
@@ -15,7 +16,6 @@ import {
   HandIcon,
   LassoIcon,
   LocateIcon,
-  ScanIcon,
   MousePointer2Icon,
   PencilIcon,
   PentagonIcon,
@@ -52,7 +52,7 @@ const MODE_ICONS: Record<string, ComponentType<LucideProps>> = {
   node: SplinePointerIcon,
   move: HandIcon,
   probe: LocateIcon,
-  inspect: ScanIcon,
+  inspect: BoxIcon,
   selection: LassoIcon,
   lasso: LassoIcon,
   polygon: PentagonIcon,
@@ -73,7 +73,7 @@ export const chromeHitClass =
   "inline-flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground";
 
 export const chromeHitOnClass =
-  "bg-foreground text-background hover:bg-foreground hover:text-background";
+  "bg-foreground text-background hover:bg-foreground hover:text-background dark:hover:bg-foreground dark:hover:text-background";
 
 /** Inverted chrome tooltip (opposite of theme surface). */
 const chromeTooltipClass =

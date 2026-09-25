@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import {
   bootLandmarksHarness,
   canvasBox,
+  clickLandmarkTool,
   getModel,
   getZoom,
   setModel,
@@ -42,7 +43,7 @@ test.describe("LandmarksWidget", () => {
   test("landmark point authoring happy path", async ({ page }) => {
     const widget = page.locator(".landmarks").first();
     const before = ((await getModel(page, "landmarks")) as unknown[]).length;
-    await page.getByRole("radio", { name: "Point", exact: true }).click();
+    await clickLandmarkTool(page, "Point");
     await page.waitForTimeout(150);
 
     const box = await canvasBox(page);
@@ -57,7 +58,7 @@ test.describe("LandmarksWidget", () => {
 
   test("line drag places a two-vertex landmark", async ({ page }) => {
     const before = ((await getModel(page, "landmarks")) as unknown[]).length;
-    await page.getByRole("radio", { name: "Line", exact: true }).click();
+    await clickLandmarkTool(page, "Line");
     await page.waitForTimeout(150);
 
     const box = await canvasBox(page);
@@ -83,7 +84,7 @@ test.describe("LandmarksWidget", () => {
   }) => {
     const box = await canvasBox(page);
 
-    await page.getByRole("radio", { name: "Spline", exact: true }).click();
+    await clickLandmarkTool(page, "Spline");
     await page.waitForTimeout(100);
     const beforeSpline = ((await getModel(page, "landmarks")) as unknown[])
       .length;
@@ -109,7 +110,7 @@ test.describe("LandmarksWidget", () => {
     expect(landmarks[landmarks.length - 1].type).toBe("spline");
     expect(landmarks[landmarks.length - 1].vertices?.length).toBe(2);
 
-    await page.getByRole("radio", { name: "Shape", exact: true }).click();
+    await clickLandmarkTool(page, "Shape");
     await page.waitForTimeout(100);
     const beforeShape = landmarks.length;
     await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.35);
@@ -443,5 +444,35 @@ test.describe("LandmarksWidget", () => {
     expect(
       ((await getModel(page, "selections")) as any[]).length,
     ).toBeGreaterThanOrEqual(before);
+  });
+
+  test("toolbar: interaction order, lasso and landmark dropdowns, cube icon", async ({ page }) => {
+    const bar = page.getByRole("toolbar", { name: "Drawing tools" });
+    const radios = bar.getByRole("radio");
+    const names = await radios.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+    expect(names).toEqual(["Select", "Move", "Inspect", "Probe", "Node"]);
+    await expect(bar.locator('[aria-label="Inspect"] svg.lucide-box')).toHaveCount(1);
+    const landmark = bar.getByRole("button", { name: /Point\. Right-click for landmark menu/ });
+    await landmark.click();
+    await expect.poll(() => getModel(page, "mode")).toBe("point");
+    await landmark.click({ button: "right" });
+    await page.getByRole("menuitem", { name: /Spline/ }).click();
+    await expect.poll(() => getModel(page, "mode")).toBe("spline");
+    await bar.getByRole("radio", { name: "Select" }).click();
+    await bar.getByRole("button", { name: /Spline\. Right-click for landmark menu/ }).click(); // remembers last used
+    await expect.poll(() => getModel(page, "mode")).toBe("spline");
+  });
+
+  test("active lasso keeps its colours on hover in dark mode", async ({ page }) => {
+    const lasso = page.getByRole("button", { name: /Lasso\. Right-click for shape menu/ });
+    await lasso.click();
+    await lasso.hover();
+    const [bg, fg] = await lasso.evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color]);
+    expect(bg).not.toBe(fg);
+    const select = page.getByRole("radio", { name: "Select" });
+    await select.click(); await select.hover();
+    const onBg = await select.evaluate((el) => getComputedStyle(el).backgroundColor);
+    await lasso.click(); await lasso.hover();
+    expect(await lasso.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(onBg);
   });
 });

@@ -1,6 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { bootLandmarksHarness, canvasBox, getModel, setModel } from "../helpers";
+import {
+  bootLandmarksHarness,
+  canvasBox,
+  clickLandmarkTool,
+  getModel,
+  setModel,
+} from "../helpers";
 
 /**
  * Landmark tool-completeness coverage: point/shape buffers, node editing
@@ -35,7 +41,7 @@ test.describe("LandmarksWidget tool completeness", () => {
     )) as [number, number, number, number];
 
     const before = ((await getModel(page, "landmarks")) as unknown[]).length;
-    await page.getByRole("radio", { name: "Point", exact: true }).click();
+    await clickLandmarkTool(page, "Point");
     await page.waitForTimeout(80);
     const sample = { fx: 0.3, fy: 0.35 };
     await page.mouse.click(box.x + box.width * sample.fx, box.y + box.height * sample.fy);
