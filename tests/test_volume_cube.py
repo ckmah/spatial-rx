@@ -144,6 +144,33 @@ def test_serve_directory_answers_range_requests(tmp_path):
         server.shutdown()
 
 
+def test_serve_directory_never_lists_directories(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "f").write_bytes(b"x")
+    server, base = serve_directory(tmp_path)
+    try:
+        assert _fetch(f"{base}/sub/f")[::2] == (200, b"x")
+        for url in (f"{base}/", f"{base}/sub", f"{base}/sub/"):
+            assert _fetch(url)[0] == 404, url
+    finally:
+        server.shutdown()
+
+
+def test_serve_directory_allow_prefixes(tmp_path):
+    for rel in ("images/a/zarr.json", "images/ab/zarr.json", "tables/t/zarr.json", "zarr.json"):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes(b"{}")
+    server, base = serve_directory(tmp_path, allow_prefixes=("images/a/",))
+    try:
+        assert _fetch(f"{base}/images/a/zarr.json")[0] == 200
+        assert _fetch(f"{base}/images/a/zarr.json", "bytes=0-0")[0] == 206
+        for rel in ("images/ab/zarr.json", "tables/t/zarr.json", "zarr.json", "images/a/../../zarr.json"):
+            assert _fetch(f"{base}/{rel}")[0] == 404, rel
+            assert _fetch(f"{base}/{rel}", "bytes=0-0")[0] == 404, rel
+    finally:
+        server.shutdown()
+
+
 def test_ome_zarr_level0_toy_is_unit_voxels(tmp_path):
     root = write_toy_ome_zarr(tmp_path / "toy.ome.zarr")
     meta = ome_zarr_level0(root)

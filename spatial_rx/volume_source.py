@@ -57,7 +57,13 @@ def _pick_table(sdata: Any, table: str | None) -> str:
     names = list(sdata.tables)
     if len(names) == 1:
         return names[0]
-    linked = [n for n in names if sdata.tables[n].uns.get("spatialdata_attrs", {}).get("region") in sdata.labels]
+
+    def links_labels(name: str) -> bool:
+        # ``region`` may also be a list of elements; only a single name links labels.
+        region = sdata.tables[name].uns.get("spatialdata_attrs", {}).get("region")
+        return isinstance(region, str) and region in sdata.labels
+
+    linked = [n for n in names if links_labels(n)]
     if len(linked) == 1:
         return linked[0]
     raise ValueError(f"several tables {names}: pass table=<name>")

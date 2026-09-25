@@ -198,6 +198,15 @@ class _QuietHandler(SimpleHTTPRequestHandler):
     """
 
     _range_remaining: int | None = None
+    #: Served paths (relative, "/"-separated, each ending in "/") under which
+    #: files may be read; ``None`` serves every file under the directory.
+    allow_prefixes: tuple[str, ...] | None = None
+
+    def _allowed(self, path: str) -> bool:
+        if self.allow_prefixes is None:
+            return True
+        rel = os.path.relpath(path, self.directory).replace(os.sep, "/")
+        return any(rel.startswith(prefix) for prefix in self.allow_prefixes)
 
     def end_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -210,8 +219,12 @@ class _QuietHandler(SimpleHTTPRequestHandler):
 
     def send_head(self):  # noqa: ANN201 - stdlib signature
         self._range_remaining = None
-        match = _RANGE.fullmatch((self.headers.get("Range") or "").strip())
         path = self.translate_path(self.path)
+        # Files only, inside the allowlist; no directory listings or redirects.
+        if os.path.isdir(path) or not self._allowed(path):
+            self.send_error(404, "File not found")
+            return None
+        match = _RANGE.fullmatch((self.headers.get("Range") or "").strip())
         if match is None or match.groups() == ("", "") or not os.path.isfile(path):
             return super().send_head()
         size = os.path.getsize(path)
@@ -249,6 +262,10 @@ class _QuietHandler(SimpleHTTPRequestHandler):
                 break
             outputfile.write(block)
             remaining -= len(block)
+
+    def list_directory(self, path):  # noqa: ANN001, ANN201 - stdlib signature
+        self.send_error(404, "File not found")
+        return None
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -321,9 +338,20 @@ class _LoopbackServer(ThreadingHTTPServer):
     daemon_threads = True
 
 
-def serve_directory(directory: Path) -> tuple[ThreadingHTTPServer, str]:
-    """Serve ``directory`` on 127.0.0.1. Returns the server and base URL."""
-    handler = partial(_QuietHandler, directory=str(directory))
+def serve_directory(
+    directory: Path, allow_prefixes: tuple[str, ...] | None = None
+) -> tuple[ThreadingHTTPServer, str]:
+    """Serve the files in ``directory`` on 127.0.0.1. Returns the server and base URL.
+
+    ``allow_prefixes`` (relative paths ending in ``/``, e.g. ``"images/mosaic/"``)
+    limits reads to those subtrees; other paths are 404. Directories are never
+    listed.
+    """
+    handler_cls = _QuietHandler
+    if allow_prefixes is not None:
+        prefixes = tuple(p.strip("/") + "/" for p in allow_prefixes)
+        handler_cls = type("_AllowlistHandler", (_QuietHandler,), {"allow_prefixes": prefixes})
+    handler = partial(handler_cls, directory=str(directory))
     server = _LoopbackServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

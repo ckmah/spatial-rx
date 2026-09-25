@@ -45,3 +45,12 @@ def test_several_tables_need_a_name(sdata):
     sdata.tables["other"] = sdata.tables["table"].copy()
     with pytest.raises(ValueError, match="table="):
         resolve_volume(sdata)
+
+
+def test_a_table_with_several_regions_is_not_the_linked_one(sdata):
+    """``region`` may be a list in SpatialData; it never names the one labels element."""
+    sdata.tables["other"] = other = sdata.tables["table"].copy()
+    # Set after the table is added: its obs names one region, so validation would refuse it.
+    other.uns["spatialdata_attrs"] = {**other.uns["spatialdata_attrs"], "region": ["cells", "nuclei"]}
+    adata, src = resolve_volume(sdata)
+    assert src.table_name == "table" and adata is sdata.tables["table"]

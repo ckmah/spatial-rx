@@ -593,7 +593,10 @@ class LandmarksWidget(AnyWidget):
     def _attach_volume(self, src: Any, contrast_limits: tuple[float, float] | None) -> None:
         from .volume_cube import DEFAULT_CONTRAST_LIMITS, serve_directory
 
-        server, base = serve_directory(src.root)
+        # Only the cube's image and labels: the rest of the store (tables,
+        # expression) stays off the loopback server.
+        allow = (f"images/{src.image}/",) + ((f"labels/{src.labels}/",) if src.labels else ())
+        server, base = serve_directory(src.root, allow_prefixes=allow)
         self._volume_server = server
         (sz, sy, sx), (oz, oy, ox), (d, h, w) = src.voxel_size_um, src.origin_um, src.shape_zyx
         self.volume = {
