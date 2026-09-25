@@ -42,7 +42,7 @@ tab.
 
 ```python
 w = LandmarksWidget(sdata)                      # everything inferred
-w = LandmarksWidget(sdata, table="rna", color="Cluster", image="dapi_3d")  # overrides
+w = LandmarksWidget(sdata, table="rna", color="Cluster", image="mosaic")  # overrides
 w = LandmarksWidget(adata)                      # unchanged: no cube
 ```
 
@@ -75,7 +75,7 @@ w = LandmarksWidget(adata)                      # unchanged: no cube
 ### Data: the colon A2 SpatialData gains the mosaic
 
 The build script (sibling `pyxa_scverse_demo/build_colon_a2.py`) writes Meteor's
-`mosaic_3d.ome.zarr` into the SpatialData as `images/dapi_3d` (`Image3DModel`,
+`mosaic_3d.ome.zarr` into the SpatialData as `images/mosaic` (`Image3DModel`,
 `c, z, y, x`), next to `labels/cell_labels`:
 
 - Meteor's store is `t, c, z, y, x`; SpatialData images have no `t`, so the
@@ -85,6 +85,8 @@ The build script (sibling `pyxa_scverse_demo/build_colon_a2.py`) writes Meteor's
   in the installed version; otherwise plain chunks. To be confirmed in the plan;
   it changes file count, not correctness.
 - `uns["pyxa"]["mosaic_3d"]` goes away.
+- The element is `mosaic`, not named for its stain: more channels will join it
+  later (out of scope here; the cube shows channel 0).
 
 ## Synced traits: three new ones
 
@@ -99,7 +101,7 @@ traits; every rendering control is client-local (ADR 0005).
 | `inspect_cx`, `inspect_cy`, `inspect_size_um` | existing | widget / Python | — |
 
 Client-local, never synced: cube open/closed and its position, camera, additive
-/ MIP, palette, Labels switch, contrast while dragging, alpha and gamma, peek
+/ MIP, palette, Labels switch, contrast while dragging, image alpha and gamma, cell alpha, peek
 state of the side panels.
 
 Python reads the cut box with `w.volume_cut`, and the inspect window as today.
@@ -116,7 +118,7 @@ and computes the highlight itself.
   level, cuts the window (`WindowPixelSource`, `LabelVolumeSource`), pans the
   loaded volume, raycasts with the cell lookup, draws the frame and axes. Props:
   URLs and frame, window centre and size, cut, contrast, render settings
-  (camera preset, mode, palette, per-layer alpha and gamma, labels on), and the
+  (camera preset, mode, palette, image alpha and gamma, cell alpha, labels on), and the
   cell lookup (`HighlightGroup[]` or a prebuilt lookup).
 - `volume-cube/VolumeCubeView.tsx`: the standalone widget; binds its traits and
   `CubeControls` to `VolumeCube`, as now.
@@ -148,17 +150,17 @@ cube is open, using the existing level-1 / level-2 pattern:
   - **Cuts:** X, Y, Z range sliders in µm (X/Y from the window edge), live while
     dragging, commit `volume_cut` on release.
   - **Image:** contrast range, alpha (0–1), gamma (0.2–5, log scale).
-  - **Cells:** alpha (0–1), gamma (0.2–5).
+  - **Cells:** alpha (0–1).
 
 **Palette** is the image's colour map: gray (default), inferno, magma, viridis,
 cividis. Label colours always come from the category palette.
 
-**Alpha and gamma,** per layer, in the raycast:
+**Alpha and gamma** in the raycast (gamma for the image only):
 
 - Image: `v = pow(contrast(v), gamma)`; per-sample opacity `v * alpha`; colour
   from the palette at `v`.
-- Cells: per-sample opacity `alpha * pow(a, gamma)`, where `a` is the lookup's
-  fill or outline alpha (gamma > 1 thins cells, < 1 makes them more solid).
+- Cells: per-sample opacity `alpha * a`, where `a` is the lookup's fill or
+  outline alpha.
 
 These become uniforms of the cube's own shader module, so moving any of them is
 one redraw. The palette is a 256×1×1 lookup texture (3D, like every sampler in
