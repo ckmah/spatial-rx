@@ -3460,12 +3460,19 @@ export function mountEngine({ model, host }) {
       buildInspectHaloLayer(),
       ...buildLandmarkLayers(),
       ...buildDraftLayers(),
-      buildVolumeWindowLayer(),
+      ...buildVolumeWindowLayers(),
     ].filter(Boolean);
   }
 
   let volumeWindow = null;
   let volumeWindowSavedAt = 0;
+  let volumeHover = null;
+  let volumeWindowVisible = false;
+  const inspectListeners = new Set();
+
+  function emitInspect(evt) {
+    for (const fn of inspectListeners) fn(evt);
+  }
 
   function setVolumeWindow(x, y, flush) {
     volumeWindow = { x, y };
@@ -3479,31 +3486,55 @@ export function mountEngine({ model, host }) {
     setDeckLayers();
   }
 
-  function buildVolumeWindowLayer() {
-    if (currentMode !== "inspect" || !volumeWindow || !deckModules) return null;
-    const { PolygonLayer } = deckModules;
+  function windowRing(x, y) {
     const size = Number(model.get("inspect_size_um") || 100);
     const half = size / 2;
-    const { x, y } = volumeWindow;
-    const ring = [
+    return [
       [x - half, y - half],
       [x + half, y - half],
       [x + half, y + half],
       [x - half, y + half],
     ];
-    return new PolygonLayer({
-      id: "volume-inspect-window",
-      data: [{ polygon: ring }],
-      getPolygon: (d) => d.polygon,
-      filled: true,
-      stroked: true,
-      // Saturated blue reads at a glance over any categorical palette (white vanished on pale clusters).
-      getFillColor: [37, 99, 235, 46],
-      getLineColor: [37, 99, 235, 255],
-      getLineWidth: 2.5,
-      lineWidthUnits: "pixels",
-      pickable: false,
-    });
+  }
+
+  function buildVolumeWindowLayers() {
+    if (!deckModules) return [];
+    const { PolygonLayer } = deckModules;
+    const layers = [];
+    if (volumeWindow && (currentMode === "inspect" || volumeWindowVisible)) {
+      layers.push(
+        new PolygonLayer({
+          id: "volume-inspect-window",
+          data: [{ polygon: windowRing(volumeWindow.x, volumeWindow.y) }],
+          getPolygon: (d) => d.polygon,
+          filled: true,
+          stroked: true,
+          // Saturated blue reads at a glance over any categorical palette (white vanished on pale clusters).
+          getFillColor: [37, 99, 235, 46],
+          getLineColor: [37, 99, 235, 255],
+          getLineWidth: 2.5,
+          lineWidthUnits: "pixels",
+          pickable: false,
+        }),
+      );
+    }
+    if (currentMode === "inspect" && volumeHover) {
+      layers.push(
+        new PolygonLayer({
+          id: "volume-inspect-hover",
+          data: [{ polygon: windowRing(volumeHover.x, volumeHover.y) }],
+          getPolygon: (d) => d.polygon,
+          filled: true,
+          stroked: true,
+          getFillColor: [37, 99, 235, 20],
+          getLineColor: [37, 99, 235, 160],
+          getLineWidth: 1.5,
+          lineWidthUnits: "pixels",
+          pickable: false,
+        }),
+      );
+    }
+    return layers;
   }
 
   function computeDeckViewState(w, h) {
@@ -4764,6 +4795,7 @@ export function mountEngine({ model, host }) {
       const pt = eventPoint(event);
       if (!pt) return;
       setVolumeWindow(pt.x, pt.y, true);
+      emitInspect({ type: "place", x: pt.x, y: pt.y });
       return;
     }
     // Right/middle clicks must not preventDefault — that blocks contextmenu.
@@ -4920,7 +4952,13 @@ export function mountEngine({ model, host }) {
 
     if (currentMode === "inspect") {
       webglCanvas.style.cursor = "crosshair";
-      if (event.buttons === 1) setVolumeWindow(pt.x, pt.y, false);
+      if (event.buttons === 0) {
+        volumeHover = pt;
+        setDeckLayers();
+      } else if (event.buttons === 1) {
+        setVolumeWindow(pt.x, pt.y, false);
+        emitInspect({ type: "place", x: pt.x, y: pt.y });
+      }
       return;
     }
 
@@ -5160,6 +5198,10 @@ export function mountEngine({ model, host }) {
             container.contains(into)));
       if (!stillOnPlot) clearProbeHover();
     }
+    if (volumeHover) {
+      volumeHover = null;
+      setDeckLayers();
+    }
     if (isDragging) { isDragging = false; dragStart = null; }
     if (vertexDragIndex >= 0 || vertexDragLandmarkIndex >= 0) {
       vertexDragIndex = -1;
@@ -5392,6 +5434,12 @@ export function mountEngine({ model, host }) {
         resetDraft();
         model.set("mode", "select");
         model.save_changes();
+        return;
+      }
+      if (currentMode === "inspect") {
+        volumeHover = null;
+        emitInspect({ type: "close" });
+        setDeckLayers();
         return;
       }
       resetDraft();
@@ -6057,6 +6105,21 @@ export function mountEngine({ model, host }) {
         return { kind, index };
       }
       return null;
+    },
+    subscribeInspect(fn) {
+      if (typeof fn !== "function") return () => {};
+      inspectListeners.add(fn);
+      return () => inspectListeners.delete(fn);
+    },
+    setInspectWindowVisible(v) {
+      volumeWindowVisible = Boolean(v);
+      setDeckLayers();
+    },
+    getInspectOverlay() {
+      return {
+        hover: volumeHover ? [volumeHover.x, volumeHover.y] : null,
+        placed: volumeWindow ? [volumeWindow.x, volumeWindow.y] : null,
+      };
     },
     destroy,
   };
