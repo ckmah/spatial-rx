@@ -87,6 +87,7 @@ Durable do/don't rules for agents. Prefer short tables over prose; vocabulary ma
 | One deck.gl orthographic `Deck` for all geometry ([ADR 0003](docs/adr/0003-deckgl-landmarks-renderer.md)) | A second 2D canvas camera that drifts from the deck.gl viewport |
 | Client-side neighborhood overlay from coordinates ([ADR 0004](docs/adr/0004-neighborhood-visuals.md)) | Syncing or requiring `obsp` CSR graphs for expand visuals |
 | Rendering controls in widget chrome; sync a trait only when Python reads/sets it; commit on release ([ADR 0005](docs/adr/0005-widget-owns-rendering-controls.md)) | Notebook sliders as a widget's control panel; two owners for one trait |
+| `LandmarksWidget(sdata)` infers and renders its own volume cube, sharing `VolumeCube` with the standalone widget ([ADR 0006](docs/adr/0006-landmarks-hosts-volume-cube.md)) | A notebook glue cell linking two widgets' traits for one gesture |
 
 ## Widgets
 
@@ -119,7 +120,13 @@ ANYWIDGET_HMR=1 uv run --extra demo marimo edit demos/<demo>.py
 VolumeCube harness (Playwright / manual):
 
 ```bash
-cd frontend && npm run dev:notebook-link
+cd frontend && npm run dev:volume-cube
+```
+
+Landmarks-with-a-cube harness (Playwright / manual, toy SpatialData with a 3D image):
+
+```bash
+cd frontend && npm run dev:landmarks-volume
 ```
 
 ## deck.gl / luma.gl (frontend)
@@ -134,8 +141,9 @@ runtime Deck instance. Path `_esm` is loaded via blob URL — no sibling chunk i
 Vite aliases all `@deck.gl/*` and `@luma.gl/*` imports to the root copies during every
 widget build (`frontend/vite.config.ts`).
 
-Viv dev harnesses (`dev:volume-cube`, `dev:notebook-link`) use default Vite
-`optimizeDeps`; the landmarks harness excludes `@hms-dbmi/viv` from pre-bundling.
+Viv dev harnesses (`dev:volume-cube`, `dev:landmarks-volume`) use default Vite
+`optimizeDeps`; the plain landmarks harness (`dev:landmarks`, no 3D image) excludes
+`@hms-dbmi/viv` from pre-bundling, since it never opens a cube.
 
 `_esm` must remain a `pathlib.Path` to the bundled `.mjs` — see
 [Chrome and packaging](#chrome-and-packaging) and [`docs/widget-packaging.md`](docs/widget-packaging.md).

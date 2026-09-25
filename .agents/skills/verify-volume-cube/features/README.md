@@ -18,9 +18,26 @@ capability** to existing Playwright coverage — not a product roadmap.
 | [cube-controls](cube-controls.md) | `volume-cube.spec.ts` — `"in-widget controls: camera presets, projection, and a committed Z cut"` | `rest` |
 | [highlight-groups](highlight-groups.md) | `volume-cube.spec.ts` — `"highlight_groups colour chosen cells and follow the Labels switch"` | `highlight-on` |
 | [axis-slice-traits](axis-slice-traits.md) | `volume-cube.spec.ts` — `"model patch updates axis slice readout"` | — |
-| [landmarks-inspect-drives-cube](landmarks-inspect-drives-cube.md) | `notebook-link.spec.ts` — `"Landmarks inspect click updates VolumeCube window readout"` | — |
-| [coord-contract-xy-frame](coord-contract-xy-frame.md) | `notebook-link.spec.ts` — `"inspect traits stay within volume XY extents"`; `test_coord_contract_landmarks_cube_xy` | — |
+| [coord-contract-xy-frame](coord-contract-xy-frame.md) | `test_coord_contract_landmarks_cube_xy`; `test_from_ome_zarr_frames_cube_in_store_microns` | — |
 | [python-analysis-inspect-window](python-analysis-inspect-window.md) | `test_coord_contract_landmarks_cube_xy`; `demos/volume-cube.py` analysis cell | — |
+
+`VolumeCube` (`frontend/src/widgets/volume-cube/VolumeCube.tsx`) is a shared
+rendering component: this standalone widget (`VolumeCubeView.tsx`) and
+Landmarks' floating Cube dialog (`landmarks/chrome/cube-window.tsx`) both bind
+it to their own state — see [ADR 0006](../../../docs/adr/0006-landmarks-hosts-volume-cube.md)
+and the [verify-landmarks `inspect-cube` map entry](../../verify-landmarks/features/inspect-cube.md).
+The Inspect → cube path is now proved directly in the landmarks tier
+(`frontend/e2e/landmarks/landmarks-volume.spec.ts`), not by linking two
+separate widgets — the notebook-link harness and its spec are gone.
+
+`data-*` attributes (`data-channels`, `data-render`, `data-pan`,
+`data-palette`, `data-image-gamma`, `data-highlight`, `data-labels`) exist in
+two places: the full mirror on `VolumeCube`'s own root, `.volume-cube__view`
+(the element the feature files below assert against inside Landmarks' Cube
+dialog), and a smaller subset re-mirrored onto this standalone widget's own
+root (`.volume-cube`, via `VolumeCubeView.tsx`) for tests written against the
+standalone harness. Scope selectors to the widget under test — do not assume
+one root's attributes describe the other's.
 
 ## Not yet mapped (spec exists, no feature file)
 

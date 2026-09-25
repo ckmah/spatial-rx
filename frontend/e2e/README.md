@@ -42,6 +42,14 @@ Obsolete Soft Float assertions removed: Selection ModeToggle radio, Inspect pin 
 
 Canonical platform: **Linux Chromium** (GitHub Actions). macOS soft-skips screenshots unless `E2E_SCREENSHOTS=1`.
 
+The Landmarks toolbar regroup (lasso/landmark dropdowns, cube icon), panel
+peek tabs, and the shared `VolumeCube` component all changed chrome pixels:
+regenerate the Landmarks `rest` snapshot, the core `shared-chrome-rest`
+snapshot, and the VolumeCube snapshots (`rest`, `window-on-sphere`,
+`labels-off`) on Linux/CI (`npm run test:e2e:update:landmarks` /
+`test:e2e:update:core` / `test:e2e:update:volume-cube`) rather than trusting a
+locally-generated baseline.
+
 ## Run locally
 
 ```bash
@@ -69,13 +77,18 @@ E2E_SCREENSHOTS=0 npm run test:e2e
 ```
 
 Harness: Vite per tier via `playwright.config.ts` `webServer` (`dev:landmarks` default;
-`E2E_HARNESS=volume-cube` for volume-cube tier).
+`E2E_HARNESS=volume-cube` for volume-cube tier; `E2E_HARNESS=landmarks-volume` for
+`landmarks-volume.spec.ts`, a Landmarks harness with a toy SpatialData that
+also has a 3D image, so its Inspect cube opens).
+
+`npm run test:e2e:landmarks` already runs both: the `landmarks-volume` harness
+against `landmarks-volume.spec.ts`, then the default `dev:landmarks` harness
+against the rest of `e2e/landmarks/`.
 
 Hooks:
 
 - Landmarks: `window.__landmarksEngine` / `__landmarksModel`
 - VolumeCube: `window.__volumeCubeModel` (harness exposes mock model)
-- Notebook link: both hooks + `data-testid="notebook-link-banner"` (`dev:notebook-link`)
 
 ## CI artifacts
 
