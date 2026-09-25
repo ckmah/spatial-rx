@@ -27,8 +27,11 @@ in its own chrome:
   **Cube** dialog (`frontend/src/widgets/landmarks/chrome/cube-window.tsx`)
   with its own context toolbar (`chrome/inspect-toolbar.tsx`,
   `data-testid="context-inspect-toolbar"`). Highlight follows the category
-  panel's focus in the browser (`cube-highlight.ts`), from the spatial
-  index already used for selections — no Python round trip.
+  panel's focus in the browser (`cube-highlight.ts`) — no Python round
+  trip. It is a linear scan over every cell's decoded `points_data`
+  position against the window (plus a 10 µm margin), re-run whenever the
+  window, focus, categories or selections change, so on each drag move
+  too; a spatial index is the next step if large tables make that slow.
 - `volume_cut`'s X/Y edges are window-relative in the browser
   (`cube-cut.ts`): an open edge follows the inspect window as it moves, so
   Python reads the shown box by intersecting `volume_cut` with the window
@@ -40,6 +43,10 @@ in its own chrome:
   shared rendering component: props and a cell lookup in, no model. Both
   `landmarks/chrome/cube-window.tsx` and the standalone
   `volume-cube/VolumeCubeView.tsx` bind it to their own state.
+- The browser reads the store through a loopback server
+  (`serve_directory` in `spatial_rx/volume_cube.py`) that serves only
+  `images/<image>/` and `labels/<labels>/` of the SpatialData; tables and
+  every other path are 404, and no directory is listed.
 - `LandmarksWidget(adata)` (no SpatialData) is unchanged: no cube, no new
   traits populated.
 
@@ -48,8 +55,12 @@ in its own chrome:
 - Viv, zarrita and the cube shaders join the Landmarks bundle (both widgets
   already share the root deck.gl / luma.gl stack); `landmarks.mjs` grew
   from about 2.9 MB to about 4.9 MB raw, because a widget loads as one
-  module and cannot share a chunk with another notebook cell. `VolumeCube`
-  is lazy-imported so Landmarks without a 3D image never fetches Viv.
+  module and cannot share a chunk with another notebook cell. The widget
+  build inlines dynamic imports, so every Landmarks widget downloads Viv,
+  with or without a 3D image; `VolumeCube`'s lazy import only defers it
+  in the dev harness.
+- In MIP the projection is drawn opaque, so the Image **Alpha** slider
+  scales its colour: it acts as brightness rather than transparency.
 - `VolumeCubeWidget` and `from_ome_zarr` stay as a standalone widget, and
   as the dev/Playwright harness for the cube's rendering
   (`npm run dev:volume-cube`, `npm run test:e2e:volume-cube`) — the same

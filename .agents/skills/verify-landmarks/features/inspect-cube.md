@@ -13,13 +13,15 @@ or the close button hides it.
 ## Sub-features
 
 - Hover in Inspect draws the window square with no model writes; click places it (`inspect_cx`/`inspect_cy`) and opens the Cube dialog
-- Drag pans the cube live (`data-pan` mirrors nonzero, then settles back to `0,0` once the refetch lands at the new window)
+- Drag pans the cube live (`data-pan` mirrors nonzero, then settles back to `0,0` once the refetch lands at the new window); moves save `inspect_cx`/`inspect_cy` at most every 40 ms and the release saves the final position
 - Esc (while in Inspect) or the dialog's close button hides the cube; clicking again in Inspect reopens it; switching to another tool keeps it open
 - Inspect context toolbar (`data-testid="context-inspect-toolbar"`): camera presets (Top/Iso/Side), Additive/MIP, Palette, Labels switch, and Cuts/Image/Cells level-2 panels
 - Cuts (X, Y, Z range sliders in µm) render live and commit `volume_cut` on release; X/Y are window-relative (an untouched/open edge tracks the window as it moves) while Z is absolute
+- An open Z (`volume_cut` set to `[]` from Python) shows the stack's edges in the Z readout, never ±Infinity
 - `volume_cut` also commits once, ~250ms after a window move settles, only while the cube is open
 - Highlight follows the Landmarks category panel: nothing focused colors every cell in the window by category, a focused category colors only its cells, a focused Selection colors its cells by category
-- No 3D image in the SpatialData: the square still places (`data-testid="context-inspect-no-volume"` pill), no cube opens
+- Image panel: in Additive, Alpha scales each sample's opacity; in MIP the projection is opaque, so Alpha acts as brightness
+- No 3D image (`LandmarksWidget(adata)`, or a SpatialData without one): the square still places (`data-testid="context-inspect-no-volume"` pill, "No 3D image: build the widget from a SpatialData with a 3D image"), no cube opens
 
 ## How to get to it (user POV)
 
@@ -69,12 +71,12 @@ Model keys: `inspect_cx`, `inspect_cy`, `inspect_size_um`, `volume`,
 
 **Proof**
 
-- Functional: `inspect_cx`/`inspect_cy` set on click; `data-pan` nonzero mid-drag then `0,0`; `volume_cut` reflects a committed slider edit and stays window-relative across a drag; `data-highlight` count matches focus.
+- Functional: `inspect_cx`/`inspect_cy` set on click, and the saved value equals the final position after a quick drag; `data-pan` nonzero mid-drag then `0,0`; `volume_cut` reflects a committed slider edit and stays window-relative across a drag; `volume_cut = []` shows Z as `0–64 µm`; `data-highlight` count matches focus.
 - Visual: no dedicated named anchor yet (functional asserts cover the dialog and toolbar); reuse `rest`/`selection-neighborhood` conventions if a screenshot is added later.
 
 ## Gotchas
 
 - The `.volume-cube__view` inside `getByRole("dialog", { name: "Cube" })` carries the full `data-*` mirror (`data-channels`, `data-render`, `data-pan`, `data-palette`, `data-image-gamma`, `data-highlight`, `data-labels`); the standalone `VolumeCubeWidget`'s own root also mirrors a subset (see [verify-volume-cube features README](../../verify-volume-cube/features/README.md)) — scope selectors to the widget you are testing.
-- `VolumeCube` is lazy-loaded on first cube open; the dialog shows "Loading cube…" briefly.
+- `VolumeCube` is lazy-loaded on first cube open in the dev harness (the dialog shows "Loading cube…" briefly); the built `landmarks.mjs` inlines it, so Viv ships with every Landmarks widget.
 - `volume_cut`'s open X/Y edges are written as the volume's extent, not the window's — assert against the volume bounds, not `inspect_cx ± inspect_size_um/2`, when an edge is untouched.
 - The toy SpatialData harness places three cells (labels 1-3) at fixed µm coordinates; a 100 µm window at canvas center covers all three across two categories — see the spec file's header comment for exact values.

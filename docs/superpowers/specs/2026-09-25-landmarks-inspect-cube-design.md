@@ -207,7 +207,8 @@ stacked dock) collapses as one.
 ## Error handling
 
 - No cube (in-memory SpatialData, no 3D image): the Inspect tool still places the
-  square (as today); the context bar says "No 3D image in this SpatialData".
+  square (as today); the context bar says "No 3D image: build the widget from a SpatialData
+  with a 3D image".
 - Fetch or decode error: the cube window shows the message; the map is
   unaffected.
 - Window outside the image: "Inspect window is outside the volume".
