@@ -75,7 +75,7 @@ export function useInspectCube(facade: AnyModel, lm: LandmarksModel, engine: Eng
       ? null
       : cutWindow(lm.inspect_cx, lm.inspect_cy, lm.inspect_size_um || 100, { x: origin[2], y: origin[1] }, volume);
   const cut: CubeCut = win
-    ? shownCut(cube.cut, win)
+    ? shownCut(cube.cut, win, volume?.z ?? null)
     : [-Infinity, Infinity, -Infinity, Infinity, cube.cut.z[0], cube.cut.z[1]];
   const cutRanges = win && volume ? { x: win.x, y: win.y, z: volume.z } : null;
 

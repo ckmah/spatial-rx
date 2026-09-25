@@ -5037,6 +5037,11 @@ export function mountEngine({ model, host }) {
   }
 
   function handleMouseUp(event) {
+    if (currentMode === "inspect" && volumeWindow && event.button === 0) {
+      // Drag moves save at most every 40 ms: flush the final window position.
+      volumeWindowSavedAt = performance.now();
+      model.save_changes();
+    }
     const vertexDragActive = vertexDragIndex >= 0 || vertexDragLandmarkIndex >= 0;
     if ((currentMode === "select" || currentMode === "node" || currentMode === "move" || currentMode === "probe" || currentMode === "inspect") && !isDragging && !vertexDragActive) return;
     const pt = eventPoint(event);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { BoxIcon, ChevronDownIcon, CircleDotIcon, RotateCcwIcon, ScissorsIcon, SunMediumIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -110,6 +110,7 @@ export function InspectToolbar({
   onCutLive: (cut: CubeCut) => void;
   onCutCommit: (cut: CubeCut) => void;
 }) {
+  const labelsId = useId();
   const [panel, setPanel] = useState<Panel | null>(null);
   const [menuContainer, setMenuContainer] = useState<HTMLElement | null>(null);
   // The cube sizes the contrast range from the contrast it draws; hold the max
@@ -232,14 +233,14 @@ export function InspectToolbar({
           </DropdownMenu>
           <div className="flex items-center gap-1.5 px-1.5">
             <Switch
-              id="landmarks-cube-labels"
+              id={labelsId}
               size="sm"
               aria-label="Labels"
               checked={settings.showLabels}
               disabled={!labelsAvailable}
               onCheckedChange={(on) => patch({ showLabels: on })}
             />
-            <Label htmlFor="landmarks-cube-labels" className="text-xs text-muted-foreground">
+            <Label htmlFor={labelsId} className="text-xs text-muted-foreground">
               Labels
             </Label>
           </div>
@@ -350,7 +351,7 @@ export function InspectNoVolumePill() {
     <div className="landmarks__chrome-context" data-testid="context-inspect-no-volume">
       <div className={cn(pillClass, "px-3 text-xs text-muted-foreground")}>
         <BoxIcon aria-hidden className="size-3.5" />
-        No 3D image in this SpatialData
+        No 3D image: build the widget from a SpatialData with a 3D image
       </div>
     </div>
   );

@@ -82,6 +82,36 @@ test.describe("Landmarks inspect cube", () => {
     expect((await page.evaluate(() => (window as any).__landmarksEngine.getInspectOverlay())).hover).toBeNull();
   });
 
+  test("a quick drag saves the final window position on release", async ({ page }) => {
+    const box = await openCubeAtCentre(page);
+    const cx0 = Number(await getModel(page, "inspect_cx"));
+    // Record inspect_cx as saved (change events fire on save_changes only).
+    await page.evaluate(() => {
+      const model = (window as any).__landmarksModel;
+      model.on("change:inspect_cx", () => ((window as any).__savedCx = model.get("inspect_cx")));
+    });
+    // Press, move, release in one task: the move lands inside the 40 ms save throttle.
+    await page.evaluate((b) => {
+      const canvas = document.querySelector("canvas.landmarks__webgl")!;
+      const at = (type: string, fx: number, buttons: number) =>
+        canvas.dispatchEvent(
+          new MouseEvent(type, {
+            bubbles: true,
+            button: 0,
+            buttons,
+            clientX: b.x + b.width * fx,
+            clientY: b.y + b.height * 0.5,
+          }),
+        );
+      at("mousedown", 0.5, 1);
+      at("mousemove", 0.6, 1);
+      at("mouseup", 0.6, 0);
+    }, box);
+    const cx = Number(await getModel(page, "inspect_cx"));
+    expect(cx).toBeGreaterThan(cx0);
+    expect(await page.evaluate(() => (window as any).__savedCx)).toBe(cx);
+  });
+
   test("inspect toolbar: presets, MIP, palette, alpha/gamma, committed Z cut", async ({ page }) => {
     await openCubeAtCentre(page);
     const bar = page.getByTestId("context-inspect-toolbar");
@@ -185,6 +215,14 @@ test.describe("Landmarks inspect cube", () => {
     expect(await x.nth(1).getAttribute("aria-valuenow")).toBe(await x.nth(1).getAttribute("aria-valuemax"));
     await page.waitForTimeout(600);
     expect(await cutOf(page)).toEqual([0, 256, 0, 256, 10, 40]);
+
+    // Python clears the cut: Z is open, shown as the stack's edges (not ±Infinity).
+    await setModel(page, { volume_cut: [] });
+    await expect(z.nth(0)).toHaveAttribute("aria-valuenow", "0");
+    await expect(z.nth(1)).toHaveAttribute("aria-valuenow", "64");
+    const cuts = page.getByTestId("context-cube-cuts");
+    await expect(cuts).toContainText("0–64 µm");
+    await expect(cuts).not.toContainText("Infinity");
   });
 
   test("a Z-only cut leaves X and Y whole for any window, edge windows too", async ({ page }) => {

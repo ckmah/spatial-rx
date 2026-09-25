@@ -55,9 +55,13 @@ export function toRelativeCut(cut: CubeCut, win: CutWindow): RelativeCut {
   return { x: edgesOf(cut[0], cut[1], win.x), y: edgesOf(cut[2], cut[3], win.y), z: [cut[4], cut[5]] };
 }
 
-/** The cut the cube draws and the sliders show, inside the current window. */
-export function shownCut(rel: RelativeCut, win: CutWindow): CubeCut {
-  return [...edgesIn(rel.x, win.x), ...edgesIn(rel.y, win.y), rel.z[0], rel.z[1]] as CubeCut;
+/**
+ * The cut the cube draws and the sliders show, inside the current window.
+ * Z is clamped to the stack once it is known, so an open Z shows its edges.
+ */
+export function shownCut(rel: RelativeCut, win: CutWindow, stackZ: Range | null): CubeCut {
+  const z = stackZ ? clamp(rel.z[0], rel.z[1], stackZ) : rel.z;
+  return [...edgesIn(rel.x, win.x), ...edgesIn(rel.y, win.y), z[0], z[1]] as CubeCut;
 }
 
 /**

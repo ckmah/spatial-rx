@@ -347,6 +347,7 @@ export function LandmarksView({
                 collapsed.left && "landmarks__chrome-dock--collapsed",
               )}
               data-collapsed={collapsed.left ? "true" : "false"}
+              inert={collapsed.left}
               onMouseDown={(e) => e.stopPropagation()}
               onWheel={(e) => e.stopPropagation()}
             >
@@ -380,6 +381,7 @@ export function LandmarksView({
                 collapsed.left && "landmarks__chrome-dock--collapsed",
               )}
               data-collapsed={collapsed.left ? "true" : "false"}
+              inert={collapsed.left}
               onMouseDown={(e) => e.stopPropagation()}
               onWheel={(e) => e.stopPropagation()}
             >
@@ -401,6 +403,7 @@ export function LandmarksView({
                 collapsed.right && "landmarks__chrome-dock--collapsed",
               )}
               data-collapsed={collapsed.right ? "true" : "false"}
+              inert={collapsed.right}
               onMouseDown={(e) => e.stopPropagation()}
               onWheel={(e) => e.stopPropagation()}
             >

@@ -10,7 +10,8 @@ import type { CubeSettings, CubeSettingsPatch } from "../use-cube-settings";
 import type { LandmarksModel } from "../use-landmarks-model";
 import { FLOAT_PANEL } from "./sections";
 
-// Viv loads with the first cube, so Landmarks without a volume never fetches it.
+// Lazy only in the dev harness: the widget build inlines dynamic imports
+// (`inlineDynamicImports`, vite.config.ts), so landmarks.mjs always carries Viv.
 const VolumeCube = lazy(() =>
   import("@/widgets/volume-cube/VolumeCube").then((m) => ({ default: m.VolumeCube })),
 );

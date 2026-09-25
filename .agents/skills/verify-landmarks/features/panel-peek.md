@@ -12,6 +12,7 @@ shortcuts.
 - `PanelCollapseButton` (`chrome/panel-peek.tsx`) sits in each dock's header; clicking it sets `data-collapsed="true"` on the dock (`.landmarks__chrome-dock--left` / `--right`) and slides it off its edge
 - `PanelPeekTab` replaces a collapsed dock with an edge tab (full height of the old header); clicking it expands the dock again (`data-collapsed="false"`)
 - **[** collapses/expands the left dock, **]** the right dock, once the widget has focus (e.g. a click on the canvas)
+- A collapsed dock is `inert`: its controls leave the tab order and the accessibility tree until it expands
 - Collapse state is client-local (not a traitlet); the narrow/stacked layout collapses as one
 - The peek tab sits above the minimap slot so the left tab never covers it
 
@@ -46,7 +47,7 @@ Selectors: `getByRole("button", { name: "Collapse left panel" | "Collapse right 
 
 **Proof**
 
-- Functional: `data-collapsed` toggles true/false via the header button, and via `[`/`]` after the widget has focus.
+- Functional: `data-collapsed` toggles true/false via the header button, and via `[`/`]` after the widget has focus; a button inside the collapsed dock cannot take focus, and can again once expanded.
 - Visual: no dedicated named anchor; the collapsed/expanded states are covered functionally rather than by screenshot.
 
 ## Gotchas

@@ -312,7 +312,7 @@ test.describe("LandmarksWidget", () => {
 
   test("Inspect without a 3D image places the square and opens no cube", async ({ page }) => {
     await page.getByRole("radio", { name: "Inspect", exact: true }).click();
-    await expect(page.getByTestId("context-inspect-no-volume")).toHaveText("No 3D image in this SpatialData");
+    await expect(page.getByTestId("context-inspect-no-volume")).toHaveText("No 3D image: build the widget from a SpatialData with a 3D image");
     const box = await canvasBox(page);
     await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
     await expect.poll(async () => getModel(page, "inspect_cx")).not.toBeNull();
@@ -480,7 +480,15 @@ test.describe("LandmarksWidget", () => {
     const left = page.locator(".landmarks__chrome-dock--left");
     await page.getByRole("button", { name: "Collapse left panel" }).click();
     await expect(left).toHaveAttribute("data-collapsed", "true");
+    // A collapsed dock is inert: its controls cannot take focus.
+    const focusable = (loc: typeof left) =>
+      loc.locator("button").first().evaluate((el: HTMLElement) => {
+        el.focus();
+        return document.activeElement === el;
+      });
+    expect(await focusable(left)).toBe(false);
     await page.getByRole("button", { name: "Show left panel" }).click();
+    expect(await focusable(left)).toBe(true);
     await expect(left).toHaveAttribute("data-collapsed", "false");
     const box = await canvasBox(page);
     await page.mouse.click(box.x + 5, box.y + box.height - 5); // focus the widget
