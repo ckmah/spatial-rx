@@ -72,8 +72,12 @@ uniform cubeRenderUniforms {
 // One-deep 3D textures: luma.gl validates the program before it assigns
 // texture units, and a sampler2D beside Viv's sampler3Ds (all on unit 0 then)
 // fails that validation.
-uniform highp sampler3D cellLut;
 uniform highp sampler3D imagePalette;
+// The image-only program declares no cell sampler (it would be left unbound);
+// Viv defines NUM_CHANNELS and luma.gl puts defines ahead of module code.
+#if NUM_CHANNELS > 1
+uniform highp sampler3D cellLut;
+#endif
 
 vec3 srgbToLinear(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
 
@@ -84,6 +88,7 @@ vec4 imageSample(float v) {
   return vec4(c, g * cubeRender.imageAlpha);
 }
 
+#if NUM_CHANNELS > 1
 // Colour (linear RGB) and per-sample alpha of the voxel with label value v.
 vec4 cellColor(float v) {
   if (v == 0.0) return vec4(0.0);
@@ -98,6 +103,7 @@ vec4 cellColor(float v) {
   else c = texelFetch(cellLut, ivec3(0), 0);
   return vec4(c.rgb, c.a * cubeRender.cellAlpha);
 }
+#endif
 `,
 };
 
@@ -214,7 +220,7 @@ abstract class CubeExtension extends ColorPalette3DExtensions.BaseExtension {
     }
     if (!layer.state.paletteTexture || props.imagePalette !== oldProps.imagePalette) {
       layer.state.paletteTexture?.destroy();
-      const palette = props.imagePalette ?? paletteLut(DEFAULT_RENDER.palette);
+      const palette = props.imagePalette ?? paletteLut(props.render?.palette ?? DEFAULT_RENDER.palette);
       layer.setState({ paletteTexture: lookupTexture(layer, palette) });
     }
   }
@@ -224,7 +230,7 @@ abstract class CubeExtension extends ColorPalette3DExtensions.BaseExtension {
     if (!isRaycaster(layer)) return;
     const { model, cellLutTexture, paletteTexture } = layer.state;
     if (!model || !cellLutTexture || !paletteTexture) return;
-    // With the image alone the shader compiles cellLut out; binding it anyway
+    // With the image alone the shader declares no cellLut; binding it anyway
     // would make luma.gl warn about an unknown binding on every frame.
     const cells = layer.getNumChannels() > 1 ? { cellLut: cellLutTexture } : {};
     model.setBindings({ ...cells, imagePalette: paletteTexture });
