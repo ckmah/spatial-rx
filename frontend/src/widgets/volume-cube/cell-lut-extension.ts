@@ -1,10 +1,14 @@
 import { ColorPalette3DExtensions } from "@hms-dbmi/viv";
 
+import { type PaletteName, paletteLut } from "./palettes";
+
 /**
- * Viv volume rendering for an image plus one label channel, coloured per cell.
+ * Viv volume rendering for an image, plus one label channel coloured per cell.
  *
- * Channel 0 is the image; channel 1 holds each voxel's label id, negated on the
- * cell's surface (a voxel with a differently labelled 6-neighbour). A small
+ * Channel 0 is the image, coloured through a 256-texel palette (`imagePalette`)
+ * with alpha and gamma from the `render` prop. Channel 1, once labels load,
+ * holds each voxel's label id, negated on the cell's surface (a voxel with a
+ * differently labelled 6-neighbour). A small
  * RGBA lookup texture (`cellLut`) maps id -> colour and fill alpha; texel 0 is
  * the colour and alpha of surfaces that are not highlighted.
  *
@@ -30,15 +34,55 @@ export type CellLut = { data: Uint8Array; width: number; height: number };
 /** Nothing drawn for any cell: used while Labels is off. */
 export const EMPTY_CELL_LUT: CellLut = { data: new Uint8Array(4), width: 1, height: 1 };
 
-// The module must not share the sampler's name: luma.gl keys a module's
-// uniforms by module name and would set the sampler's texture unit from them.
-const cellLutModule = {
-  name: "cellColors",
+/** How the cube draws the image and the cells, on top of the lookup textures. */
+export type RenderSettings = {
+  palette: PaletteName;
+  /** Scales the image's per-sample alpha. */
+  imageAlpha: number;
+  /** Exponent on the contrast-limited image value. */
+  imageGamma: number;
+  /** Scales every cell's per-sample alpha. */
+  cellAlpha: number;
+};
+
+export const DEFAULT_RENDER: RenderSettings = { palette: "gray", imageAlpha: 1, imageGamma: 1, cellAlpha: 1 };
+
+/** A 256-texel image colour map from `paletteLut`. */
+export type ImagePalette = { data: Uint8Array; width: number; height: number };
+
+// The module must not share a sampler's name: luma.gl keys a module's
+// uniforms by module name and would set that sampler's texture unit from them.
+const cubeRenderModule = {
+  name: "cubeRender",
+  uniformTypes: { imageAlpha: "f32", imageGamma: "f32", cellAlpha: "f32" },
+  defaultUniforms: { imageAlpha: 1, imageGamma: 1, cellAlpha: 1 },
+  // Only the numbers reach the uniform block; the palette is a texture.
+  getUniforms: (render: Partial<RenderSettings> = {}) => ({
+    imageAlpha: render.imageAlpha ?? DEFAULT_RENDER.imageAlpha,
+    imageGamma: render.imageGamma ?? DEFAULT_RENDER.imageGamma,
+    cellAlpha: render.cellAlpha ?? DEFAULT_RENDER.cellAlpha,
+  }),
   fs: `\
-// A one-deep 3D texture: luma.gl validates the program before it assigns
+uniform cubeRenderUniforms {
+  float imageAlpha;
+  float imageGamma;
+  float cellAlpha;
+} cubeRender;
+
+// One-deep 3D textures: luma.gl validates the program before it assigns
 // texture units, and a sampler2D beside Viv's sampler3Ds (all on unit 0 then)
 // fails that validation.
 uniform highp sampler3D cellLut;
+uniform highp sampler3D imagePalette;
+
+vec3 srgbToLinear(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
+
+// Image value after contrast -> (linear rgb, per-sample alpha).
+vec4 imageSample(float v) {
+  float g = pow(clamp(v, 0.0, 1.0), cubeRender.imageGamma);
+  vec3 c = srgbToLinear(texelFetch(imagePalette, ivec3(int(g * 255.0 + 0.5), 0, 0), 0).rgb);
+  return vec4(c, g * cubeRender.imageAlpha);
+}
 
 // Colour (linear RGB) and per-sample alpha of the voxel with label value v.
 vec4 cellColor(float v) {
@@ -47,18 +91,23 @@ vec4 cellColor(float v) {
   int id = int(abs(v) + 0.5);
   vec4 own = vec4(0.0);
   if (id < size.x * size.y) own = texelFetch(cellLut, ivec3(id % size.x, id / size.x, 0), 0);
-  if (v > 0.0) return own;
+  vec4 c;
+  if (v > 0.0) c = own;
   // Surface voxel: a highlighted cell's own colour, otherwise the shared outline.
-  if (own.a > 0.0) return vec4(own.rgb, 0.9);
-  return texelFetch(cellLut, ivec3(0), 0);
+  else if (own.a > 0.0) c = vec4(own.rgb, 0.9);
+  else c = texelFetch(cellLut, ivec3(0), 0);
+  return vec4(c.rgb, c.a * cubeRender.cellAlpha);
 }
 `,
 };
 
-// Declared before the ray march; no channel placeholders, so Viv does not
-// repeat these lines per channel.
+// The label channel (volume1) exists only once labels load; with the image
+// alone every cell line is compiled out. No channel placeholders anywhere, so
+// Viv does not repeat these lines per channel.
 const CELL_SETUP = `
-  ivec3 cellSize = textureSize(volume1, 0);`;
+#if NUM_CHANNELS > 1
+  ivec3 cellSize = textureSize(volume1, 0);
+#endif`;
 
 const CELL_SAMPLE = `
     vec4 cell = canShow * cellColor(
@@ -68,14 +117,15 @@ const CELL_SAMPLE = `
 const ADDITIVE = {
   _BEFORE_RENDER: CELL_SETUP,
   _RENDER: `
+#if NUM_CHANNELS > 1
     // Cell first, so a coloured cell reads in its own colour over bright stain.
     ${CELL_SAMPLE}
     color.rgb += (1.0 - color.a) * cell.a * cell.rgb;
     color.a += (1.0 - color.a) * cell.a;
-    // Image, composited as Viv's additive blend does.
-    float imageAlpha = clamp(intensityValue0, 0.0, 1.0);
-    color.rgb += (1.0 - color.a) * imageAlpha * imageAlpha * fragmentUniforms3D.color0;
-    color.a += (1.0 - color.a) * imageAlpha;
+#endif
+    vec4 im = imageSample(intensityValue0);
+    color.rgb += (1.0 - color.a) * im.a * im.rgb;
+    color.a += (1.0 - color.a) * im.a;
     if (color.a >= 0.95) {
       break;
     }`,
@@ -88,22 +138,32 @@ const MIP = {
   vec4 cells = vec4(0.0);`,
   _RENDER: `
     maxImage = max(maxImage, intensityValue0);
+#if NUM_CHANNELS > 1
     if (cells.a < 0.95) {
       ${CELL_SAMPLE}
       cells.rgb += (1.0 - cells.a) * cell.a * cell.rgb;
       cells.a += (1.0 - cells.a) * cell.a;
-    }`,
+    }
+#endif`,
   _AFTER_RENDER: `
   // Cells in front, composited over the image's maximum-intensity projection.
-  vec3 projection = clamp(maxImage, 0.0, 1.0) * fragmentUniforms3D.color0;
-  color = vec4(cells.rgb + (1.0 - cells.a) * projection, 1.0);`,
+  vec4 im = imageSample(maxImage);
+  color = vec4(cells.rgb + (1.0 - cells.a) * im.rgb * im.a, 1.0);`,
 };
 
 type LayerLike = {
   constructor: { layerName?: string };
-  props: { cellLut?: CellLut | null };
-  state: { model?: { setBindings(b: Record<string, unknown>): void } | null; cellLutTexture?: Texture | null };
+  props: { cellLut?: CellLut | null; imagePalette?: ImagePalette | null; render?: RenderSettings | null };
+  state: {
+    model?: {
+      setBindings(b: Record<string, unknown>): void;
+      shaderInputs: { setProps(p: Record<string, unknown>): void };
+    } | null;
+    cellLutTexture?: Texture | null;
+    paletteTexture?: Texture | null;
+  };
   context: { device: { createTexture(props: Record<string, unknown>): Texture } };
+  getNumChannels(): number;
   setState(patch: Record<string, unknown>): void;
 };
 type Texture = { destroy(): void };
@@ -113,70 +173,86 @@ function isRaycaster(layer: LayerLike): boolean {
   return layer.constructor.layerName === "XR3DLayer";
 }
 
-abstract class CellLutExtension extends ColorPalette3DExtensions.BaseExtension {
-  static componentName = "CellLutExtension";
+/** A one-deep, unfiltered RGBA8 3D texture (see the module's sampler note). */
+function lookupTexture(layer: LayerLike, lut: CellLut | ImagePalette): Texture {
+  return layer.context.device.createTexture({
+    dimension: "3d",
+    width: lut.width,
+    height: lut.height,
+    depth: 1,
+    format: "rgba8unorm",
+    data: lut.data,
+    mipmaps: false,
+    sampler: {
+      minFilter: "nearest",
+      magFilter: "nearest",
+      addressModeU: "clamp-to-edge",
+      addressModeV: "clamp-to-edge",
+      addressModeW: "clamp-to-edge",
+    },
+  });
+}
+
+abstract class CubeExtension extends ColorPalette3DExtensions.BaseExtension {
+  static componentName = "CubeExtension";
   abstract rendering: typeof ADDITIVE;
 
   getVivShaderTemplates() {
-    return { modules: [cellLutModule] };
+    return { modules: [cubeRenderModule] };
   }
 
   // deck.gl calls these with `this` bound to the layer.
   updateState(update: { props: object; oldProps: object }) {
     const layer = this as unknown as LayerLike;
-    const params = update as { props: LayerLike["props"]; oldProps: LayerLike["props"] };
+    const { props, oldProps } = update as { props: LayerLike["props"]; oldProps: LayerLike["props"] };
     if (!isRaycaster(layer)) return;
-    if (layer.state.cellLutTexture && params.props.cellLut === params.oldProps.cellLut) return;
-    const lut = params.props.cellLut ?? EMPTY_CELL_LUT;
-    layer.state.cellLutTexture?.destroy();
-    const texture = layer.context.device.createTexture({
-      dimension: "3d",
-      width: lut.width,
-      height: lut.height,
-      depth: 1,
-      format: "rgba8unorm",
-      data: lut.data,
-      mipmaps: false,
-      sampler: {
-        minFilter: "nearest",
-        magFilter: "nearest",
-        addressModeU: "clamp-to-edge",
-        addressModeV: "clamp-to-edge",
-        addressModeW: "clamp-to-edge",
-      },
-    });
-    layer.setState({ cellLutTexture: texture });
+    if (!layer.state.cellLutTexture || props.cellLut !== oldProps.cellLut) {
+      layer.state.cellLutTexture?.destroy();
+      layer.setState({ cellLutTexture: lookupTexture(layer, props.cellLut ?? EMPTY_CELL_LUT) });
+    }
+    if (!layer.state.paletteTexture || props.imagePalette !== oldProps.imagePalette) {
+      layer.state.paletteTexture?.destroy();
+      const palette = props.imagePalette ?? paletteLut(DEFAULT_RENDER.palette);
+      layer.setState({ paletteTexture: lookupTexture(layer, palette) });
+    }
   }
 
   draw() {
     const layer = this as unknown as LayerLike;
     if (!isRaycaster(layer)) return;
-    const texture = layer.state.cellLutTexture;
-    if (texture && layer.state.model) layer.state.model.setBindings({ cellLut: texture });
+    const { model, cellLutTexture, paletteTexture } = layer.state;
+    if (!model || !cellLutTexture || !paletteTexture) return;
+    // With the image alone the shader compiles cellLut out; binding it anyway
+    // would make luma.gl warn about an unknown binding on every frame.
+    const cells = layer.getNumChannels() > 1 ? { cellLut: cellLutTexture } : {};
+    model.setBindings({ ...cells, imagePalette: paletteTexture });
+    model.shaderInputs.setProps({ cubeRender: layer.props.render ?? DEFAULT_RENDER });
   }
 
   finalizeState() {
     const layer = this as unknown as LayerLike;
     if (!isRaycaster(layer)) return;
     layer.state.cellLutTexture?.destroy();
+    layer.state.paletteTexture?.destroy();
   }
 }
 
 // Separate classes: deck.gl treats two instances of one extension class with
 // equal options as the same extension and would not recompile on a mode switch.
-class CellLutAdditiveExtension extends CellLutExtension {
-  static extensionName = "CellLutAdditiveExtension";
+class CubeAdditiveExtension extends CubeExtension {
+  static extensionName = "CubeAdditiveExtension";
   rendering = ADDITIVE;
 }
 
-class CellLutMipExtension extends CellLutExtension {
-  static extensionName = "CellLutMipExtension";
+class CubeMipExtension extends CubeExtension {
+  static extensionName = "CubeMipExtension";
   rendering = MIP;
 }
 
-export const CELL_EXTENSIONS = {
-  additive: [new CellLutAdditiveExtension()],
-  mip: [new CellLutMipExtension()],
+/** The cube's raycast for either channel count: additive compositing or maximum-intensity projection. */
+export const CUBE_EXTENSIONS: Record<"additive" | "mip", unknown[]> = {
+  additive: [new CubeAdditiveExtension()],
+  mip: [new CubeMipExtension()],
 };
 
 function srgbToLinear(c: number): number {

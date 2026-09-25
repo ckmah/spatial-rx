@@ -1,16 +1,23 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Matrix4 } from "@math.gl/core";
-import { ColorPalette3DExtensions, VivViewer, loadOmeZarr } from "@hms-dbmi/viv";
+import { VivViewer, loadOmeZarr } from "@hms-dbmi/viv";
 
 import { Badge } from "@/components/ui/badge";
 import { useNotebookTheme } from "@/hooks/use-notebook-theme";
 import { useModel } from "@/hooks/use-model";
 import { cn } from "@/lib/utils";
 
-import { CELL_EXTENSIONS, EMPTY_CELL_LUT, type HighlightGroup, buildCellLut } from "./cell-lut-extension";
+import {
+  CUBE_EXTENSIONS,
+  DEFAULT_RENDER,
+  EMPTY_CELL_LUT,
+  type HighlightGroup,
+  buildCellLut,
+} from "./cell-lut-extension";
 import { CubeControls, type Range, type RenderMode, type ViewPreset, useLiveRange } from "./CubeControls";
 import { type CubeFrame, FramedVolumeView } from "./frame-layers";
+import { paletteLut } from "./palettes";
 import {
   type Box,
   type Frame,
@@ -82,12 +89,6 @@ const IMAGE_COLOR: [number, number, number] = [220, 225, 230];
  * cut horizontal slabs: (x, y, z) -> (x, z, -y).
  */
 const Z_UP = new Matrix4().rotateX(-Math.PI / 2);
-
-/** Viv volume raycast: additive compositing, or maximum-intensity projection. */
-const EXTENSIONS: Record<RenderMode, unknown[]> = {
-  additive: [new ColorPalette3DExtensions.AdditiveBlendExtension({})],
-  mip: [new ColorPalette3DExtensions.MaximumIntensityProjectionExtension({})],
-};
 
 function absoluteUrl(url: string): string {
   if (!url) return url;
@@ -471,8 +472,9 @@ export function VolumeCubeView({ model, hostEl }: { hostEl: HTMLElement; model: 
     [],
   );
 
-  // Channel 0 is the image; channel 1, once labels load, the signed label ids,
-  // coloured on the GPU from `cellLut` rather than by Viv's channel colour.
+  // Channel 0 is the image; channel 1, once labels load, the signed label ids.
+  // The cube shader colours both (the image from `imagePalette`, cells from
+  // `cellLut`); `colors` is unused by it and only satisfies Viv's props.
   const selections = useMemo(() => (hasCells ? [{ c: 0 }, { c: 1 }] : [{}]), [hasCells]);
   const channelsVisible = useMemo(() => selections.map(() => true), [selections]);
   const contrastLimits = useMemo(
@@ -508,8 +510,10 @@ export function VolumeCubeView({ model, hostEl }: { hostEl: HTMLElement; model: 
               ySlice,
               zSlice,
               resolution: 0,
-              extensions: hasCells ? CELL_EXTENSIONS[mode] : EXTENSIONS[mode],
+              extensions: CUBE_EXTENSIONS[mode],
               cellLut,
+              imagePalette: paletteLut(DEFAULT_RENDER.palette),
+              render: DEFAULT_RENDER,
               modelMatrix: volumeMatrix,
               frameMatrix: Z_UP,
               clippingPlanes: [],
@@ -522,7 +526,7 @@ export function VolumeCubeView({ model, hostEl }: { hostEl: HTMLElement; model: 
           ]
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loader, contrastLimits, colors, channelsVisible, selections, xSlice, ySlice, zSlice, mode, hasCells, cellLut, cubeFrame, volumeMatrix],
+    [loader, contrastLimits, colors, channelsVisible, selections, xSlice, ySlice, zSlice, mode, cellLut, cubeFrame, volumeMatrix],
   );
 
   const readZ = clampRange(slice_z_min, slice_z_max, stackZ[0], stackZ[1]);
