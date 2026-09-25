@@ -485,7 +485,8 @@ export function VolumeCube({
 
   const cubeFrame: CubeFrame | null = useMemo(
     () =>
-      levelVoxel
+      // No frame around an empty window (Inspect outside the volume).
+      levelVoxel && winW > 0 && winH > 0
         ? { size: [winW, winH * ry, levelDepth * rz], umPerUnit: levelVoxel[2], zOriginUm: ozUm, dark }
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps

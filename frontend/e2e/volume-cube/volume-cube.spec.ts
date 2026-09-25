@@ -61,6 +61,19 @@ test.describe("VolumeCubeWidget", () => {
     await shot(page, "window-on-sphere", widget);
   });
 
+  test("a window outside the volume shows a status and keeps the page alive", async ({ page }) => {
+    const widget = volumeCubeWidget(page);
+    // Wholly outside the 256 µm toy: the window box is empty.
+    await setVolumeModel(page, { window_cx: 600, window_cy: 600 });
+    await expect(widget.getByText("Inspect window is outside the volume")).toBeVisible();
+    // Half outside: the loaded window is thin but real.
+    await setVolumeModel(page, { window_cx: 300, window_cy: 128 });
+    await expect(widget.getByText("Inspect window is outside the volume")).toHaveCount(0);
+    await setVolumeModel(page, { window_cx: 128, window_cy: 128 });
+    await expect(widget.getByText(/window 128, 128/)).toBeVisible();
+    expect(await page.evaluate(() => 1 + 1)).toBe(2); // the page still answers
+  });
+
   test("model patch updates window readout without inspect drag", async ({
     page,
   }) => {

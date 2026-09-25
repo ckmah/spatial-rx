@@ -476,7 +476,17 @@ test.describe("LandmarksWidget", () => {
     expect(await lasso.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(onBg);
   });
 
-  test("side panels collapse to a peek tab and come back", async ({ page }) => {
+  test("panel collapse buttons sit beside their panels, not on them", async ({ page }) => {
+  for (const side of ["left", "right"] as const) {
+    const dock = await page.locator(`.landmarks__chrome-dock--${side}`).boundingBox();
+    const btn = await page.getByRole("button", { name: `Collapse ${side} panel` }).boundingBox();
+    expect(dock && btn).toBeTruthy();
+    if (side === "left") expect(btn!.x).toBeGreaterThanOrEqual(dock!.x + dock!.width);
+    else expect(btn!.x + btn!.width).toBeLessThanOrEqual(dock!.x);
+  }
+});
+
+test("side panels collapse to a peek tab and come back", async ({ page }) => {
     const left = page.locator(".landmarks__chrome-dock--left");
     await page.getByRole("button", { name: "Collapse left panel" }).click();
     await expect(left).toHaveAttribute("data-collapsed", "true");
@@ -497,4 +507,42 @@ test.describe("LandmarksWidget", () => {
     await page.keyboard.press("]");
     await expect(page.locator(".landmarks__chrome-dock--right")).toHaveAttribute("data-collapsed", "false");
   });
+});
+
+test("hold Space to pan in any tool without changing the mode", async ({ page }) => {
+  await bootLandmarksHarness(page);
+  const box = await canvasBox(page);
+  const target = () =>
+    page.evaluate(() => (window as any).__landmarksEngine.getViewState()?.target as number[]);
+  const selectionCount = async () => ((await getModel(page, "selections")) as unknown[]).length;
+  const cx = box.x + box.width * 0.5;
+  const cy = box.y + box.height * 0.5;
+  const drag = async () => {
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 80, cy + 40, { steps: 6 });
+    await page.mouse.up();
+  };
+
+  // Plain drag in Select does not pan.
+  const before = await target();
+  await drag();
+  expect(await target()).toEqual(before);
+
+  // Lasso armed, Space held: the drag pans instead of drawing, and the tool stays.
+  await page.keyboard.press("l");
+  await expect.poll(() => getModel(page, "mode")).toBe("lasso");
+  const selections = await selectionCount();
+  await page.keyboard.down(" ");
+  await drag();
+  await page.keyboard.up(" ");
+  const after = await target();
+  expect(Math.abs(after[0]! - before[0]!) + Math.abs(after[1]! - before[1]!)).toBeGreaterThan(0);
+  expect(await getModel(page, "mode")).toBe("lasso");
+  expect(await selectionCount()).toBe(selections);
+
+  // Released: the lasso draws again (no pan).
+  const settled = await target();
+  await drag();
+  expect(await target()).toEqual(settled);
 });

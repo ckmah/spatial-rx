@@ -24,7 +24,7 @@ const EXPAND_ICON = {
 } as const;
 
 /**
- * Collapse affordance pinned to a dock's outer top corner. Clicking it hides
+ * Collapse affordance beside a dock's inner top corner. Clicking it hides
  * the dock (see `.landmarks__chrome-dock--collapsed`) and hands control to
  * the sibling `PanelPeekTab`.
  */
@@ -47,8 +47,10 @@ export function PanelCollapseButton({
           aria-label={label}
           onClick={onCollapse}
           className={cn(
-            "pointer-events-auto absolute top-0 z-[17] rounded-full text-foreground/70 hover:bg-foreground/10 hover:text-foreground",
-            side === "left" ? "left-0" : "right-0",
+            // Just outside the dock's inner top corner, so it never covers the
+            // panel's own header text or tabs.
+            "landmarks-float pointer-events-auto absolute top-0 z-[17] rounded-full text-foreground/70 hover:bg-foreground/10 hover:text-foreground",
+            side === "left" ? "left-[calc(100%+0.375rem)]" : "right-[calc(100%+0.375rem)]",
           )}
         >
           <Icon className="size-4" />

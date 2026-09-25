@@ -37,7 +37,11 @@ function niceStep(extent: number, target = 4): number {
 }
 
 function ticks(lengthUm: number): number[] {
+  // An empty or degenerate axis (window outside the volume) has one tick; a zero
+  // step would otherwise loop forever and take the page down with it.
+  if (!(lengthUm > 0) || !Number.isFinite(lengthUm)) return [0];
   const step = niceStep(lengthUm);
+  if (!(step > 0)) return [0];
   const out: number[] = [];
   for (let t = 0; t <= lengthUm + 1e-6; t += step) out.push(Math.round(t * 1000) / 1000);
   return out;
