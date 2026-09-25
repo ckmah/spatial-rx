@@ -309,6 +309,17 @@ test.describe("LandmarksWidget", () => {
     expect(await getModel(page, "selected_kind")).toBe("");
   });
 
+  test("Inspect without a 3D image places the square and opens no cube", async ({ page }) => {
+    await page.getByRole("radio", { name: "Inspect", exact: true }).click();
+    await expect(page.getByTestId("context-inspect-no-volume")).toHaveText("No 3D image in this SpatialData");
+    const box = await canvasBox(page);
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    await expect.poll(async () => getModel(page, "inspect_cx")).not.toBeNull();
+    await expect(page.getByRole("dialog", { name: "Cube" })).toHaveCount(0);
+    await page.getByRole("radio", { name: "Select", exact: true }).click();
+    await expect(page.getByTestId("context-inspect-no-volume")).toHaveCount(0);
+  });
+
   test("landmark chrome has no copy/paste or SpatialData LED", async ({
     page,
   }) => {

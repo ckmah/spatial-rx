@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
-"""Export a small Landmarks harness fixture matching VolumeCube toy extents (256×256)."""
+"""Export the landmarks-volume harness: a toy SpatialData store plus the widget fixture.
+
+Writes ``landmarks-volume/public/toy.sdata.zarr`` (served by Vite's public dir) and
+``landmarks-volume-fixture.json`` from ``LandmarksWidget(sdata, color="cell_type")``.
+"""
 
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
-
-import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from spatial_rx import LandmarksWidget  # noqa: E402
-from tests.helpers import adata_xy  # noqa: E402
+from tests.helpers import toy_spatialdata  # noqa: E402
+
+DEV = Path(__file__).resolve().parent
+STORE = DEV / "landmarks-volume" / "public" / "toy.sdata.zarr"
+OUT = DEV / "landmarks-volume-fixture.json"
 
 FIXTURE_KEYS = [
     "mode",
@@ -67,25 +74,28 @@ FIXTURE_KEYS = [
     "raster_query_bin",
     "inspect_cx",
     "inspect_cy",
-    "inspect_size_um",
 ]
 
-EXTENT_XY = 256
+VOLUME_KEYS = ["volume", "volume_label_ids", "volume_cut", "inspect_size_um"]
 
 
 def main() -> None:
-    rng = np.random.default_rng(0)
-    n = 400
-    x = rng.uniform(20, EXTENT_XY - 20, n)
-    y = rng.uniform(20, EXTENT_XY - 20, n)
-    types = rng.choice(["A", "B", "C"], n)
-    adata = adata_xy(x, y, color=types, color_key="celltype")
-    widget = LandmarksWidget(adata, color="celltype")
+    if STORE.exists():
+        shutil.rmtree(STORE)
+    STORE.parent.mkdir(parents=True, exist_ok=True)
+    sdata = toy_spatialdata(STORE)
+    widget = LandmarksWidget(sdata, color="cell_type")
     widget.set_render_mode("points")
-    out = Path(__file__).with_name("volume-cube-fixture.json")
-    payload = {key: getattr(widget, key) for key in FIXTURE_KEYS}
-    out.write_text(json.dumps(payload, indent=2) + "\n")
-    print(f"wrote {out} ({n} points, {out.stat().st_size / 1e3:.1f} KB)")
+    widget.inspect_size_um = 100.0
+    payload = {key: getattr(widget, key) for key in FIXTURE_KEYS + VOLUME_KEYS}
+    # Served by Vite from the harness public dir instead of the widget's local server.
+    payload["volume"] = {
+        **payload["volume"],
+        "image_url": "/toy.sdata.zarr/images/mosaic/",
+        "labels_url": "/toy.sdata.zarr/labels/cells/",
+    }
+    OUT.write_text(json.dumps(payload, indent=2) + "\n")
+    print(f"wrote {STORE} and {OUT} ({OUT.stat().st_size / 1e3:.1f} KB)")
 
 
 if __name__ == "__main__":

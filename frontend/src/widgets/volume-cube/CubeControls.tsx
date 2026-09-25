@@ -16,7 +16,7 @@ export type Range = [number, number];
  * Dragging updates only the cube (local state); the synced trait, and every
  * notebook cell that reads it, changes once per gesture instead of per frame.
  */
-function RangeControl({
+export function RangeControl({
   label,
   unit,
   min,

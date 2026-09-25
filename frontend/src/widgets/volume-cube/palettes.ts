@@ -3,6 +3,19 @@
 export type PaletteName = "gray" | "inferno" | "magma" | "viridis" | "cividis";
 export const PALETTES: PaletteName[] = ["gray", "inferno", "magma", "viridis", "cividis"];
 
+/** How the cube draws the image and the cells, on top of the lookup textures. */
+export type RenderSettings = {
+  palette: PaletteName;
+  /** Scales the image's per-sample alpha. */
+  imageAlpha: number;
+  /** Exponent on the contrast-limited image value. */
+  imageGamma: number;
+  /** Scales every cell's per-sample alpha. */
+  cellAlpha: number;
+};
+
+export const DEFAULT_RENDER: RenderSettings = { palette: "gray", imageAlpha: 1, imageGamma: 1, cellAlpha: 1 };
+
 // sRGB stops, evenly spaced. Gray is generated instead (see `grayRamp`).
 const STOPS: Record<Exclude<PaletteName, "gray">, string[]> = {
   inferno: ["#000004", "#1f0c48", "#550f6d", "#88226a", "#ba3655", "#e35933", "#f98e09", "#f9cb35", "#fcffa4"],

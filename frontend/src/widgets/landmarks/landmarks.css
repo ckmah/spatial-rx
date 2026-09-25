@@ -969,6 +969,47 @@
   pointer-events: auto;
 }
 
+/* Inspect cube: floating over the map (and the docks), under the top tools. */
+.landmarks__cube-window {
+  z-index: 21;
+}
+
+.landmarks__cube-resize {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: transparent;
+}
+
+.landmarks__cube-resize::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--lm-text-muted);
+  border-bottom: 2px solid var(--lm-text-muted);
+  border-bottom-right-radius: 3px;
+  opacity: 0.5;
+  transition: opacity var(--duration-quick) var(--ease-out);
+}
+
+.landmarks__cube-resize:hover::after {
+  opacity: 0.9;
+}
+
+.landmarks__cube-titlebar {
+  touch-action: none;
+}
+
 .landmarks--fs .landmarks__chrome-context,
 .landmarks:fullscreen .landmarks__chrome-context,
 .landmarks--overlay-fs .landmarks__chrome-context {

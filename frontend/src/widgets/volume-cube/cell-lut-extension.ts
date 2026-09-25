@@ -1,6 +1,6 @@
 import { ColorPalette3DExtensions } from "@hms-dbmi/viv";
 
-import { type PaletteName, paletteLut } from "./palettes";
+import { DEFAULT_RENDER, type RenderSettings, paletteLut } from "./palettes";
 
 /**
  * Viv volume rendering for an image, plus one label channel coloured per cell.
@@ -34,18 +34,8 @@ export type CellLut = { data: Uint8Array; width: number; height: number };
 /** Nothing drawn for any cell: used while Labels is off. */
 export const EMPTY_CELL_LUT: CellLut = { data: new Uint8Array(4), width: 1, height: 1 };
 
-/** How the cube draws the image and the cells, on top of the lookup textures. */
-export type RenderSettings = {
-  palette: PaletteName;
-  /** Scales the image's per-sample alpha. */
-  imageAlpha: number;
-  /** Exponent on the contrast-limited image value. */
-  imageGamma: number;
-  /** Scales every cell's per-sample alpha. */
-  cellAlpha: number;
-};
-
-export const DEFAULT_RENDER: RenderSettings = { palette: "gray", imageAlpha: 1, imageGamma: 1, cellAlpha: 1 };
+// Defined beside the palettes so chrome can use them without importing Viv.
+export { DEFAULT_RENDER, type RenderSettings } from "./palettes";
 
 /** A 256-texel image colour map from `paletteLut`. */
 export type ImagePalette = { data: Uint8Array; width: number; height: number };

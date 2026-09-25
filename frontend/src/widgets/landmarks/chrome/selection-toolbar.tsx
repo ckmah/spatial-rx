@@ -45,10 +45,10 @@ import {
 const toggleHitClass =
   "size-8 min-w-8 rounded-full border-0 px-0 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground data-[state=on]:bg-foreground data-[state=on]:text-background data-[state=on]:shadow-none data-[spacing=1]:rounded-full";
 
-const pillClass =
+export const pillClass =
   "landmarks-float landmarks-float--toolbar pointer-events-auto flex min-h-10 items-center gap-1 px-1.5 py-0.5 text-card-foreground";
 
-function IconBtn({
+export function IconBtn({
   title,
   active,
   onClick,
@@ -169,7 +169,7 @@ function ColorControl({
 }
 
 /** L2 stack anchored above a single L1 control (not the full toolbar). */
-function ToolStack({
+export function ToolStack({
   open,
   panel,
   children,

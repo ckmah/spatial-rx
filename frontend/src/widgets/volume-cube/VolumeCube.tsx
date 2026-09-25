@@ -557,11 +557,13 @@ export function VolumeCube({
     onLoadStateRef.current?.({ labels: labelsState, channels, pan: [panX, panY], level: levelIndex });
   }, [labelsState, channels, panX, panY, levelIndex, onLoadStateRef]);
 
+  // Reported once the image is open: before that the volume has no extent.
   const onBoundsRef = useLatest(onBounds);
+  const hasExtent = Boolean(base);
   useLayoutEffect(() => {
-    onBoundsRef.current?.({ winX, winY, stackZ, contrastMax });
+    if (hasExtent) onBoundsRef.current?.({ winX, winY, stackZ, contrastMax });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [winX[0], winX[1], winY[0], winY[1], stackZ[0], stackZ[1], contrastMax, onBoundsRef]);
+  }, [hasExtent, winX[0], winX[1], winY[0], winY[1], stackZ[0], stackZ[1], contrastMax, onBoundsRef]);
 
   return (
     <div
@@ -573,6 +575,8 @@ export function VolumeCube({
       data-highlight={legend.length}
       data-render={mode}
       data-pan={`${panX},${panY}`}
+      data-palette={render.palette}
+      data-image-gamma={render.imageGamma}
     >
       {layerProps && displayViewStates ? (
         <VivViewer

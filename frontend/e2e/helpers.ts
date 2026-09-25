@@ -115,14 +115,10 @@ export async function bootVolumeCubeHarness(page: Page) {
   await stabilizeUi(page);
 }
 
-export async function bootNotebookLinkHarness(page: Page) {
-  await page.addInitScript(() => {
-    window.localStorage.setItem("spatial-rx-harness-theme", "dark");
-  });
+/** Landmarks over the toy SpatialData (`E2E_HARNESS=landmarks-volume`); the cube opens from Inspect. */
+export async function bootLandmarksVolumeHarness(page: Page) {
   await page.goto("/", { waitUntil: "networkidle" });
-  await page.getByTestId("notebook-link-banner").waitFor({ state: "visible" });
   await waitForEngine(page);
-  await waitForVolumeCube(page);
   await stabilizeUi(page);
 }
 

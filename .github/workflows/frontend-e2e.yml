@@ -70,11 +70,12 @@ jobs:
               - 'frontend/src/widgets/landmarks/**'
               - 'frontend/e2e/landmarks/**'
               - 'frontend/dev/**'
+              # The inspect cube renders the shared VolumeCube.
+              - 'frontend/src/widgets/volume-cube/**'
             volume_cube:
               - 'frontend/src/widgets/volume-cube/**'
               - 'frontend/e2e/volume-cube/**'
               - 'frontend/dev/volume-cube/**'
-              - 'frontend/dev/notebook-link/**'
               - 'spatial_rx/volume_cube.py'
             gallery:
               - 'frontend/src/widgets/gallery/**'
