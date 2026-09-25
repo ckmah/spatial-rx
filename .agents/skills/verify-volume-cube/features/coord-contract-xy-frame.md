@@ -1,10 +1,13 @@
 # coord-contract-xy-frame
 
 Landmarks ``obsm["spatial"]`` XY and VolumeCube ``window_cx`` / ``window_cy`` /
-``slice_*`` traits share the same coordinate frame: **one unit = one voxel**
-for the demo extents (toy: 256×256; Blin: 271×275×236).
+``slice_*`` traits share the same coordinate frame. ``voxel_size_um`` /
+``origin_um`` map it onto level-0 voxels; the defaults make **one unit = one
+voxel** (toy: 256×256; Blin: 271×275×236). ``VolumeCubeWidget.from_ome_zarr``
+reads them from NGFF metadata, so a Meteor mosaic in stage µm matches Pyxa cell
+coordinates (``colon_a2.py`` in the sibling ``pyxa_scverse_demo`` repo).
 
-**Spec:** `tests/test_volume_cube.py` — `test_coord_contract_landmarks_cube_xy`  
+**Spec:** `tests/test_volume_cube.py` — `test_coord_contract_landmarks_cube_xy`, `test_from_ome_zarr_frames_cube_in_store_microns`  
 **Playwright:** `frontend/e2e/volume-cube/notebook-link.spec.ts` — `"inspect traits stay within volume XY extents"`
 
 ## Sub-features

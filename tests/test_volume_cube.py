@@ -8,12 +8,14 @@ from urllib.request import urlopen
 from spatial_rx.volume_cube import (
     BLIN_IDR_IMAGE_URL,
     BLIN_SHAPE_ZYX,
+    DEFAULT_CONTRAST_LIMITS,
     DEFAULT_Z_SLAB,
     TOY_CHUNK_ZYX,
     TOY_SHAPE_ZYX,
     VolumeCubeWidget,
     cells_in_inspect_window,
     mid_z_slab,
+    ome_zarr_level0,
     serve_directory,
     write_toy_ome_zarr,
 )
@@ -79,6 +81,16 @@ def test_from_url_blin_extents():
     assert widget.slice_z_max == z_max
 
 
+def test_contrast_limits_default_and_override():
+    assert VolumeCubeWidget().contrast_limits == list(DEFAULT_CONTRAST_LIMITS)
+    widget = VolumeCubeWidget.from_url(
+        "http://example.test/vol.zarr",
+        shape_zyx=(124, 800, 800),
+        contrast_limits=(110, 255),
+    )
+    assert widget.contrast_limits == [110.0, 255.0]
+
+
 def test_coord_contract_landmarks_cube_xy():
     """Landmarks spatial XY and cube window traits share the same voxel frame."""
     depth, height, width = BLIN_SHAPE_ZYX
@@ -96,3 +108,96 @@ def test_coord_contract_landmarks_cube_xy():
     assert cube.slice_y_min <= cy - half
     assert cube.slice_y_max >= cy + half
     assert cube.slice_z_max - cube.slice_z_min == DEFAULT_Z_SLAB
+
+
+def _fetch(url, range_header=None):
+    from urllib.error import HTTPError
+    from urllib.request import Request
+
+    request = Request(url, headers={"Range": range_header} if range_header else {})
+    try:
+        with urlopen(request) as resp:
+            return resp.status, resp.headers, resp.read()
+    except HTTPError as err:
+        return err.code, err.headers, b""
+
+
+def test_serve_directory_answers_range_requests(tmp_path):
+    """Zarr v3 shards are read by range: suffix for the index, then each chunk."""
+    payload = bytes(range(256)) * 4
+    (tmp_path / "shard").write_bytes(payload)
+    server, base = serve_directory(tmp_path)
+    url = f"{base}/shard"
+    try:
+        status, headers, body = _fetch(url, "bytes=10-19")
+        assert (status, body) == (206, payload[10:20])
+        assert headers["Content-Range"] == f"bytes 10-19/{len(payload)}"
+        assert _fetch(url, "bytes=-5")[::2] == (206, payload[-5:])
+        assert _fetch(url, "bytes=1020-")[::2] == (206, payload[1020:])
+        assert _fetch(url, "bytes=5000-")[0] == 416
+        status, headers, body = _fetch(url)
+        assert (status, body) == (200, payload)
+        assert headers["Accept-Ranges"] == "bytes"
+        assert "Range" in headers["Access-Control-Allow-Headers"]
+    finally:
+        server.shutdown()
+
+
+def test_ome_zarr_level0_toy_is_unit_voxels(tmp_path):
+    root = write_toy_ome_zarr(tmp_path / "toy.ome.zarr")
+    meta = ome_zarr_level0(root)
+    assert meta == {
+        "shape_zyx": TOY_SHAPE_ZYX,
+        "voxel_size_um": (1.0, 1.0, 1.0),
+        "origin_um": (0.0, 0.0, 0.0),
+    }
+
+
+def _write_ngff05(root, shape_tczyx, scale, translation):
+    """Minimal NGFF 0.5 / Zarr v3 image shaped like Meteor's mosaic_3d."""
+    import zarr
+
+    group = zarr.open_group(str(root), mode="w", zarr_format=3)
+    group.create_array("scale0/image", shape=shape_tczyx, chunks=(1, 1, 4, 16, 16), dtype="uint8")
+    axes = [{"name": n, "type": t} for n, t in zip("tczyx", ["time", "channel", "space", "space", "space"])]
+    group.attrs["ome"] = {
+        "version": "0.5",
+        "multiscales": [
+            {
+                "axes": axes,
+                "datasets": [
+                    {
+                        "path": "scale0/image",
+                        "coordinateTransformations": [
+                            {"type": "scale", "scale": scale},
+                            {"type": "translation", "translation": translation},
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def test_from_ome_zarr_frames_cube_in_store_microns(tmp_path):
+    """Meteor mosaics are georeferenced in stage microns; cells use the same frame."""
+    root = tmp_path / "mosaic_3d.ome.zarr"
+    _write_ngff05(
+        root,
+        (1, 1, 8, 64, 96),
+        [1.0, 1.0, 0.5, 0.45, 0.45],
+        [0.0, 0.0, -6.0, -1114.0, -2686.0],
+    )
+    widget = VolumeCubeWidget.from_ome_zarr(root, contrast_limits=(10, 200))
+    try:
+        assert widget.voxel_size_um == [0.5, 0.45, 0.45]
+        assert widget.origin_um == [-6.0, -1114.0, -2686.0]
+        assert widget.window_cx == -2686.0 + 96 * 0.45 / 2
+        assert widget.window_cy == -1114.0 + 64 * 0.45 / 2
+        assert widget.slice_z_min == -6.0
+        assert widget.slice_z_max == -6.0 + 8 * 0.5
+        assert widget.contrast_limits == [10.0, 200.0]
+        status, _, body = _fetch(f"{widget.image_url}zarr.json")
+        assert status == 200 and json.loads(body)["attributes"]["ome"]["version"] == "0.5"
+    finally:
+        widget._server.shutdown()

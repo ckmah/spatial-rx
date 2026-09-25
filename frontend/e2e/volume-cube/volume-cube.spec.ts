@@ -34,9 +34,10 @@ test.describe("VolumeCubeWidget", () => {
     const widget = volumeCubeWidget(page);
     const { box } = await toyInspectBox(page);
 
-    await page.mouse.move(box.x + box.width * 0.72, box.y + box.height * 0.28);
+    // Toy blob 2 sits at x 160, y 150 (data rows, y down like the toy inspect).
+    await page.mouse.move(box.x + box.width * 0.62, box.y + box.height * 0.58);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.72, box.y + box.height * 0.28);
+    await page.mouse.move(box.x + box.width * 0.62, box.y + box.height * 0.58);
     await page.mouse.up();
     await page.waitForTimeout(200);
 
@@ -44,8 +45,8 @@ test.describe("VolumeCubeWidget", () => {
     const cy = Number(await getVolumeModel(page, "window_cy"));
     expect(cx).toBeGreaterThan(140);
     expect(cx).toBeLessThan(210);
-    expect(cy).toBeGreaterThan(40);
-    expect(cy).toBeLessThan(120);
+    expect(cy).toBeGreaterThan(120);
+    expect(cy).toBeLessThan(180);
     const xLo = Math.max(0, Math.round(cx - 50));
     const xHi = Math.min(256, Math.round(cx + 50));
     const yLo = Math.max(0, Math.round(cy - 50));
