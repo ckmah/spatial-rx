@@ -14,7 +14,9 @@ capability** to existing Playwright coverage — not a product roadmap.
 | [harness-boots-volume](harness-boots-volume.md) | `volume-cube.spec.ts` — `"harness boots and OME-Zarr volume renders"` | `rest` |
 | [inspect-window-placement](inspect-window-placement.md) | `volume-cube.spec.ts` — `"toy inspect drag updates synced window traits"` | `window-on-sphere` |
 | [window-trait-readout](window-trait-readout.md) | `volume-cube.spec.ts` — `"model patch updates window readout without inspect drag"` | — |
-| [labels-toggle](labels-toggle.md) | `volume-cube.spec.ts` — `"labels switch shows and hides the labels VolumeViewer overlay"` | `labels-off` |
+| [labels-toggle](labels-toggle.md) | `volume-cube.spec.ts` — `"labels switch outlines cells as a second channel of the same volume"` | `labels-on`, `labels-off` |
+| [cube-controls](cube-controls.md) | `volume-cube.spec.ts` — `"in-widget controls: camera presets, projection, and a committed Z cut"` | `rest` |
+| [highlight-groups](highlight-groups.md) | `volume-cube.spec.ts` — `"highlight_groups colour chosen cells and follow the Labels switch"` | `highlight-on` |
 | [axis-slice-traits](axis-slice-traits.md) | `volume-cube.spec.ts` — `"model patch updates axis slice readout"` | — |
 | [landmarks-inspect-drives-cube](landmarks-inspect-drives-cube.md) | `notebook-link.spec.ts` — `"Landmarks inspect click updates VolumeCube window readout"` | — |
 | [coord-contract-xy-frame](coord-contract-xy-frame.md) | `notebook-link.spec.ts` — `"inspect traits stay within volume XY extents"`; `test_coord_contract_landmarks_cube_xy` | — |

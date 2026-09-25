@@ -164,7 +164,7 @@ export class WindowPixelSource {
   }
 
   /** The whole window for one (t, c), fetched once and shared by every plane. */
-  private block(selection: Record<string, number>): Promise<zarr.Chunk<zarr.DataType>> {
+  fetchBlock(selection: Record<string, number>): Promise<zarr.Chunk<zarr.DataType>> {
     const key = this.labels
       .filter((l) => l !== "z" && l !== "y" && l !== "x")
       .map((l) => selection[l] ?? 0)
@@ -187,7 +187,7 @@ export class WindowPixelSource {
   }
 
   async getRaster({ selection }: { selection: Record<string, number>; signal?: AbortSignal }): Promise<Raster> {
-    const block = await this.block(selection);
+    const block = await this.fetchBlock(selection);
     const plane = this.width * this.height;
     const z = selection.z ?? 0;
     const data = block.data as unknown as Raster["data"];
@@ -205,4 +205,114 @@ export class WindowPixelSource {
   onTileError(err: Error): void {
     throw err;
   }
+}
+
+type Volume = Float32Array;
+
+/**
+ * Signed label ids of a labels window: `id` inside a cell, `-id` on its surface
+ * (a voxel with a differently labelled 6-neighbour, another cell or background).
+ */
+export function signedLabelVolume(ids: ArrayLike<number>, width: number, height: number): Float32Array {
+  const plane = width * height;
+  const depth = Math.floor(ids.length / plane);
+  const out = new Float32Array(ids.length);
+  for (let z = 0; z < depth; z++) {
+    for (let y = 0; y < height; y++) {
+      const row = z * plane + y * width;
+      for (let x = 0; x < width; x++) {
+        const i = row + x;
+        const id = ids[i]!;
+        if (!id) continue;
+        const surface =
+          (x > 0 && ids[i - 1] !== id) ||
+          (x < width - 1 && ids[i + 1] !== id) ||
+          (y > 0 && ids[i - width] !== id) ||
+          (y < height - 1 && ids[i + width] !== id) ||
+          (z > 0 && ids[i - plane] !== id) ||
+          (z < depth - 1 && ids[i + plane] !== id);
+        out[i] = surface ? -id : id;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The image window plus the labels window on the same grid, as one two-channel
+ * source so Viv raycasts both together: channel 0 the image, channel 1 signed
+ * label ids (see `signedLabelVolume`). Float32, so ids up to 2^24 are exact.
+ *
+ * Which cells show, and in what colour, is decided on the GPU from a lookup
+ * texture (`cell-lut-extension.ts`), so this source, and the textures Viv builds
+ * from it, depend only on the window.
+ */
+export class LabelVolumeSource {
+  readonly labels: string[];
+  readonly tileSize: number;
+  readonly meta: WindowPixelSource["meta"];
+  private signed: Promise<Volume> | null = null;
+  private readonly imageHasC: boolean;
+
+  constructor(
+    private readonly image: WindowPixelSource,
+    private readonly cells: WindowPixelSource,
+  ) {
+    this.imageHasC = image.labels.includes("c");
+    this.labels = this.imageHasC ? image.labels : ["c", ...image.labels];
+    this.tileSize = image.tileSize;
+    this.meta = image.meta;
+  }
+
+  get shape(): number[] {
+    const shape = this.image.shape;
+    if (!this.imageHasC) return [2, ...shape];
+    return shape.map((s, i) => (this.image.labels[i] === "c" ? 2 : s));
+  }
+
+  get dtype(): string {
+    return "Float32";
+  }
+
+  private volume(): Promise<Volume> {
+    if (!this.signed) {
+      const pending = this.cells
+        .fetchBlock({})
+        .then((block) => signedLabelVolume(block.data as unknown as ArrayLike<number>, this.image.width, this.image.height));
+      pending.catch(() => {
+        this.signed = null;
+      });
+      this.signed = pending;
+    }
+    return this.signed;
+  }
+
+  async getRaster({ selection, signal }: { selection: Record<string, number>; signal?: AbortSignal }) {
+    const { c = 0, ...rest } = selection;
+    if (c === 0) {
+      return this.image.getRaster({ selection: this.imageHasC ? { ...rest, c: 0 } : rest, signal });
+    }
+    const volume = await this.volume();
+    const plane = this.image.width * this.image.height;
+    const z = rest.z ?? 0;
+    return {
+      data: volume.subarray(z * plane, (z + 1) * plane),
+      width: this.image.width,
+      height: this.image.height,
+    };
+  }
+
+  async getTile(): Promise<never> {
+    throw new Error("LabelVolumeSource serves whole planes only (VolumeViewer)");
+  }
+
+  onTileError(err: Error): void {
+    throw err;
+  }
+}
+
+/** The labels level on exactly the image level's (z, y, x) grid, if any. */
+export function matchingLevel(pyramid: ZarrSource[], level: Level): ZarrSource | null {
+  const want = ["z", "y", "x"].map((a) => axisSize(level.source, a)).join(",");
+  return pyramid.find((s) => ["z", "y", "x"].map((a) => axisSize(s, a)).join(",") === want) ?? null;
 }

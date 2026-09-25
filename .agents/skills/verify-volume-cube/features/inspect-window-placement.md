@@ -2,7 +2,8 @@
 
 Harness toy inspect (100 µm square drag) updates synced `window_cx` / `window_cy` traits and the on-widget readout.
 
-**Spec:** `frontend/e2e/volume-cube/volume-cube.spec.ts` — `"toy inspect drag updates synced window traits"`
+**Spec:** `frontend/e2e/volume-cube/volume-cube.spec.ts` — `"toy inspect drag updates synced window traits"`,
+`"moving the window pans the loaded volume until the new window loads"`
 
 ## Sub-features
 
@@ -10,6 +11,11 @@ Harness toy inspect (100 µm square drag) updates synced `window_cx` / `window_c
 - `window_cx` and `window_cy` update on the mock model
 - Status line reflects rounded window coordinates
 - Cube content is the data rows under the window (y down, like the toy inspect)
+- Moving the window pans at once: the frame, axes and camera stay put while the
+  loaded volume slides under them (clipped to the frame), then the new window's
+  voxels replace it with no jump. `data-pan` is the loaded volume's offset in
+  level voxels (`dx,dy`, y in Viv's reversed texture rows); `"0,0"` once loaded.
+  Cuts never move the cube.
 
 ## How to get to it (user POV)
 

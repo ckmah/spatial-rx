@@ -152,3 +152,16 @@ def test_selection_mask_prefers_point_indices():
     ]
     mask = selection_mask(list(w.selections), x, y, "s")
     assert set(np.flatnonzero(mask).tolist()) == {0, 2}
+
+
+def test_category_colors_match_the_legend():
+    from spatial_rx import LandmarksWidget
+
+    x = [0.0, 1.0, 2.0]
+    y = [0.0, 1.0, 2.0]
+    w = LandmarksWidget(adata_xy(x, y, color=["a", "b", "a"]), color="label")
+    colors = w.category_colors()
+    assert colors == dict(zip(w.legend_labels, w.point_palette))
+    assert colors == w.category_colors("label")
+    with pytest.raises(KeyError):
+        w.category_colors("missing")

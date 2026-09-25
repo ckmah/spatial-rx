@@ -28,7 +28,7 @@ import threading
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 import traitlets
@@ -53,6 +53,7 @@ BLIN_SHAPE_ZYX = (236, 275, 271)
 DEFAULT_Z_SLAB = 64
 # Display range for the image channel (tuned for the Blin IDR / toy volumes).
 DEFAULT_CONTRAST_LIMITS = (0.0, 48.0)
+_NEUTRAL_HIGHLIGHT = "#22d3ee"
 
 
 def mid_z_slab(depth: int, slab: int = DEFAULT_Z_SLAB) -> tuple[float, float]:
@@ -283,11 +284,18 @@ def ome_zarr_level0(path: Path | str) -> dict:
     dataset = multiscale["datasets"][0]
     scale = [1.0] * len(axes)
     translation = [0.0] * len(axes)
+    def flatten(transforms: list[dict]) -> list[dict]:
+        # SpatialData writes a scale + translation pair as one "sequence".
+        out: list[dict] = []
+        for t in transforms:
+            out.extend(flatten(t["transformations"]) if t["type"] == "sequence" else [t])
+        return out
+
     for transforms in (
         dataset.get("coordinateTransformations", []),
         multiscale.get("coordinateTransformations", []),
     ):
-        for t in transforms:
+        for t in flatten(transforms):
             if t["type"] == "scale":
                 translation = [o * f for o, f in zip(translation, t["scale"])]
                 scale = [s * f for s, f in zip(scale, t["scale"])]
@@ -338,6 +346,9 @@ class VolumeCubeWidget(AnyWidget):
     origin_um = traitlets.List(
         traitlets.Float(), default_value=[0.0, 0.0, 0.0], minlen=3, maxlen=3
     ).tag(sync=True)
+    # Cells to fill, as ``{"name", "color", "labels"}`` groups (label ids in
+    # ``labels_url``); set with ``highlight_cells``. Shown while Labels is on.
+    highlight_groups = traitlets.List(traitlets.Dict(), default_value=[]).tag(sync=True)
 
     def __init__(
         self,
@@ -358,6 +369,7 @@ class VolumeCubeWidget(AnyWidget):
         **kwargs: Any,
     ) -> None:
         self._server: ThreadingHTTPServer | None = None
+        self._labels_server: ThreadingHTTPServer | None = None
         super().__init__(
             image_url=image_url,
             labels_url=labels_url,
@@ -375,6 +387,35 @@ class VolumeCubeWidget(AnyWidget):
             origin_um=[float(v) for v in origin_um],
             **kwargs,
         )
+
+    def highlight_cells(
+        self,
+        labels: Mapping[str, Sequence[int]],
+        colors: Mapping[str, str] | None = None,
+    ) -> None:
+        """Fill cells in the cube, one colour per group (e.g. per cell type).
+
+        ``labels`` maps a group name to label ids in ``labels_url``; ``colors``
+        maps names to hex colours, e.g. ``LandmarksWidget.category_colors`` so
+        the cube matches the map. Groups without a colour get a neutral one.
+        An empty mapping clears the highlight. Setting a highlight turns the
+        cube's **Labels** switch on; turning it off hides the highlight too::
+
+            cube.highlight_cells(
+                {"T cell": [12, 40], "B cell": [7]},
+                landmarks.category_colors("cell_type"),
+            )
+        """
+        colors = colors or {}
+        self.highlight_groups = [
+            {
+                "name": str(name),
+                "color": str(colors.get(str(name), _NEUTRAL_HIGHLIGHT)),
+                "labels": [int(i) for i in ids],
+            }
+            for name, ids in labels.items()
+            if len(ids)
+        ]
 
     @classmethod
     def from_url(
@@ -429,6 +470,7 @@ class VolumeCubeWidget(AnyWidget):
         cls,
         path: Path | str,
         *,
+        labels_path: Path | str | None = None,
         window_cx: float | None = None,
         window_cy: float | None = None,
         **kwargs: Any,
@@ -440,14 +482,33 @@ class VolumeCubeWidget(AnyWidget):
         coordinates (Meteor mosaics: stage microns). Slices default to the full
         extent and the window to the volume center. The directory is served on
         loopback with range requests, so a sharded store is read per chunk.
+
+        ``labels_path`` is an OME-Zarr label image on the same voxel grid (e.g. a
+        SpatialData ``Labels3DModel`` element rasterized onto the mosaic). The
+        **Labels** switch then outlines each cell's surface inside the cube,
+        and ``highlight_cells`` fills chosen cells.
         """
         meta = ome_zarr_level0(path)
         size_z, size_y, size_x = meta["voxel_size_um"]
         origin_z, origin_y, origin_x = meta["origin_um"]
         depth, height, width = meta["shape_zyx"]
         server, base = serve_directory(Path(path))
+        labels_server, labels_url = None, ""
+        if labels_path is not None:
+            labels_meta = ome_zarr_level0(labels_path)
+            if labels_meta["shape_zyx"] != meta["shape_zyx"] or not np.allclose(
+                [*labels_meta["voxel_size_um"], *labels_meta["origin_um"]],
+                [*meta["voxel_size_um"], *meta["origin_um"]],
+            ):
+                raise ValueError(
+                    f"labels grid {labels_meta} differs from the image's "
+                    f"{meta}; rasterize the labels onto the image's level-0 grid"
+                )
+            labels_server, labels_base = serve_directory(Path(labels_path))
+            labels_url = f"{labels_base}/"
         widget = cls(
             image_url=f"{base}/",
+            labels_url=labels_url,
             window_cx=window_cx if window_cx is not None else origin_x + width * size_x / 2,
             window_cy=window_cy if window_cy is not None else origin_y + height * size_y / 2,
             slice_x_min=origin_x,
@@ -461,6 +522,7 @@ class VolumeCubeWidget(AnyWidget):
             **kwargs,
         )
         widget._server = server
+        widget._labels_server = labels_server
         return widget
 
     @classmethod

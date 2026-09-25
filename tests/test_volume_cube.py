@@ -3,6 +3,7 @@
 import json
 
 import numpy as np
+import pytest
 from urllib.request import urlopen
 
 from spatial_rx.volume_cube import (
@@ -201,3 +202,65 @@ def test_from_ome_zarr_frames_cube_in_store_microns(tmp_path):
         assert status == 200 and json.loads(body)["attributes"]["ome"]["version"] == "0.5"
     finally:
         widget._server.shutdown()
+
+
+def test_from_ome_zarr_serves_labels_on_the_same_grid(tmp_path):
+    image = tmp_path / "mosaic_3d.ome.zarr"
+    labels = tmp_path / "cell_labels"
+    frame = ([1.0, 1.0, 0.5, 0.45, 0.45], [0.0, 0.0, -6.0, -1114.0, -2686.0])
+    _write_ngff05(image, (1, 1, 8, 64, 96), *frame)
+    _write_ngff05(labels, (1, 1, 8, 64, 96), *frame)
+    widget = VolumeCubeWidget.from_ome_zarr(image, labels_path=labels)
+    try:
+        assert widget.labels_url.startswith("http://127.0.0.1:")
+        assert widget.labels_url != widget.image_url
+        status, _, body = _fetch(f"{widget.labels_url}zarr.json")
+        assert status == 200 and json.loads(body)["attributes"]["ome"]["version"] == "0.5"
+    finally:
+        widget._server.shutdown()
+        widget._labels_server.shutdown()
+
+
+def test_from_ome_zarr_rejects_labels_on_another_grid(tmp_path):
+    image = tmp_path / "mosaic_3d.ome.zarr"
+    labels = tmp_path / "cell_labels"
+    frame = ([1.0, 1.0, 0.5, 0.45, 0.45], [0.0, 0.0, 0.0, 0.0, 0.0])
+    _write_ngff05(image, (1, 1, 8, 64, 96), *frame)
+    _write_ngff05(labels, (1, 1, 8, 32, 48), *frame)
+    with pytest.raises(ValueError, match="differs from the image"):
+        VolumeCubeWidget.from_ome_zarr(image, labels_path=labels)
+
+
+
+def test_ome_zarr_level0_reads_a_spatialdata_sequence_transform(tmp_path):
+    """SpatialData stores a Labels3DModel's scale + translation as one sequence."""
+    root = tmp_path / "cell_labels"
+    _write_ngff05(root, (1, 1, 8, 64, 96), [1.0] * 5, [0.0] * 5)
+    import zarr
+
+    group = zarr.open_group(str(root), mode="r+")
+    ome = dict(group.attrs["ome"])
+    ome["multiscales"][0]["coordinateTransformations"] = [
+        {
+            "type": "sequence",
+            "transformations": [
+                {"type": "scale", "scale": [1.0, 1.0, 0.5, 0.45, 0.45]},
+                {"type": "translation", "translation": [0.0, 0.0, -6.0, -1114.0, -2686.0]},
+            ],
+        }
+    ]
+    group.attrs["ome"] = ome
+    meta = ome_zarr_level0(root)
+    assert meta["voxel_size_um"] == (0.5, 0.45, 0.45)
+    assert meta["origin_um"] == (-6.0, -1114.0, -2686.0)
+
+
+def test_highlight_cells_builds_coloured_groups():
+    w = VolumeCubeWidget()
+    w.highlight_cells({"T cell": [3, 4], "B cell": np.array([7]), "empty": []}, {"T cell": "#ff0000"})
+    assert w.highlight_groups == [
+        {"name": "T cell", "color": "#ff0000", "labels": [3, 4]},
+        {"name": "B cell", "color": "#22d3ee", "labels": [7]},
+    ]
+    w.highlight_cells({})
+    assert w.highlight_groups == []

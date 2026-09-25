@@ -86,6 +86,7 @@ Durable do/don't rules for agents. Prefer short tables over prose; vocabulary ma
 | Named traitlets as the widget contract ([ADR 0002](docs/adr/0002-named-traitlets-as-widget-contract.md)) | Single generic `data` JSON blob for library widgets |
 | One deck.gl orthographic `Deck` for all geometry ([ADR 0003](docs/adr/0003-deckgl-landmarks-renderer.md)) | A second 2D canvas camera that drifts from the deck.gl viewport |
 | Client-side neighborhood overlay from coordinates ([ADR 0004](docs/adr/0004-neighborhood-visuals.md)) | Syncing or requiring `obsp` CSR graphs for expand visuals |
+| Rendering controls in widget chrome; sync a trait only when Python reads/sets it; commit on release ([ADR 0005](docs/adr/0005-widget-owns-rendering-controls.md)) | Notebook sliders as a widget's control panel; two owners for one trait |
 
 ## Widgets
 

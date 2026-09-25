@@ -74,6 +74,26 @@ test.describe("VolumeCubeWidget", () => {
     ).toBeVisible();
   });
 
+  test("moving the window pans the loaded volume until the new window loads", async ({ page }) => {
+    const widget = volumeCubeWidget(page);
+    await expect(widget).toHaveAttribute("data-pan", "0,0");
+    // Record every pan offset the widget shows; the pan can outlive a poll by little.
+    await widget.evaluate((el) => {
+      const seen: string[] = [];
+      (window as any).__pans = seen;
+      new MutationObserver(() => seen.push(el.getAttribute("data-pan") ?? "")).observe(el, {
+        attributes: true,
+        attributeFilter: ["data-pan"],
+      });
+    });
+    await setVolumeModel(page, { window_cx: 148, window_cy: 118 });
+    await expect(widget.getByText(/window 148, 118/)).toBeVisible();
+    // Once the new window is on the GPU there is nothing left to pan.
+    await expect(widget).toHaveAttribute("data-pan", "0,0");
+    // Before that, the old voxels slid by the move (20 left; y by -10 texture rows, which run reversed).
+    expect(await page.evaluate(() => (window as any).__pans)).toContain("-20,-10");
+  });
+
   test("model patch updates axis slice readout", async ({ page }) => {
     const widget = volumeCubeWidget(page);
     await setVolumeModel(page, {
@@ -88,21 +108,87 @@ test.describe("VolumeCubeWidget", () => {
     await expect(widget.getByText(/X 110–210 · Y 46–146 · Z 8–48/)).toBeVisible();
   });
 
-  test("labels switch shows and hides the labels VolumeViewer overlay", async ({
+  test("model patch X/Y cross-section clips inside the window", async ({ page }) => {
+    const widget = volumeCubeWidget(page);
+    // Window 78–178 in X and Y; cut X to 100–150 and Y to 60–120 (clamped to 78).
+    await setVolumeModel(page, { slice_x_min: 100, slice_x_max: 150, slice_y_min: 60, slice_y_max: 120 });
+    await page.waitForTimeout(150);
+    await expect(widget.getByText(/X 100–150 · Y 78–120 · Z 0–64/)).toBeVisible();
+    await setVolumeModel(page, { slice_x_min: 0, slice_x_max: 256, slice_y_min: 0, slice_y_max: 256 });
+    await page.waitForTimeout(150);
+    await expect(widget.getByText(/X 78–178 · Y 78–178 · Z 0–64/)).toBeVisible();
+  });
+
+  test("in-widget controls: camera presets, projection, and a committed Z cut", async ({ page }) => {
+    const widget = volumeCubeWidget(page);
+    for (const name of ["Top view", "Side view", "Oblique view"]) {
+      await widget.getByRole("radio", { name }).click();
+      await expect(widget.getByRole("radio", { name })).toHaveAttribute("data-state", "on");
+    }
+    await widget.getByRole("radio", { name: "Maximum intensity" }).click();
+    await expect(widget).toHaveAttribute("data-render", "mip");
+    await widget.getByRole("radio", { name: "Additive" }).click();
+    await expect(widget).toHaveAttribute("data-render", "additive");
+
+    // Thumbs: X lo/hi, Y lo/hi, Z lo/hi, contrast lo/hi. Keyboard moves commit.
+    const zHi = widget.getByRole("slider").nth(5);
+    await zHi.focus();
+    for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowLeft");
+    await expect.poll(async () => Number(await getVolumeModel(page, "slice_z_max"))).toBe(54);
+    await expect(widget.getByText(/Z 0–54/)).toBeVisible();
+  });
+
+  test("highlight_groups colour chosen cells and follow the Labels switch", async ({ page }) => {
+    const widget = volumeCubeWidget(page);
+    const labels = page.getByRole("switch", { name: "Labels" });
+    const legend = widget.getByLabel("Highlighted cells");
+    await expect(widget).toHaveAttribute("data-channels", "1");
+
+    // Highlighting from Python turns Labels on and loads the label channel once.
+    await setVolumeModel(page, { highlight_groups: [{ name: "blob two", color: "#e377c2", labels: [2] }] });
+    await expect(labels).toBeChecked();
+    await expect(widget).toHaveAttribute("data-labels", "on");
+    await expect(widget).toHaveAttribute("data-channels", "2");
+    await expect(widget).toHaveAttribute("data-highlight", "1");
+    await expect(legend.getByText("blob two")).toBeVisible();
+    await expect(widget.locator("canvas")).toHaveCount(1);
+    await shot(page, "highlight-on", widget);
+
+    // Labels off hides the highlight too; the loaded volume stays for the next toggle.
+    await labels.click();
+    await expect(widget).toHaveAttribute("data-labels", "off");
+    await expect(widget).toHaveAttribute("data-highlight", "0");
+    await expect(widget).toHaveAttribute("data-channels", "2");
+    await expect(legend).toHaveCount(0);
+    await labels.click();
+    await expect(widget).toHaveAttribute("data-highlight", "1");
+
+    await setVolumeModel(page, { highlight_groups: [] });
+    await expect(widget).toHaveAttribute("data-highlight", "0");
+    await expect(labels).toBeChecked();
+  });
+
+  test("labels switch outlines cells as a second channel of the same volume", async ({
     page,
   }) => {
     const widget = volumeCubeWidget(page);
     const canvases = widget.locator("canvas");
     await expect(canvases).toHaveCount(1);
+    await expect(widget).toHaveAttribute("data-labels", "off");
 
     await page.getByRole("switch", { name: "Labels" }).click();
-    await page.waitForTimeout(400);
     await expect(page.getByRole("switch", { name: "Labels" })).toBeChecked();
-    await expect(canvases).toHaveCount(2);
+    // Boundaries composite into the image volume: still one canvas.
+    await expect(widget).toHaveAttribute("data-labels", "on");
+    await expect(canvases).toHaveCount(1);
+    await shot(page, "labels-on", widget);
 
     await page.getByRole("switch", { name: "Labels" }).click();
     await page.waitForTimeout(200);
     await expect(page.getByRole("switch", { name: "Labels" })).not.toBeChecked();
+    await expect(widget).toHaveAttribute("data-labels", "off");
+    // Hidden, not unloaded: switching back is a colour-lookup change only.
+    await expect(widget).toHaveAttribute("data-channels", "2");
     await expect(canvases).toHaveCount(1);
     await shot(page, "labels-off", widget);
   });

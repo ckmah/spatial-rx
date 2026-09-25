@@ -1216,6 +1216,8 @@ export function mountEngine({ model, host }) {
   let probePauseWorld = null; // {x,y} | null — park point after Esc
   let pinnedProbeWorld = null; // {x,y} | null
   let probeScrubSeq = 0;
+  /** Last scrubbed probe window held no cells (see scrubProbeAtWorld). */
+  let probeDiskWasEmpty = false;
   let pointDiskScoreCache = { key: "", scores: null };
   /** Spatial hash for fallback disk means when bin features are missing. */
   let pointSpatialIndex = { key: "", cellSize: 0, ox: 0, oy: 0, cells: null };
@@ -1506,6 +1508,30 @@ export function mountEngine({ model, host }) {
    * Mean of raw point features inside disk (x,y,R), using a spatial hash.
    * Fallback when packed bin features are unavailable.
    */
+  /** Any point inside the probe window at (x, y)? Bucket lookups only, no features. */
+  function probeDiskHasPoints(x, y) {
+    const pts = getPointsData();
+    const R = probeWindowRadius();
+    if (!(R > 0) || !pts.length) return false;
+    const R2 = R * R;
+    const index = pointSpatialCells(R);
+    const c0 = Math.floor((x - index.ox) / R);
+    const r0 = Math.floor((y - index.oy) / R);
+    for (let dc = -1; dc <= 1; dc++) {
+      for (let dr = -1; dr <= 1; dr++) {
+        const bucket = index.cells.get(`${c0 + dc},${r0 + dr}`);
+        if (!bucket) continue;
+        for (let b = 0; b < bucket.length; b++) {
+          const p = pts[bucket[b]];
+          const dx = p.x - x;
+          const dy = p.y - y;
+          if (dx * dx + dy * dy <= R2) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   function meanRawFeaturesInDisk(x, y) {
     const pts = getPointsData();
     const n = pts.length;
@@ -1787,7 +1813,12 @@ export function mountEngine({ model, host }) {
         quantizeProbeWorld(hoverProbeWorld.x, hoverProbeWorld.y).x !== q.x ||
         quantizeProbeWorld(hoverProbeWorld.x, hoverProbeWorld.y).y !== q.y
       ) {
-        scoresChanged = true;
+        // Off tissue the window holds no cells and the field stays empty: after
+        // the first empty rebuild (which clears the colors), skip rebuilding the
+        // whole point layer until the window reaches cells again.
+        const empty = !probeDiskHasPoints(q.x, q.y);
+        scoresChanged = !(empty && probeDiskWasEmpty);
+        probeDiskWasEmpty = empty;
       }
     }
     // Cursor-aligned window disk (both views): radius = raster_window_radius.
@@ -1829,6 +1860,7 @@ export function mountEngine({ model, host }) {
       stopProbeSmooth();
       changed = true;
     }
+    probeDiskWasEmpty = false;
     if (changed) setDeckLayers();
   }
 
@@ -1879,7 +1911,9 @@ export function mountEngine({ model, host }) {
   }
 
   function similarityRgbaForPoint(i, opacity, probeField) {
-    const field = probeField || activePointProbeScores();
+    // Only an absent field is computed here. A hoisted `null` means "no probe
+    // scores" (e.g. the window holds no cells) and must not re-query per point.
+    const field = probeField === undefined ? activePointProbeScores() : probeField;
     if (!field || !field.scores) return null;
     let t;
     if (field.mode === "bin") {
@@ -2590,10 +2624,20 @@ export function mountEngine({ model, host }) {
 
   function getPointsData() {
     const b64 = model.get("points_data") || "";
-    const [xMin, xMax] = model.get("x_bounds");
-    const [yMin, yMax] = model.get("y_bounds");
+    const xBounds = model.get("x_bounds");
+    const yBounds = model.get("y_bounds");
+    // Hot path: called per point by color accessors. Same model values (by
+    // reference) mean the same points, with no string work on a multi-MB pack.
+    if (b64 === pointsCache.b64 && xBounds === pointsCache.xBounds && yBounds === pointsCache.yBounds) {
+      return pointsCache.data;
+    }
+    const [xMin, xMax] = xBounds;
+    const [yMin, yMax] = yBounds;
     const key = `${b64.length}:${xMin}:${xMax}:${yMin}:${yMax}:${b64.slice(0, 32)}:${b64.slice(-32)}`;
-    if (key === pointsCache.key) return pointsCache.data;
+    if (key === pointsCache.key) {
+      pointsCache = { ...pointsCache, b64, xBounds, yBounds };
+      return pointsCache.data;
+    }
     const raw = decodeF32Base64(b64);
     const n = Math.floor(raw.length / 4);
     const data = new Array(n);
@@ -2606,7 +2650,7 @@ export function mountEngine({ model, host }) {
         valueA: raw[o + 2],
       };
     }
-    pointsCache = { key, data };
+    pointsCache = { key, data, b64, xBounds, yBounds };
     spatialIndex = buildSpatialIndex(data);
     return data;
   }
@@ -3453,9 +3497,10 @@ export function mountEngine({ model, host }) {
       getPolygon: (d) => d.polygon,
       filled: true,
       stroked: true,
-      getFillColor: [255, 255, 255, 36],
-      getLineColor: [255, 255, 255, 210],
-      getLineWidth: 2,
+      // Saturated blue reads at a glance over any categorical palette (white vanished on pale clusters).
+      getFillColor: [37, 99, 235, 46],
+      getLineColor: [37, 99, 235, 255],
+      getLineWidth: 2.5,
       lineWidthUnits: "pixels",
       pickable: false,
     });

@@ -10,8 +10,10 @@ VolumeCube harness loads the toy OME-Zarr and renders an isometric Viv volume wi
 - `.volume-cube` shell mounts with Reset, Labels switch
 - Default window readout at center (128, 128) · 100 µm with full-volume slice ranges
 - WebGL canvas visible inside the volume host
-- Home camera (load + Reset) frames the `window_size_um` inspect window, not the
-  whole volume, so large volumes stay legible
+- Z is the vertical axis (`Z_UP` model matrix): the orbit spins around the stack and
+  Z slicing cuts horizontal slabs
+- Home camera (load + Reset) frames the upright `window_size_um` inspect window box
+  (horizontal diagonal × foreshortened stack height), not the whole volume
 - Image display range from the `contrast_limits` trait (default `[0, 48]`)
 - Only the inspect window is loaded (`window-source.ts`): one box cut from the
   finest pyramid level within a 64 M voxel budget, fetched once and served to
