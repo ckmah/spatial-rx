@@ -2368,8 +2368,22 @@ export function mountEngine({ model, host }) {
     return { x, y, px, py };
   }
 
+  /** Space held: pan like Move in any tool, without changing the synced mode. */
+  let spacePan = false;
+
+  function panActive() {
+    return currentMode === "move" || spacePan;
+  }
+
+  function setSpacePan(on) {
+    if (spacePan === on) return;
+    spacePan = on;
+    webglCanvas.style.cursor = defaultCursor();
+    if (deckgl) deckgl.setProps({ controller: controllerProps() });
+  }
+
   function controllerProps() {
-    const pan = currentMode === "move";
+    const pan = panActive();
     return {
       dragPan: pan,
       scrollZoom: true,
@@ -2379,7 +2393,7 @@ export function mountEngine({ model, host }) {
   }
 
   function defaultCursor() {
-    if (currentMode === "move") return "grab";
+    if (panActive()) return "grab";
     if (currentMode === "select") return "default";
     if (currentMode === "node") return "default";
     if (currentMode === "probe") return "crosshair";
@@ -3775,6 +3789,7 @@ export function mountEngine({ model, host }) {
         getTooltip: deckTooltip,
         getCursor: ({ isDragging, isHovering }) => {
           if (isDragging) return "grabbing";
+          if (spacePan) return "grab";
           if (currentMode === "select" && isHovering) return "pointer";
           if (isLandmarkDrawMode(currentMode) && isHovering) return "pointer";
           return defaultCursor();
@@ -4787,7 +4802,7 @@ export function mountEngine({ model, host }) {
   }
 
   function handleMouseDown(event) {
-    if (currentMode === "move") return;
+    if (panActive()) return;
     if (currentMode === "inspect") {
       if (event.button !== 0) return;
       event.preventDefault();
@@ -4935,6 +4950,7 @@ export function mountEngine({ model, host }) {
   }
 
   function handleMouseMove(event) {
+    if (spacePan) return;
     const pt = eventPoint(event);
     if (!pt) return;
     if (isDragging && dragStart && dragIndex >= 0) {
@@ -5037,6 +5053,7 @@ export function mountEngine({ model, host }) {
   }
 
   function handleMouseUp(event) {
+    if (spacePan) return;
     if (currentMode === "inspect" && volumeWindow && event.button === 0) {
       // Drag moves save at most every 40 ms: flush the final window position.
       volumeWindowSavedAt = performance.now();
@@ -5418,6 +5435,14 @@ export function mountEngine({ model, host }) {
     const key = event.key;
     const lower = key.length === 1 ? key.toLowerCase() : key;
 
+    // Hold Space to pan in any tool (never while typing, even outside our chrome).
+    if (key === " " && !mod && !event.altKey && !typing) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat) setSpacePan(true);
+      return;
+    }
+
     if (key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
@@ -5716,6 +5741,17 @@ export function mountEngine({ model, host }) {
     capture: true,
     signal,
   });
+  window.addEventListener(
+    "keyup",
+    (event) => {
+      if (event.key === " " && spacePan) {
+        event.preventDefault();
+        setSpacePan(false);
+      }
+    },
+    { capture: true, signal },
+  );
+  window.addEventListener("blur", () => setSpacePan(false), { signal });
   document.addEventListener("contextmenu", handleContextMenu, {
     capture: true,
     signal,
