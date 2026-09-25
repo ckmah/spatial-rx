@@ -264,3 +264,29 @@ def test_highlight_cells_builds_coloured_groups():
     ]
     w.highlight_cells({})
     assert w.highlight_groups == []
+
+
+def test_serve_directory_takes_a_burst_of_parallel_reads(tmp_path):
+    """The cube fetches many chunks at once; none may be refused (Windows backlog 5)."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    n = 64
+    for i in range(n):
+        (tmp_path / f"c{i}").write_bytes(bytes([i]) * 4096)
+    server, base = serve_directory(tmp_path)
+    start = threading.Barrier(n)
+
+    def get(i):
+        start.wait()
+        with urlopen(f"{base}/c{i}", timeout=30) as resp:
+            return resp.status, resp.read()
+
+    try:
+        assert server.request_queue_size >= 128
+        with ThreadPoolExecutor(n) as pool:
+            results = list(pool.map(get, range(n)))
+        assert [status for status, _ in results] == [200] * n
+        assert all(body == bytes([i]) * 4096 for i, (_, body) in enumerate(results))
+    finally:
+        server.shutdown()

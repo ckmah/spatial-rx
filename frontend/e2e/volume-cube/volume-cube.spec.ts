@@ -192,4 +192,27 @@ test.describe("VolumeCubeWidget", () => {
     await expect(canvases).toHaveCount(1);
     await shot(page, "labels-off", widget);
   });
+
+  test("a failed labels fetch ends in an error state, not loading", async ({ page }) => {
+    const widget = volumeCubeWidget(page);
+    // A server error (not a missing-chunk 404, which reads as fill) on every labels chunk.
+    await page.route(/\/toy\.ome\.zarr\/labels\/cells\/\d+(\/\d+)+$/, (route) =>
+      route.fulfill({ status: 500, body: "boom" }),
+    );
+    await page.getByRole("switch", { name: "Labels" }).click();
+    await expect(widget).toHaveAttribute("data-labels", "error");
+    await expect(widget.getByText(/Could not load labels/)).toBeVisible();
+    // The image keeps rendering on its own.
+    await expect(widget).toHaveAttribute("data-channels", "1");
+  });
+
+  test("a failed image window fetch shows a status line", async ({ page }) => {
+    const widget = volumeCubeWidget(page);
+    await page.route(/\/toy\.ome\.zarr\/\d+(\/\d+)+$/, (route) => route.abort("connectionrefused"));
+    // A new window is a new fetch; it hits the refused chunks.
+    await setVolumeModel(page, { window_cx: 60, window_cy: 60 });
+    await expect(widget.getByText(/Could not load this window/)).toBeVisible();
+    await page.getByRole("switch", { name: "Labels" }).click();
+    await expect(widget).toHaveAttribute("data-labels", "error");
+  });
 });

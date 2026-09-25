@@ -310,10 +310,21 @@ def ome_zarr_level0(path: Path | str) -> dict:
     }
 
 
+class _LoopbackServer(ThreadingHTTPServer):
+    """Threaded server with a listen backlog for the cube's parallel chunk reads.
+
+    The stdlib default backlog of 5 overflows when the browser opens dozens of
+    chunk requests at once; Windows then refuses the extra connections.
+    """
+
+    request_queue_size = 256
+    daemon_threads = True
+
+
 def serve_directory(directory: Path) -> tuple[ThreadingHTTPServer, str]:
     """Serve ``directory`` on 127.0.0.1. Returns the server and base URL."""
     handler = partial(_QuietHandler, directory=str(directory))
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    server = _LoopbackServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     host, port = server.server_address[:2]

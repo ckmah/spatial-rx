@@ -211,6 +211,7 @@ export function VolumeCube({
   const [image, setImage] = useState<ZarrSource[] | null>(null);
   const [labels, setLabels] = useState<ZarrSource[] | null>(null);
   const [error, setError] = useState("");
+  const [labelsError, setLabelsError] = useState("");
   const [viewState, setViewState] = useState<ViewState | null>(null);
   /** Pan must not drift the cube; the window moves the content instead. */
   const fixedTargetRef = useRef<number[] | null>(null);
@@ -248,7 +249,7 @@ export function VolumeCube({
         const loaded = await loadOmeZarr(absoluteUrl(imageUrl), { type: "multiscales" });
         if (!cancelled) setImage(loaded.data as unknown as ZarrSource[]);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(errorText(err));
       }
     })();
     return () => {
@@ -266,13 +267,14 @@ export function VolumeCube({
   useEffect(() => {
     let cancelled = false;
     setLabels(null);
+    setLabelsError("");
     if (!wantLabels) return;
     (async () => {
       try {
         const lab = await loadOmeZarr(absoluteUrl(labelsUrl), { type: "multiscales" });
         if (!cancelled) setLabels(lab.data as unknown as ZarrSource[]);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setLabelsError(errorText(err));
       }
     })();
     return () => {
@@ -331,11 +333,16 @@ export function VolumeCube({
     return new WindowPixelSource(labelsLevel, windowVoxels, levelVoxel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [labelsLevel, boxKey, levelVoxel?.join(",")]);
+  // Viv waits on every plane of a window and never reports a failed fetch, so
+  // watch the one shared window fetch per source (missing chunks read as fill).
+  const imageFetchError = useFetchError(imageWindow);
+  const cellsFetchError = useFetchError(cellsWindow);
   const loader = useMemo(() => {
     if (!imageWindow) return null;
-    if (!cellsWindow) return [imageWindow];
+    // Failed labels fall back to the image alone rather than stalling the layer.
+    if (!cellsWindow || cellsFetchError) return [imageWindow];
     return [new LabelVolumeSource(imageWindow, cellsWindow)];
-  }, [imageWindow, cellsWindow]);
+  }, [imageWindow, cellsWindow, cellsFetchError]);
   const hasCells = loader?.[0] instanceof LabelVolumeSource;
   const cellLut = useMemo(() => (showLabels ? buildCellLut(groups) : EMPTY_CELL_LUT), [showLabels, groups]);
   const imagePalette = useMemo(() => paletteLut(render.palette), [render.palette]);
@@ -539,14 +546,18 @@ export function VolumeCube({
 
   const outside = windowVoxels ? boxIsEmpty(windowVoxels) : false;
 
+  // Labels only show over a loaded image, so an image failure fails them too.
+  const labelsFailure = labelsError || cellsFetchError || error || imageFetchError;
   let status = "";
   if (!image) status = error || "Loading volume…";
+  else if (imageFetchError) status = `Could not load this window: ${imageFetchError}`;
   else if (outside) status = "Inspect window is outside the volume";
   else if (labelsMismatch) status = "Labels are on a different grid from the image";
+  else if (showLabels && labelsFailure) status = `Could not load labels: ${labelsFailure}`;
 
   let labelsState: CubeLoadState["labels"] = "off";
   if (showLabels) {
-    if (labelsMismatch || (error && !labels)) labelsState = "error";
+    if (labelsMismatch || labelsFailure) labelsState = "error";
     else labelsState = hasCells ? "on" : "loading";
   }
   const legend = showLabels && hasCells ? groups.filter((g) => g.labels.length > 0) : NO_GROUPS;
@@ -610,4 +621,25 @@ export function VolumeCube({
       ) : null}
     </div>
   );
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** The error of `source`'s window fetch, cleared when the window changes. */
+function useFetchError(source: WindowPixelSource | null): string {
+  const [failed, setFailed] = useState<{ source: WindowPixelSource; message: string } | null>(null);
+  useEffect(() => {
+    if (!source) return;
+    let current = true;
+    // The same promise Viv reads (fetchBlock caches per window), so no second fetch.
+    source.fetchBlock({}).catch((err: unknown) => {
+      if (current) setFailed({ source, message: errorText(err) });
+    });
+    return () => {
+      current = false;
+    };
+  }, [source]);
+  return failed && failed.source === source ? failed.message : "";
 }

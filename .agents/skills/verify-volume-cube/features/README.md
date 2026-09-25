@@ -15,6 +15,7 @@ capability** to existing Playwright coverage — not a product roadmap.
 | [inspect-window-placement](inspect-window-placement.md) | `volume-cube.spec.ts` — `"toy inspect drag updates synced window traits"` | `window-on-sphere` |
 | [window-trait-readout](window-trait-readout.md) | `volume-cube.spec.ts` — `"model patch updates window readout without inspect drag"` | — |
 | [labels-toggle](labels-toggle.md) | `volume-cube.spec.ts` — `"labels switch outlines cells as a second channel of the same volume"` | `labels-on`, `labels-off` |
+| [fetch-errors](fetch-errors.md) | `volume-cube.spec.ts` — `"a failed labels fetch ends in an error state, not loading"`, `"a failed image window fetch shows a status line"`; `test_serve_directory_takes_a_burst_of_parallel_reads` | — |
 | [cube-controls](cube-controls.md) | `volume-cube.spec.ts` — `"in-widget controls: camera presets, projection, and a committed Z cut"` | `rest` |
 | [highlight-groups](highlight-groups.md) | `volume-cube.spec.ts` — `"highlight_groups colour chosen cells and follow the Labels switch"` | `highlight-on` |
 | [axis-slice-traits](axis-slice-traits.md) | `volume-cube.spec.ts` — `"model patch updates axis slice readout"` | — |
