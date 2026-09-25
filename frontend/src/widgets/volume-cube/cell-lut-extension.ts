@@ -147,8 +147,10 @@ const MIP = {
 #endif`,
   _AFTER_RENDER: `
   // Cells in front, composited over the image's maximum-intensity projection.
+  // The projection is opaque: weighting it by the sample alpha (g) as well
+  // would square the ramp and darken everything below full intensity.
   vec4 im = imageSample(maxImage);
-  color = vec4(cells.rgb + (1.0 - cells.a) * im.rgb * im.a, 1.0);`,
+  color = vec4(cells.rgb + (1.0 - cells.a) * im.rgb * cubeRender.imageAlpha, 1.0);`,
 };
 
 type LayerLike = {
