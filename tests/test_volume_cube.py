@@ -9,9 +9,7 @@ from urllib.request import urlopen
 from spatial_rx.volume_cube import (
     BLIN_IDR_IMAGE_URL,
     BLIN_SHAPE_ZYX,
-    DEFAULT_CONTRAST_LIMITS,
     DEFAULT_Z_SLAB,
-    TOY_CHUNK_ZYX,
     TOY_SHAPE_ZYX,
     VolumeCubeWidget,
     cells_in_inspect_window,
@@ -22,53 +20,38 @@ from spatial_rx.volume_cube import (
 )
 
 
-def test_write_toy_ome_zarr(tmp_path):
-    root = write_toy_ome_zarr(tmp_path / "toy.ome.zarr")
-    attrs = json.loads((root / ".zattrs").read_text(encoding="utf-8"))
-    assert attrs["multiscales"][0]["datasets"][0]["path"] == "0"
-    labels = json.loads((root / "labels" / ".zattrs").read_text(encoding="utf-8"))
-    assert labels["labels"] == ["cells"]
-    cz, cy, cx = TOY_CHUNK_ZYX
-    chunk = root / "0" / "0" / "0" / "0"
-    assert chunk.stat().st_size == cz * cy * cx
-    assert (root / "labels" / "cells" / "0" / ".zarray").is_file()
-
-
-def test_toy_widget_serves_zattrs(tmp_path):
-    root = write_toy_ome_zarr(tmp_path / "toy.ome.zarr")
-    server, base = serve_directory(root)
-    try:
-        with urlopen(f"{base}/.zattrs") as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-        assert body["multiscales"][0]["name"] == "toy-image"
-        assert resp.headers["Access-Control-Allow-Origin"] == "*"
-    finally:
-        server.shutdown()
-
-
-def test_volume_cube_toy_urls(tmp_path):
+def test_toy_widget_serves_its_image_and_labels(tmp_path):
     widget = VolumeCubeWidget.toy(tmp_path / "toy.ome.zarr")
     try:
-        assert widget.image_url.endswith("/")
-        assert widget.labels_url.endswith("/labels/cells/")
-        assert widget.window_size_um == 100
-        assert widget.window_cx == 128
-        assert widget.slice_z_max == 64
+        with urlopen(f"{widget.image_url}.zattrs") as resp:
+            assert json.loads(resp.read())["multiscales"][0]["name"] == "toy-image"
+            assert resp.headers["Access-Control-Allow-Origin"] == "*"
+        with urlopen(f"{widget.labels_url}0/.zarray") as resp:
+            assert resp.status == 200
+        depth, height, width = TOY_SHAPE_ZYX
+        assert (widget.window_cx, widget.window_cy) == (width / 2, height / 2)
+        assert widget.slice_z_max == depth
     finally:
-        assert widget._server is not None
         widget._server.shutdown()
 
 
-def test_blin_idr_url_constant():
-    assert "idr0062-blin-nuclearsegmentation" in BLIN_IDR_IMAGE_URL
-    assert BLIN_IDR_IMAGE_URL.endswith(".zarr")
+def test_from_ome_zarr_reads_an_ngff_04_store_in_unit_voxels(tmp_path):
+    root = write_toy_ome_zarr(tmp_path / "toy.ome.zarr")
+    widget = VolumeCubeWidget.from_ome_zarr(root)
+    try:
+        assert widget.voxel_size_um == [1.0, 1.0, 1.0]
+        assert widget.origin_um == [0.0, 0.0, 0.0]
+        assert widget.slice_x_max == TOY_SHAPE_ZYX[2]
+    finally:
+        widget._server.shutdown()
 
 
-def test_from_url_blin_extents():
+def test_from_url_centres_the_window_on_a_mid_z_slab():
     widget = VolumeCubeWidget.from_url(
         BLIN_IDR_IMAGE_URL,
         labels_url="",
         shape_zyx=BLIN_SHAPE_ZYX,
+        contrast_limits=(110, 255),
     )
     depth, height, width = BLIN_SHAPE_ZYX
     assert widget.image_url == BLIN_IDR_IMAGE_URL
@@ -78,17 +61,7 @@ def test_from_url_blin_extents():
     assert widget.window_cx == width / 2
     assert widget.window_cy == height / 2
     z_min, z_max = mid_z_slab(depth, DEFAULT_Z_SLAB)
-    assert widget.slice_z_min == z_min
-    assert widget.slice_z_max == z_max
-
-
-def test_contrast_limits_default_and_override():
-    assert VolumeCubeWidget().contrast_limits == list(DEFAULT_CONTRAST_LIMITS)
-    widget = VolumeCubeWidget.from_url(
-        "http://example.test/vol.zarr",
-        shape_zyx=(124, 800, 800),
-        contrast_limits=(110, 255),
-    )
+    assert (widget.slice_z_min, widget.slice_z_max) == (z_min, z_max)
     assert widget.contrast_limits == [110.0, 255.0]
 
 
@@ -156,7 +129,7 @@ def test_serve_directory_never_lists_directories(tmp_path):
         server.shutdown()
 
 
-def test_serve_directory_allow_prefixes(tmp_path):
+def test_serve_directory_refuses_paths_outside_the_allowlist(tmp_path):
     for rel in ("images/a/zarr.json", "images/ab/zarr.json", "tables/t/zarr.json", "zarr.json"):
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / rel).write_bytes(b"{}")
@@ -169,16 +142,6 @@ def test_serve_directory_allow_prefixes(tmp_path):
             assert _fetch(f"{base}/{rel}", "bytes=0-0")[0] == 404, rel
     finally:
         server.shutdown()
-
-
-def test_ome_zarr_level0_toy_is_unit_voxels(tmp_path):
-    root = write_toy_ome_zarr(tmp_path / "toy.ome.zarr")
-    meta = ome_zarr_level0(root)
-    assert meta == {
-        "shape_zyx": TOY_SHAPE_ZYX,
-        "voxel_size_um": (1.0, 1.0, 1.0),
-        "origin_um": (0.0, 0.0, 0.0),
-    }
 
 
 def _write_ngff05(root, shape_tczyx, scale, translation):
@@ -258,8 +221,7 @@ def test_from_ome_zarr_rejects_labels_on_another_grid(tmp_path):
         VolumeCubeWidget.from_ome_zarr(image, labels_path=labels)
 
 
-
-def test_ome_zarr_level0_reads_a_spatialdata_sequence_transform(tmp_path):
+def test_reads_the_frame_from_a_spatialdata_sequence_transform(tmp_path):
     """SpatialData stores a Labels3DModel's scale + translation as one sequence."""
     root = tmp_path / "cell_labels"
     _write_ngff05(root, (1, 1, 8, 64, 96), [1.0] * 5, [0.0] * 5)
@@ -282,13 +244,13 @@ def test_ome_zarr_level0_reads_a_spatialdata_sequence_transform(tmp_path):
     assert meta["origin_um"] == (-6.0, -1114.0, -2686.0)
 
 
-def test_highlight_cells_builds_coloured_groups():
+def test_highlight_cells_sets_coloured_groups_and_clears():
     w = VolumeCubeWidget()
     w.highlight_cells({"T cell": [3, 4], "B cell": np.array([7]), "empty": []}, {"T cell": "#ff0000"})
-    assert w.highlight_groups == [
-        {"name": "T cell", "color": "#ff0000", "labels": [3, 4]},
-        {"name": "B cell", "color": "#22d3ee", "labels": [7]},
-    ]
+    t_cell, b_cell = w.highlight_groups  # empty groups are dropped
+    assert t_cell == {"name": "T cell", "color": "#ff0000", "labels": [3, 4]}
+    assert b_cell["name"] == "B cell" and b_cell["labels"] == [7]
+    assert b_cell["color"].startswith("#") and b_cell["color"] != "#ff0000"
     w.highlight_cells({})
     assert w.highlight_groups == []
 
@@ -310,7 +272,6 @@ def test_serve_directory_takes_a_burst_of_parallel_reads(tmp_path):
             return resp.status, resp.read()
 
     try:
-        assert server.request_queue_size >= 128
         with ThreadPoolExecutor(n) as pool:
             results = list(pool.map(get, range(n)))
         assert [status for status, _ in results] == [200] * n

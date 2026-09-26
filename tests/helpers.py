@@ -5,7 +5,6 @@ from __future__ import annotations
 import anndata as ad
 import numpy as np
 import pandas as pd
-from scipy.sparse import csr_matrix, spmatrix
 
 
 def adata_xy(
@@ -15,15 +14,10 @@ def adata_xy(
     color=None,
     color_key="label",
     genes: dict[str, list[float]] | None = None,
-    knn: spmatrix | None = None,
-    radius: spmatrix | None = None,
     names: list[str] | None = None,
     uns: dict | None = None,
 ):
-    """Build a tiny AnnData with ``obsm['spatial']``.
-
-    ``knn`` / ``radius`` are ignored (graphs are no longer required).
-    """
+    """Build a tiny AnnData with ``obsm['spatial']``."""
     n = len(x)
     index = names if names is not None else [f"c{i}" for i in range(n)]
     obs = pd.DataFrame(index=index)
@@ -42,13 +36,6 @@ def adata_xy(
     adata.obsm["spatial"] = np.column_stack(
         [np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64)]
     )
-    # Optional leftover graphs for older helpers; widget ignores them.
-    if knn is not None or radius is not None:
-        empty = csr_matrix((n, n), dtype=np.float32)
-        adata.obsp["spatial_knn_connectivities"] = knn if knn is not None else empty
-        adata.obsp["spatial_radius_connectivities"] = (
-            radius if radius is not None else empty
-        )
     if uns:
         adata.uns.update(uns)
     return adata
@@ -98,10 +85,3 @@ def toy_spatialdata(dest):
     sdata.write(dest)
     return sd.read_zarr(dest)
 
-
-def graph(n: int, pairs: list[tuple[int, int, float]]):
-    """CSR with explicit (i, j, value) triples."""
-    if not pairs:
-        return csr_matrix((n, n), dtype=np.float32)
-    rows, cols, data = zip(*pairs)
-    return csr_matrix((data, (rows, cols)), shape=(n, n), dtype=np.float32)

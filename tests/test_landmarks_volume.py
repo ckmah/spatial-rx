@@ -61,7 +61,7 @@ def test_adata_widget_has_empty_volume(sdata):
     assert w.volume == {} and w.volume_label_ids == ""
 
 
-def test_only_three_new_synced_traits():
+def test_volume_contract_is_three_synced_traits():
     synced = {n for n, t in LandmarksWidget.class_traits().items() if t.metadata.get("sync")}
     assert NEW_TRAITS <= synced
     assert not {n for n in synced if n.startswith(("volume", "cube_"))} - NEW_TRAITS

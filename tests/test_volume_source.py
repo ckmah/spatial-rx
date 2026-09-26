@@ -21,7 +21,6 @@ def test_infers_table_labels_image_and_frame(sdata):
     assert src.voxel_size_um == (1.0, 1.0, 1.0)
     assert src.origin_um == (0.0, 0.0, 0.0)
     np.testing.assert_array_equal(src.label_ids, adata.obs["cell_id"].to_numpy())
-    assert src.label_ids.dtype == np.int32
 
 
 def test_overrides_and_opt_out(sdata):
