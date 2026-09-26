@@ -156,7 +156,7 @@ jobs:
           E2E_SCREENSHOTS: "1"
       - name: Update core snapshots
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_snapshots == true }}
-        run: npm run test:e2e:core -- --update-snapshots
+        run: npm run test:e2e:core -- --update-snapshots=all
         env:
           CI: true
           E2E_SCREENSHOTS: "1"
@@ -207,7 +207,7 @@ jobs:
           E2E_SCREENSHOTS: "1"
       - name: Update landmarks snapshots
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_snapshots == true }}
-        run: npm run test:e2e:landmarks -- --update-snapshots
+        run: npm run test:e2e:landmarks -- --update-snapshots=all
         env:
           CI: true
           E2E_SCREENSHOTS: "1"
@@ -326,7 +326,7 @@ jobs:
           steps.specs.outputs.exists == 'true' &&
           github.event_name == 'workflow_dispatch' &&
           inputs.update_snapshots == true
-        run: npm run test:e2e:gallery -- --update-snapshots
+        run: npm run test:e2e:gallery -- --update-snapshots=all
         env:
           CI: true
           E2E_SCREENSHOTS: "1"

@@ -20,10 +20,10 @@
     "test:e2e:gallery": "playwright test e2e/gallery",
     "test:e2e:install": "playwright install chromium",
     "test:e2e:mac": "PLAYWRIGHT_CHANNEL=chrome playwright test",
-    "test:e2e:update": "playwright test --update-snapshots",
-    "test:e2e:update:core": "playwright test e2e/core --update-snapshots",
-    "test:e2e:update:landmarks": "playwright test e2e/landmarks --update-snapshots",
-    "test:e2e:update:volume-cube": "E2E_HARNESS=volume-cube playwright test e2e/volume-cube/volume-cube.spec.ts --update-snapshots"
+    "test:e2e:update": "playwright test --update-snapshots=all",
+    "test:e2e:update:core": "playwright test e2e/core --update-snapshots=all",
+    "test:e2e:update:landmarks": "playwright test e2e/landmarks --update-snapshots=all",
+    "test:e2e:update:volume-cube": "E2E_HARNESS=volume-cube playwright test e2e/volume-cube/volume-cube.spec.ts --update-snapshots=all"
   },
   "overrides": {
     "@deck.gl/core": "9.2.11",
