@@ -125,6 +125,22 @@ export function LandmarksView({
   ]);
   const inspecting = lm.mode === "inspect";
 
+  // Inspect clears the map: both docks collapse on entry (peek tabs stay, so
+  // either can be reopened), and leaving restores the docks as they were.
+  // Client-local, like the rest of the collapse state.
+  const collapsedRef = useRef(collapsed);
+  collapsedRef.current = collapsed;
+  const preInspectRef = useRef<typeof collapsed | null>(null);
+  useEffect(() => {
+    if (inspecting) {
+      preInspectRef.current = collapsedRef.current;
+      setCollapsed({ left: true, right: true });
+    } else if (preInspectRef.current) {
+      setCollapsed(preInspectRef.current);
+      preInspectRef.current = null;
+    }
+  }, [inspecting]);
+
   const syncEngineLayout = useCallback(() => {
     engineRef.current?.resize();
   }, []);

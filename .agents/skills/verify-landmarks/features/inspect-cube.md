@@ -20,6 +20,7 @@ or the close button hides it.
 - An open Z (`volume_cut` set to `[]` from Python) shows the stack's edges in the Z readout, never ±Infinity
 - `volume_cut` also commits once, ~250ms after a window move settles, only while the cube is open
 - Highlight follows the Landmarks category panel: nothing focused colors every cell in the window by category, a focused category colors only its cells, a focused Selection colors its cells by category
+- Entering Inspect collapses both side docks (`data-collapsed="true"`, peek tabs stay); a panel reopened mid-Inspect stays open; leaving Inspect restores the docks as they were before entering (client-local, no trait)
 - Image panel: in Additive, Alpha scales each sample's opacity; in MIP the projection is opaque, so Alpha acts as brightness
 - No 3D image (`LandmarksWidget(adata)`, or a SpatialData without one): the square still places (`data-testid="context-inspect-no-volume"` pill, "No 3D image: build the widget from a SpatialData with a 3D image"), no cube opens
 
@@ -71,6 +72,7 @@ Model keys: `inspect_cx`, `inspect_cy`, `inspect_size_um`, `volume`,
 
 **Proof**
 
+- Functional (docks): `"Inspect hides both side panels; leaving restores them as they were"` — both docks `data-collapsed="true"` in Inspect, restored on leaving, pre-Inspect state wins over mid-Inspect edits.
 - Functional: `inspect_cx`/`inspect_cy` set on click, and the saved value equals the final position after a quick drag; `data-pan` nonzero mid-drag then `0,0`; `volume_cut` reflects a committed slider edit and stays window-relative across a drag; `volume_cut = []` shows Z as `0–64 µm`; `data-highlight` count matches focus.
 - Visual: no dedicated named anchor yet (functional asserts cover the dialog and toolbar); reuse `rest`/`selection-neighborhood` conventions if a screenshot is added later.
 

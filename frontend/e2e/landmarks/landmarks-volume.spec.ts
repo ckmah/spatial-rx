@@ -274,6 +274,37 @@ test.describe("Landmarks inspect cube", () => {
     await expect(cubeWindow(page)).toHaveCount(0);
   });
 
+  test("Inspect hides both side panels; leaving restores them as they were", async ({ page }) => {
+    const left = page.locator(".landmarks__chrome-dock--left");
+    const right = page.locator(".landmarks__chrome-dock--right");
+    await expect(left).toHaveAttribute("data-collapsed", "false");
+    await expect(right).toHaveAttribute("data-collapsed", "false");
+
+    await page.getByRole("radio", { name: "Inspect", exact: true }).click();
+    await expect(left).toHaveAttribute("data-collapsed", "true");
+    await expect(right).toHaveAttribute("data-collapsed", "true");
+    // Peek tabs stay, so either panel can come back mid-Inspect.
+    await expect(page.getByRole("button", { name: "Show left panel" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Show right panel" })).toBeVisible();
+
+    await page.getByRole("radio", { name: "Select", exact: true }).click();
+    await expect(left).toHaveAttribute("data-collapsed", "false");
+    await expect(right).toHaveAttribute("data-collapsed", "false");
+
+    // A panel reopened during Inspect stays open until Inspect ends; leaving
+    // restores the pre-Inspect state (right was collapsed before).
+    await page.getByRole("button", { name: "Collapse right panel" }).click();
+    await expect(right).toHaveAttribute("data-collapsed", "true");
+    await page.getByRole("radio", { name: "Inspect", exact: true }).click();
+    await expect(left).toHaveAttribute("data-collapsed", "true");
+    await page.getByRole("button", { name: "Show left panel" }).click();
+    await expect(left).toHaveAttribute("data-collapsed", "false");
+    await page.getByRole("radio", { name: "Move", exact: true }).click();
+    await expect.poll(() => getModel(page, "mode")).toBe("move");
+    await expect(left).toHaveAttribute("data-collapsed", "false");
+    await expect(right).toHaveAttribute("data-collapsed", "true");
+  });
+
   test("highlight follows focus: everything, a category, a Selection", async ({ page }) => {
     await openCubeAtCentre(page);
     const bar = page.getByTestId("context-inspect-toolbar");

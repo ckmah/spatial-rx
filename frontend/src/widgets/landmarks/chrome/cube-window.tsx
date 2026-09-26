@@ -19,7 +19,8 @@ const VolumeCube = lazy(() =>
 
 const DEFAULT_SIZE = { width: 440, height: 380 };
 const MIN_SIZE = { width: 320, height: 280 };
-const INSET = { top: 56, right: 16 };
+// Right inset clears the right peek tab (Inspect collapses the docks).
+const INSET = { top: 56, right: 48 };
 const ORIGIN_ZYX: [number, number, number] = [0, 0, 0];
 const VOXEL_ZYX: [number, number, number] = [1, 1, 1];
 

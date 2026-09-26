@@ -15,6 +15,7 @@ shortcuts.
 - A collapsed dock is `inert`: its controls leave the tab order and the accessibility tree until it expands
 - Collapse state is client-local (not a traitlet); the narrow/stacked layout collapses as one
 - The peek tab sits above the minimap slot so the left tab never covers it
+- Entering Inspect collapses both docks and leaving restores them (see [inspect-cube](inspect-cube.md); spec `landmarks-volume.spec.ts` → `"Inspect hides both side panels; leaving restores them as they were"`)
 
 ## How to get to it (user POV)
 
