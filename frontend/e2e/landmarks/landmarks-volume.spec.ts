@@ -152,9 +152,11 @@ test.describe("Landmarks inspect cube", () => {
     await expect.poll(async () => ((await getModel(page, "volume_cut")) as number[])[5]).toBe(54);
   });
 
-  test("a partial X cut keeps its place in a moved window; open edges stay open", async ({ page }) => {
+  test("partial X and Y cuts keep their place in a moved window; open edges stay open", async ({ page }) => {
     const box = await openCubeAtCentre(page);
     await page.getByTestId("context-inspect-toolbar").getByRole("button", { name: "Cuts" }).click();
+
+    // X: trim the high edge, then move the window right.
     const xHi = page.getByRole("slider", { name: "X cut" }).nth(1);
     await xHi.focus();
     for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowLeft");
@@ -172,11 +174,8 @@ test.describe("Landmarks inspect cube", () => {
     const xLo = page.getByRole("slider", { name: "X cut" }).nth(0);
     expect(Number(await xLo.getAttribute("aria-valuenow"))).toBeCloseTo(cx1 - 50, 3);
     expect(Number(await xLo.getAttribute("aria-valuemin"))).toBeCloseTo(cx1 - 50, 3);
-  });
 
-  test("a partial Y cut follows a vertical window move", async ({ page }) => {
-    const box = await openCubeAtCentre(page);
-    await page.getByTestId("context-inspect-toolbar").getByRole("button", { name: "Cuts" }).click();
+    // Y: trim the low edge, then move the window vertically.
     const yLo = page.getByRole("slider", { name: "Y cut" }).nth(0);
     await yLo.focus();
     for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowRight");
@@ -204,7 +203,7 @@ test.describe("Landmarks inspect cube", () => {
     // Python moves the window: the cut stays in place in it, no volume_cut write.
     await setModel(page, { inspect_cx: cx0 + 20 });
     await expect.poll(async () => Number(await x.nth(1).getAttribute("aria-valuenow"))).toBeCloseTo(cx0 + 60, 3);
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(600); // past the settle commit: nothing may be written back
     expect(await cutOf(page)).toEqual(committed);
 
     // Python sets a cut: adopted (X open again), and not echoed.
@@ -213,7 +212,7 @@ test.describe("Landmarks inspect cube", () => {
     await expect(z.nth(0)).toHaveAttribute("aria-valuenow", "10");
     await expect(z.nth(1)).toHaveAttribute("aria-valuenow", "40");
     expect(await x.nth(1).getAttribute("aria-valuenow")).toBe(await x.nth(1).getAttribute("aria-valuemax"));
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(600); // past the settle commit: nothing may be written back
     expect(await cutOf(page)).toEqual([0, 256, 0, 256, 10, 40]);
 
     // Python clears the cut: Z is open, shown as the stack's edges (not ±Infinity).
@@ -234,8 +233,10 @@ test.describe("Landmarks inspect cube", () => {
     await expect.poll(async () => cutOf(page)).toEqual([0, 256, 0, 256, 0, 54]);
 
     // Zoom out so a click lands a window that the volume's left edge clamps.
+    const zoom = () => page.evaluate(() => (window as any).__landmarksEngine.getViewState().zoom as number);
+    const zoom0 = await zoom();
     await page.evaluate(() => (window as any).__landmarksEngine.zoomBy(-2, { animate: false }));
-    await page.waitForTimeout(300);
+    await expect.poll(zoom).toBeLessThan(zoom0);
     await page.mouse.click(box.x + box.width * 0.25, box.y + box.height * 0.5);
     await expect.poll(async () => Number(await getModel(page, "inspect_cx"))).toBeLessThan(50);
     await page.waitForTimeout(600); // past the settle commit

@@ -39,7 +39,7 @@ test.describe("VolumeCubeWidget", () => {
     await page.mouse.down();
     await page.mouse.move(box.x + box.width * 0.62, box.y + box.height * 0.58);
     await page.mouse.up();
-    await page.waitForTimeout(200);
+    await expect.poll(async () => Number(await getVolumeModel(page, "window_cx"))).not.toBe(128);
 
     const cx = Number(await getVolumeModel(page, "window_cx"));
     const cy = Number(await getVolumeModel(page, "window_cy"));
@@ -70,21 +70,8 @@ test.describe("VolumeCubeWidget", () => {
     await setVolumeModel(page, { window_cx: 300, window_cy: 128 });
     await expect(widget.getByText("Inspect window is outside the volume")).toHaveCount(0);
     await setVolumeModel(page, { window_cx: 128, window_cy: 128 });
+    // The page still answers: back inside, the window loads again.
     await expect(widget.getByText(/window 128, 128/)).toBeVisible();
-    expect(await page.evaluate(() => 1 + 1)).toBe(2); // the page still answers
-  });
-
-  test("model patch updates window readout without inspect drag", async ({
-    page,
-  }) => {
-    const widget = volumeCubeWidget(page);
-    await setVolumeModel(page, { window_cx: 64, window_cy: 192 });
-    await page.waitForTimeout(150);
-    expect(Number(await getVolumeModel(page, "window_cx"))).toBeCloseTo(64, 0);
-    expect(Number(await getVolumeModel(page, "window_cy"))).toBeCloseTo(192, 0);
-    await expect(
-      widget.getByText(/window 64, 192 · 100 µm · X 14–114 · Y 142–242 · Z 0–64/),
-    ).toBeVisible();
   });
 
   test("moving the window pans the loaded volume until the new window loads", async ({ page }) => {
@@ -107,29 +94,23 @@ test.describe("VolumeCubeWidget", () => {
     expect(await page.evaluate(() => (window as any).__pans)).toContain("-20,-10");
   });
 
-  test("model patch updates axis slice readout", async ({ page }) => {
+  test("model patches update the window and axis slice readout", async ({ page }) => {
     const widget = volumeCubeWidget(page);
-    await setVolumeModel(page, {
-      window_cx: 160,
-      window_cy: 96,
-      slice_z_min: 8,
-      slice_z_max: 48,
-    });
-    await page.waitForTimeout(150);
-    expect(Number(await getVolumeModel(page, "window_cx"))).toBeCloseTo(160, 0);
-    expect(Number(await getVolumeModel(page, "slice_z_max"))).toBeCloseTo(48, 0);
-    await expect(widget.getByText(/X 110–210 · Y 46–146 · Z 8–48/)).toBeVisible();
-  });
-
-  test("model patch X/Y cross-section clips inside the window", async ({ page }) => {
-    const widget = volumeCubeWidget(page);
-    // Window 78–178 in X and Y; cut X to 100–150 and Y to 60–120 (clamped to 78).
+    // X/Y cross-section clips inside the boot window 78–178 (Y 60 clamps to 78).
     await setVolumeModel(page, { slice_x_min: 100, slice_x_max: 150, slice_y_min: 60, slice_y_max: 120 });
-    await page.waitForTimeout(150);
     await expect(widget.getByText(/X 100–150 · Y 78–120 · Z 0–64/)).toBeVisible();
     await setVolumeModel(page, { slice_x_min: 0, slice_x_max: 256, slice_y_min: 0, slice_y_max: 256 });
-    await page.waitForTimeout(150);
     await expect(widget.getByText(/X 78–178 · Y 78–178 · Z 0–64/)).toBeVisible();
+
+    // Window centre from Python, no inspect drag.
+    await setVolumeModel(page, { window_cx: 64, window_cy: 192 });
+    await expect(
+      widget.getByText(/window 64, 192 · 100 µm · X 14–114 · Y 142–242 · Z 0–64/),
+    ).toBeVisible();
+
+    // Z slab from Python.
+    await setVolumeModel(page, { window_cx: 160, window_cy: 96, slice_z_min: 8, slice_z_max: 48 });
+    await expect(widget.getByText(/X 110–210 · Y 46–146 · Z 8–48/)).toBeVisible();
   });
 
   test("in-widget controls: camera presets, projection, and a committed Z cut", async ({ page }) => {
@@ -165,7 +146,6 @@ test.describe("VolumeCubeWidget", () => {
     await expect(widget).toHaveAttribute("data-highlight", "1");
     await expect(legend.getByText("blob two")).toBeVisible();
     await expect(widget.locator("canvas")).toHaveCount(1);
-    await shot(page, "highlight-on", widget);
 
     // Labels off hides the highlight too; the loaded volume stays for the next toggle.
     await labels.click();
@@ -193,11 +173,10 @@ test.describe("VolumeCubeWidget", () => {
     await expect(page.getByRole("switch", { name: "Labels" })).toBeChecked();
     // Boundaries composite into the image volume: still one canvas.
     await expect(widget).toHaveAttribute("data-labels", "on");
+    await expect(widget).toHaveAttribute("data-channels", "2");
     await expect(canvases).toHaveCount(1);
-    await shot(page, "labels-on", widget);
 
     await page.getByRole("switch", { name: "Labels" }).click();
-    await page.waitForTimeout(200);
     await expect(page.getByRole("switch", { name: "Labels" })).not.toBeChecked();
     await expect(widget).toHaveAttribute("data-labels", "off");
     // Hidden, not unloaded: switching back is a colour-lookup change only.
