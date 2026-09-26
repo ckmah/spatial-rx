@@ -147,14 +147,16 @@ test.describe("LandmarksWidget", () => {
     expect(active.lineAlpha).toBe(0);
     await shot(page, "selection-neighborhood", widget);
 
-    // Radius neighborhood: a soft gradient, no disks or edges.
+    // Radius neighborhood: a soft bitmap gradient covering the radius (ADR 0004), no disks or edges.
     let hood = await hoodOverlay();
     expect(hood.mode).toBe("radius");
     expect(hood.radiusGradient).toBe(true);
+    expect(hood.gradientKind).toBe("bitmap");
     expect(hood.gradientSeedCount).toBeGreaterThan(0);
     expect(hood.radiusDiskCount).toBe(0);
     expect(hood.edgeCount).toBe(0);
     expect(hood.radius).toBeGreaterThan(0);
+    expect(hood.gradientBakeRadius).toBeGreaterThanOrEqual(hood.radius);
 
     // Shift+wheel on either axis grows, then shrinks, the radius.
     const box = await canvasBox(page);
