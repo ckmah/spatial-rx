@@ -36,4 +36,4 @@ await expect(widget).toHaveAttribute("data-highlight", "0");
 **Proof**
 
 - Functional: switch, `data-highlight`, legend and channel count follow the trait.
-- Visual: `highlight-on` (Linux snapshots need generating).
+- Visual: none (not one of the three VolumeCube anchors in `frontend/e2e/README.md`).

@@ -2,7 +2,7 @@
 
 X / Y / Z slice ranges are synced traitlets on `VolumeCubeWidget`, driven from outside the widget (Marimo sliders in `demos/volume-cube.py`, harness controls in `dev/volume-cube/`).
 
-**Spec:** `frontend/e2e/volume-cube/volume-cube.spec.ts` — `"model patch updates axis slice readout"`, `"model patch X/Y cross-section clips inside the window"`
+**Spec:** `frontend/e2e/volume-cube/volume-cube.spec.ts` — `"model patches update the window and axis slice readout"`
 
 ## Sub-features
 
@@ -24,15 +24,12 @@ In a notebook, bind `mo.ui.range_slider` widgets to the six slice traitlets. The
 await bootVolumeCubeHarness(page);
 const widget = volumeCubeWidget(page);
 
-await setVolumeModel(page, {
-  slice_x_min: 64,
-  slice_x_max: 192,
-  slice_z_min: 8,
-  slice_z_max: 96,
-});
-await page.waitForTimeout(150);
+// Boot window is 78–178 in X and Y; Y 60 clamps to the window's 78.
+await setVolumeModel(page, { slice_x_min: 100, slice_x_max: 150, slice_y_min: 60, slice_y_max: 120 });
+await expect(widget.getByText(/X 100–150 · Y 78–120 · Z 0–64/)).toBeVisible();
 
-await expect(widget.getByText(/X 64–192 · Y 0–256 · Z 8–48/)).toBeVisible();
+await setVolumeModel(page, { window_cx: 160, window_cy: 96, slice_z_min: 8, slice_z_max: 48 });
+await expect(widget.getByText(/Z 8–48/)).toBeVisible();
 ```
 
 Helpers: `bootVolumeCubeHarness`, `setVolumeModel`, `volumeCubeWidget`.

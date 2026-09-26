@@ -39,6 +39,11 @@ Keep **2–3 visual anchors per widget** for the biggest state changes. Everythi
 | `shared-chrome-rest` | Shared toolbar / docks / shadcn controls |
 
 Obsolete Soft Float assertions removed: Selection ModeToggle radio, Inspect pin chip, near-zero line click-click path.
+VolumeCube `labels-on` and `highlight-on` captures were dropped: they are not anchors and never had baselines.
+
+Prefer `expect.poll` / web-first `expect` over `waitForTimeout`. A fixed wait is only for a
+negative check that must outlast a debounce (e.g. "nothing written back" past the cube's
+settle commit) and should say so in a comment.
 
 Canonical platform: **Linux Chromium** (GitHub Actions). macOS soft-skips screenshots unless `E2E_SCREENSHOTS=1`.
 

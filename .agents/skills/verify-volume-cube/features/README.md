@@ -13,12 +13,12 @@ capability** to existing Playwright coverage — not a product roadmap.
 | --- | --- | --- |
 | [harness-boots-volume](harness-boots-volume.md) | `volume-cube.spec.ts` — `"harness boots and OME-Zarr volume renders"` | `rest` |
 | [inspect-window-placement](inspect-window-placement.md) | `volume-cube.spec.ts` — `"toy inspect drag updates synced window traits"` | `window-on-sphere` |
-| [window-trait-readout](window-trait-readout.md) | `volume-cube.spec.ts` — `"model patch updates window readout without inspect drag"` | — |
-| [labels-toggle](labels-toggle.md) | `volume-cube.spec.ts` — `"labels switch outlines cells as a second channel of the same volume"` | `labels-on`, `labels-off` |
+| [window-trait-readout](window-trait-readout.md) | `volume-cube.spec.ts` — `"model patches update the window and axis slice readout"` | — |
+| [labels-toggle](labels-toggle.md) | `volume-cube.spec.ts` — `"labels switch outlines cells as a second channel of the same volume"` | `labels-off` |
 | [fetch-errors](fetch-errors.md) | `volume-cube.spec.ts` — `"a failed labels fetch ends in an error state, not loading"`, `"a failed image window fetch shows a status line"`; `test_serve_directory_takes_a_burst_of_parallel_reads` | — |
 | [cube-controls](cube-controls.md) | `volume-cube.spec.ts` — `"in-widget controls: camera presets, projection, and a committed Z cut"` | `rest` |
-| [highlight-groups](highlight-groups.md) | `volume-cube.spec.ts` — `"highlight_groups colour chosen cells and follow the Labels switch"` | `highlight-on` |
-| [axis-slice-traits](axis-slice-traits.md) | `volume-cube.spec.ts` — `"model patch updates axis slice readout"` | — |
+| [highlight-groups](highlight-groups.md) | `volume-cube.spec.ts` — `"highlight_groups colour chosen cells and follow the Labels switch"` | — |
+| [axis-slice-traits](axis-slice-traits.md) | `volume-cube.spec.ts` — `"model patches update the window and axis slice readout"` | — |
 | [coord-contract-xy-frame](coord-contract-xy-frame.md) | `test_coord_contract_landmarks_cube_xy`; `test_from_ome_zarr_frames_cube_in_store_microns` | — |
 | [python-analysis-inspect-window](python-analysis-inspect-window.md) | `test_coord_contract_landmarks_cube_xy`; `demos/volume-cube.py` analysis cell | — |
 

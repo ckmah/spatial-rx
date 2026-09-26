@@ -44,7 +44,7 @@ Model keys: `labels_url` (must be set for the switch to enable).
 
 - Functional: `data-labels` follows the switch; one canvas throughout; the label
   channel stays loaded once used.
-- Visual: `labels-on`, `labels-off` (Linux snapshots need regenerating).
+- Visual: `labels-off`.
 
 ## Gotchas
 

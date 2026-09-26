@@ -9,7 +9,7 @@ shortcuts.
 
 ## Sub-features
 
-- `PanelCollapseButton` (`chrome/panel-peek.tsx`) sits in each dock's header; clicking it sets `data-collapsed="true"` on the dock (`.landmarks__chrome-dock--left` / `--right`) and slides it off its edge
+- `PanelCollapseButton` (`chrome/panel-peek.tsx`) sits beside each dock, outside its inner edge (never on top of the panel); clicking it sets `data-collapsed="true"` on the dock (`.landmarks__chrome-dock--left` / `--right`) and slides it off its edge
 - `PanelPeekTab` replaces a collapsed dock with an edge tab (full height of the old header); clicking it expands the dock again (`data-collapsed="false"`)
 - **[** collapses/expands the left dock, **]** the right dock, once the widget has focus (e.g. a click on the canvas)
 - A collapsed dock is `inert`: its controls leave the tab order and the accessibility tree until it expands
