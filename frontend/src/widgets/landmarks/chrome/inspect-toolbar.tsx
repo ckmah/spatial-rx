@@ -10,21 +10,28 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { RangeControl, type Range, type ViewPreset } from "@/widgets/volume-cube/CubeControls";
+import type { Range, ViewPreset } from "@/widgets/volume-cube/CubeControls";
 import { PALETTES, type PaletteName, paletteLut } from "@/widgets/volume-cube/palettes";
 import type { CubeCut } from "@/widgets/volume-cube/VolumeCube";
 
 import type { CubeSettings, CubeSettingsPatch } from "../use-cube-settings";
-import { ChromeTooltip, ToolbarDivider, chromeHitClass, chromeMenuClass } from "./primitives";
-import { IconBtn, ToolStack, pillClass } from "./selection-toolbar";
+import {
+  CHIP_CLASS,
+  ChromeTooltip,
+  TOOLBAR_CAPTION,
+  TOOLBAR_CLASS,
+  ToolbarDivider,
+  chromeHitTextClass,
+  chromeHitWideClass,
+  chromeMenuClass,
+} from "./primitives";
+import { IconBtn, ToolStack } from "./selection-toolbar";
+import { SoftFloatCapsuleSlider, SoftFloatSliderRow } from "./soft-float-slider";
 
-const toggleTextClass =
-  "h-8 min-w-8 rounded-full border-0 px-2.5 text-xs text-muted-foreground shadow-none hover:bg-muted hover:text-foreground data-[state=on]:bg-foreground data-[state=on]:text-background data-[state=on]:shadow-none data-[spacing=1]:rounded-full";
 
 const GAMMA_LOG2 = 2.32;
 
@@ -43,46 +50,53 @@ function PaletteSwatch({ name }: { name: PaletteName }) {
   return (
     <span
       aria-hidden
-      className="h-2.5 w-8 shrink-0 rounded-full border border-foreground/15"
+      className={cn(CHIP_CLASS, "h-2.5 w-8 shrink-0 rounded-full")}
       style={{ backgroundImage: gradientCss(name) }}
     />
   );
 }
 
-/** One value on the same grid as `RangeControl`; `caption` is the short visible label. */
-function ValueControl({
+/**
+ * A range row (cuts, contrast) on the shared Soft Float slider: renders live
+ * while dragging (`onLive`) and commits once on release (`onCommit`), so the
+ * synced trait changes once per gesture. Thumbs are "<label>, minimum/maximum".
+ */
+function RangeRow({
   label,
-  caption,
+  unit,
   min,
   max,
   step,
   value,
-  shown,
-  onChange,
+  offset = 0,
+  onLive,
+  onCommit,
 }: {
   label: string;
-  caption: string;
+  unit: string;
   min: number;
   max: number;
   step: number;
-  value: number;
-  shown: string;
-  onChange: (v: number) => void;
+  value: Range;
+  /** Shown values are value - offset (e.g. µm from the window edge). */
+  offset?: number;
+  onLive: (v: Range) => void;
+  onCommit: (v: Range) => void;
 }) {
+  const lo = Math.round(value[0] - offset);
+  const hi = Math.round(value[1] - offset);
   return (
-    <div className="grid grid-cols-[4.5rem_1fr_5.5rem] items-center gap-2">
-      <Label className="text-xs text-muted-foreground">{caption}</Label>
-      <Slider
-        aria-label={label}
-        className="h-2 [&_[data-slot=slider-range]]:bg-blue-500/70"
-        min={min}
-        max={max}
-        step={step}
-        value={[value]}
-        onValueChange={(v) => onChange(v[0] ?? value)}
-      />
-      <span className="text-right text-xs tabular-nums text-muted-foreground">{shown}</span>
-    </div>
+    <SoftFloatSliderRow
+      caption={label}
+      aria-label={label}
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      readout={`${lo}–${hi}${unit ? ` ${unit}` : ""}`}
+      onValueChange={(v) => onLive([v[0]!, v[1]!])}
+      onValueCommit={(v) => onCommit([v[0]!, v[1]!])}
+    />
   );
 }
 
@@ -126,7 +140,7 @@ export function InspectToolbar({
     return next;
   };
   const cutRow = (axis: 0 | 1 | 2, label: string, range: Range, fromEdge: boolean) => (
-    <RangeControl
+    <RangeRow
       label={label}
       unit="µm"
       min={range[0]}
@@ -155,7 +169,7 @@ export function InspectToolbar({
       >
         <div
           ref={(node) => setMenuContainer(node?.closest(".spatial-rx-widget, .landmarks") as HTMLElement | null)}
-          className={cn(pillClass, "pointer-events-auto")}
+          className={TOOLBAR_CLASS}
           data-testid="context-toolbar-l1"
         >
           <ToggleGroup
@@ -167,13 +181,13 @@ export function InspectToolbar({
             value={settings.preset ?? ""}
             onValueChange={(v) => v && patch({ preset: v as ViewPreset })}
           >
-            <ToggleGroupItem value="top" aria-label="Top view" className={toggleTextClass}>
+            <ToggleGroupItem value="top" aria-label="Top view" className={chromeHitTextClass}>
               Top
             </ToggleGroupItem>
-            <ToggleGroupItem value="iso" aria-label="Oblique view" className={toggleTextClass}>
+            <ToggleGroupItem value="iso" aria-label="Oblique view" className={chromeHitTextClass}>
               Iso
             </ToggleGroupItem>
-            <ToggleGroupItem value="side" aria-label="Side view" className={toggleTextClass}>
+            <ToggleGroupItem value="side" aria-label="Side view" className={chromeHitTextClass}>
               Side
             </ToggleGroupItem>
           </ToggleGroup>
@@ -187,10 +201,10 @@ export function InspectToolbar({
             value={settings.mode}
             onValueChange={(v) => v && patch({ mode: v as CubeSettings["mode"] })}
           >
-            <ToggleGroupItem value="additive" aria-label="Additive" className={toggleTextClass}>
+            <ToggleGroupItem value="additive" aria-label="Additive" className={chromeHitTextClass}>
               Additive
             </ToggleGroupItem>
-            <ToggleGroupItem value="mip" aria-label="Maximum intensity" className={toggleTextClass}>
+            <ToggleGroupItem value="mip" aria-label="Maximum intensity" className={chromeHitTextClass}>
               MIP
             </ToggleGroupItem>
           </ToggleGroup>
@@ -203,7 +217,7 @@ export function InspectToolbar({
                   variant="ghost"
                   size="icon-sm"
                   aria-label="Palette"
-                  className={cn(chromeHitClass, "w-auto gap-1 px-2")}
+                  className={chromeHitWideClass}
                 >
                   <PaletteSwatch name={render.palette} />
                   <ChevronDownIcon aria-hidden className="size-2.5 shrink-0 opacity-70" />
@@ -240,7 +254,7 @@ export function InspectToolbar({
               disabled={!labelsAvailable}
               onCheckedChange={(on) => patch({ showLabels: on })}
             />
-            <Label htmlFor={labelsId} className="text-xs text-muted-foreground">
+            <Label htmlFor={labelsId} className={TOOLBAR_CAPTION}>
               Labels
             </Label>
           </div>
@@ -248,7 +262,7 @@ export function InspectToolbar({
           <ToolStack
             open={panel === "cuts"}
             panel={
-              <div className="flex w-80 flex-col gap-1.5 px-1 py-1" data-testid="context-cube-cuts">
+              <div className="landmarks-slider-stack w-80" data-testid="context-cube-cuts">
                 {cutRanges ? (
                   <>
                     {cutRow(0, "X cut", cutRanges.x, true)}
@@ -256,7 +270,7 @@ export function InspectToolbar({
                     {cutRow(2, "Z cut", cutRanges.z, false)}
                   </>
                 ) : (
-                  <p className="m-0 text-xs text-muted-foreground">Loading volume…</p>
+                  <p className={cn(TOOLBAR_CAPTION, "m-0 py-1")}>Loading volume…</p>
                 )}
               </div>
             }
@@ -268,12 +282,12 @@ export function InspectToolbar({
           <ToolStack
             open={panel === "image"}
             panel={
-              <div className="flex w-80 flex-col gap-1.5 px-1 py-1" data-testid="context-cube-image">
+              <div className="landmarks-slider-stack w-80" data-testid="context-cube-image">
                 <div
                   onPointerDownCapture={() => setHeldContrastMax(contrastMax)}
                   onLostPointerCapture={() => setHeldContrastMax(null)}
                 >
-                  <RangeControl
+                  <RangeRow
                     label="Contrast"
                     unit=""
                     min={0}
@@ -287,25 +301,25 @@ export function InspectToolbar({
                     }}
                   />
                 </div>
-                <ValueControl
-                  label="Image alpha"
+                <SoftFloatCapsuleSlider
+                  aria-label="Image alpha"
                   caption="Alpha"
                   min={0}
                   max={1}
                   step={0.05}
                   value={render.imageAlpha}
-                  shown={render.imageAlpha.toFixed(2)}
-                  onChange={(v) => patch({ render: { imageAlpha: v } })}
+                  displayValue={render.imageAlpha.toFixed(2)}
+                  onValueChange={(v) => patch({ render: { imageAlpha: v } })}
                 />
-                <ValueControl
-                  label="Image gamma"
+                <SoftFloatCapsuleSlider
+                  aria-label="Image gamma"
                   caption="Gamma"
                   min={-GAMMA_LOG2}
                   max={GAMMA_LOG2}
                   step={0.05}
                   value={gammaLog2}
-                  shown={(2 ** gammaLog2).toFixed(2)}
-                  onChange={(v) => patch({ render: { imageGamma: 2 ** v } })}
+                  displayValue={(2 ** gammaLog2).toFixed(2)}
+                  onValueChange={(v) => patch({ render: { imageGamma: 2 ** v } })}
                 />
               </div>
             }
@@ -317,16 +331,16 @@ export function InspectToolbar({
           <ToolStack
             open={panel === "cells"}
             panel={
-              <div className="flex w-80 flex-col gap-1.5 px-1 py-1" data-testid="context-cube-cells">
-                <ValueControl
-                  label="Cell alpha"
+              <div className="landmarks-slider-stack w-80" data-testid="context-cube-cells">
+                <SoftFloatCapsuleSlider
+                  aria-label="Cell alpha"
                   caption="Alpha"
                   min={0}
                   max={1}
                   step={0.05}
                   value={render.cellAlpha}
-                  shown={render.cellAlpha.toFixed(2)}
-                  onChange={(v) => patch({ render: { cellAlpha: v } })}
+                  displayValue={render.cellAlpha.toFixed(2)}
+                  onValueChange={(v) => patch({ render: { cellAlpha: v } })}
                 />
               </div>
             }
@@ -349,7 +363,7 @@ export function InspectToolbar({
 export function InspectNoVolumePill() {
   return (
     <div className="landmarks__chrome-context" data-testid="context-inspect-no-volume">
-      <div className={cn(pillClass, "px-3 text-xs text-muted-foreground")}>
+      <div className={cn(TOOLBAR_CLASS, TOOLBAR_CAPTION, "landmarks-toolbar--text")}>
         <BoxIcon aria-hidden className="size-3.5" />
         No 3D image: build the widget from a SpatialData with a 3D image
       </div>

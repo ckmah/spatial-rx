@@ -16,6 +16,7 @@ keeps its on-color on hover in dark mode.
 - **Landmark ▾** (`chrome/mode-dropdown.tsx`, shared with the lasso dropdown): left click arms the last-used landmark type (point/line/spline/shape), right click or the chevron opens the menu to pick one
 - The dropdown remembers the last-used mode per group across renders (arming Spline, switching to Select, then clicking the dropdown again re-arms Spline)
 - Active lasso (or landmark) dropdown button keeps `bg-foreground`/`text-background` on hover in dark mode — it does not fall back to the ghost variant's darker hover
+- Every toolbar (main, View CTA, context L1/L2, Inspect bar, cube title bar) shares `TOOLBAR_CLASS` and every hit shares `chromeHitClass` (`.landmarks-hit`, on = `aria-pressed`/`data-state="on"`) — see DESIGN.md "Chrome tokens"; the hover-colour spec above proves the shared on state
 
 ## How to get to it (user POV)
 

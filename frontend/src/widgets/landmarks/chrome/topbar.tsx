@@ -16,7 +16,13 @@ import {
   interactionFromMode,
 } from "../helpers";
 import { ModeDropdown } from "./mode-dropdown";
-import { ChromeTooltip, ModeToggle, ToolbarDivider, chromeHitClass } from "./primitives";
+import {
+  ChromeTooltip,
+  ModeToggle,
+  TOOLBAR_CLASS,
+  ToolbarDivider,
+  chromeHitClass,
+} from "./primitives";
 
 export function Topbar({
   modes,
@@ -49,7 +55,7 @@ export function Topbar({
   return (
     <TooltipProvider delayDuration={80} skipDelayDuration={0}>
       <div
-        className="landmarks-float landmarks-float--toolbar pointer-events-auto flex min-h-10 items-center gap-1 px-1.5 py-1 text-card-foreground"
+        className={TOOLBAR_CLASS}
         role="toolbar"
         aria-label="Drawing tools"
         onMouseDown={(e) => e.stopPropagation()}

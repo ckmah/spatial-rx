@@ -13,8 +13,7 @@ import { cn } from "@/lib/utils";
 import { MODE_LABELS, MODE_SHORTCUTS } from "../helpers";
 import {
   ChromeTooltip,
-  chromeHitClass,
-  chromeHitOnClass,
+  chromeHitWideClass,
   chromeMenuClass,
   modeIcon,
 } from "./primitives";
@@ -69,11 +68,7 @@ export function ModeDropdown({
               type="button"
               variant="ghost"
               size="icon-sm"
-              className={cn(
-                chromeHitClass,
-                "w-auto gap-0.5 px-1.5",
-                active && chromeHitOnClass,
-              )}
+              className={chromeHitWideClass}
               aria-label={`${label}. Right-click for ${menuNoun} menu.`}
               aria-pressed={active}
               aria-haspopup="menu"

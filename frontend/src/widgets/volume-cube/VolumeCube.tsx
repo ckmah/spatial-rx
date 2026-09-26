@@ -613,7 +613,7 @@ export function VolumeCube({
           aria-label="Highlighted cells"
         >
           {legend.map((g) => (
-            <Badge key={g.name} variant="outline" className="border-white/15 bg-neutral-900/70 text-neutral-100">
+            <Badge key={g.name} variant="outline" className="border-white/50 bg-neutral-900/90 text-white">
               <span className="size-2 rounded-full" style={{ backgroundColor: g.color }} />
               {g.name}
             </Badge>

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-import { ChromeTooltip } from "./primitives";
+import { ChromeTooltip, chromeHitClass } from "./primitives";
 
 type DockSide = "left" | "right";
 
@@ -49,7 +49,8 @@ export function PanelCollapseButton({
           className={cn(
             // Just outside the dock's inner top corner, so it never covers the
             // panel's own header text or tabs.
-            "landmarks-float pointer-events-auto absolute top-0 z-[17] rounded-full text-foreground/70 hover:bg-foreground/10 hover:text-foreground",
+            "landmarks-float pointer-events-auto absolute top-0 z-[17]",
+            chromeHitClass,
             side === "left" ? "left-[calc(100%+0.375rem)]" : "right-[calc(100%+0.375rem)]",
           )}
         >
@@ -83,7 +84,8 @@ export function PanelPeekTab({
           aria-label={label}
           onClick={onExpand}
           className={cn(
-            "landmarks-float landmarks__peek-tab pointer-events-auto text-foreground/70 hover:bg-foreground/10 hover:text-foreground",
+            "landmarks-float landmarks__peek-tab pointer-events-auto",
+            chromeHitClass,
             side === "left" ? "landmarks__peek-tab--left" : "landmarks__peek-tab--right",
           )}
         >

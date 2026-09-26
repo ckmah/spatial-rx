@@ -8,6 +8,7 @@ import type { CubeCut } from "@/widgets/volume-cube/VolumeCube";
 
 import type { CubeSettings, CubeSettingsPatch } from "../use-cube-settings";
 import type { LandmarksModel } from "../use-landmarks-model";
+import { chromeHitClass } from "./primitives";
 import { FLOAT_PANEL } from "./sections";
 
 // Lazy only in the dev harness: the widget build inlines dynamic imports
@@ -135,22 +136,23 @@ export function CubeWindow({
       onWheel={(e) => e.stopPropagation()}
     >
       <header
-        className="landmarks__cube-titlebar flex h-8 shrink-0 cursor-grab items-center gap-2 pr-1 pl-3 select-none active:cursor-grabbing"
+        className="landmarks__cube-titlebar shrink-0 cursor-grab select-none active:cursor-grabbing"
         onPointerDown={onPointerDown("move")}
         {...gestureHandlers}
       >
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground/80">
+        <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
           Cube · {size} µm
         </span>
         <Button
           type="button"
           variant="ghost"
-          size="icon-xs"
+          size="icon-sm"
           aria-label="Close cube"
           title="Close cube"
+          className={chromeHitClass}
           onClick={() => patch({ open: false })}
         >
-          <XIcon />
+          <XIcon className="size-4" />
         </Button>
       </header>
       <div className="min-h-0 flex-1 px-1.5 pb-1.5">
