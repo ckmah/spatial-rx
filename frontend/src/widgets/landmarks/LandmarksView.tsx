@@ -18,14 +18,14 @@ import {
   ViewCta,
   RightChromeStack,
   CanvasRulers,
-  CubeWindow,
+  CubeImmersive,
   InspectPreview,
   InspectToolbar,
   InspectNoVolumePill,
   PanelCollapseButton,
   PanelPeekTab,
 } from "./chrome";
-import type { ChipSnapshot } from "./chrome/cube-window";
+import type { ChipSnapshot } from "./chrome/cube-snapshots";
 import { FLOAT_PANEL } from "./chrome/sections";
 import { cubeHighlightGroups } from "./cube-highlight";
 import { INSPECT_WINDOW_UM, mountEngine, type EngineHandle } from "./engine";
@@ -150,6 +150,8 @@ export function LandmarksView({
     lm.inspect_size_um,
   ]);
   const inspecting = lm.mode === "inspect";
+  // The immersive cube shows only in Inspect (leaving Inspect also closes it).
+  const cubeOpen = hasVolume && cube.open && inspecting;
 
   // The user's landmarks, drawn in the cube views for context.
   const [landmarkGeometry, setLandmarkGeometry] = useState<CubeOverlay[] | null>(null);
@@ -308,6 +310,8 @@ export function LandmarksView({
         isFullscreen && "landmarks--fs",
         overlay && "landmarks--overlay-fs",
         lm.show_rulers && "landmarks--rulers",
+        // Docks and peek tabs float over the open cube (landmarks.css).
+        cubeOpen && "landmarks--cube-open",
       )}
       data-rulers={lm.show_rulers ? "on" : "off"}
       onKeyDown={inspectCube.onKeyDown}
@@ -372,8 +376,8 @@ export function LandmarksView({
           <SelectionToolbar lm={lm} engine={engine} />
         )}
 
-        {hasVolume && cube.open ? (
-          <CubeWindow
+        {cubeOpen ? (
+          <CubeImmersive
             lm={lm}
             settings={cube}
             patch={patchCube}
@@ -392,7 +396,7 @@ export function LandmarksView({
         {/* Kept mounted once there is a volume (hidden outside Inspect): no WebGL context churn. */}
         {hasVolume ? (
           <InspectPreview
-            active={inspecting}
+            active={inspecting && !cube.open}
             lm={lm}
             engine={engine}
             rootEl={rootEl}

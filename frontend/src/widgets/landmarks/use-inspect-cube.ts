@@ -50,7 +50,7 @@ export type InspectCube = {
   onKeyDown: (e: React.KeyboardEvent) => void;
   /** Focus a saved inspect entry and restore its window and cut (a history chip). */
   focusEntry: (index: number) => void;
-  /** Save the live window, with its cut, as an inspect Selection (the dock's Save). */
+  /** Save the live window, with its cut, as an inspect Selection (the cube's Save). */
   save: () => void;
   /** Back to defaults: one Adjust section, or all of them. Open cuts are committed like a slider release. */
   resetAdjust: (section: AdjustSection | "all") => void;
@@ -84,11 +84,11 @@ export function useInspectCube(facade: AnyModel, lm: LandmarksModel, engine: Eng
   useEffect(() => {
     if (!engine || !hasVolume) return;
     return engine.subscribeInspect((e) => {
-      // Placements and saves open the cube and Esc closes it; hover leaves it be.
+      // Placements remember where the user put the window (for the settle commit);
+      // the release (end of the click or drag) and saves open the cube, Esc closes it.
       if (e.type === "place") {
         placedRef.current = { x: e.x, y: e.y };
-        patchCube({ open: true });
-      } else if (e.type === "commit") {
+      } else if (e.type === "release" || e.type === "commit") {
         patchCube({ open: true });
       } else if (e.type === "close") {
         patchCube({ open: false });
@@ -260,6 +260,15 @@ export function useInspectCube(facade: AnyModel, lm: LandmarksModel, engine: Eng
 
   const mode = lm.mode;
   const open = cube.open;
+  // The cube belongs to Inspect: it covers the map, so leaving Inspect closes it
+  // (on the transition only; a later click in Inspect opens it again).
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    const was = modeRef.current;
+    modeRef.current = mode;
+    if (was === "inspect" && mode !== "inspect" && open) patchCube({ open: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, patchCube]);
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key !== "Escape" || mode !== "inspect" || !open) return;
