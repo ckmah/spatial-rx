@@ -438,8 +438,11 @@ class LandmarksWidget(AnyWidget):
             raise TypeError("LandmarksWidget(data) requires an AnnData or a SpatialData")
 
         if spatial_key not in adata.obsm:
-            raise ValueError(f"adata.obsm[{spatial_key!r}] is required")
-        xy = np.asarray(adata.obsm[spatial_key], dtype=np.float64, copy=False)
+            raise ValueError(
+                f"adata.obsm[{spatial_key!r}] is required: pass spatial_key=<an obsm key> or add "
+                "positions to the table first (README, 'Platform compatibility')"
+            )
+        xy = np.asarray(adata.obsm[spatial_key], dtype=np.float64)
         if xy.ndim != 2 or xy.shape[1] < 2:
             raise ValueError(f"adata.obsm[{spatial_key!r}] must be (n, ≥2)")
         if xy.shape[0] != adata.n_obs:
@@ -448,8 +451,8 @@ class LandmarksWidget(AnyWidget):
         if n == 0:
             raise ValueError("adata must contain at least one observation")
 
-        x_arr = np.asarray(xy[:, 0], dtype=np.float64, copy=False)
-        y_arr = np.asarray(xy[:, 1], dtype=np.float64, copy=False)
+        x_arr = np.asarray(xy[:, 0], dtype=np.float64)
+        y_arr = np.asarray(xy[:, 1], dtype=np.float64)
         xmin, xmax, ymin, ymax, point_size, buffer_width = _spatial_metrics(
             x_arr, y_arr
         )
@@ -962,7 +965,7 @@ class LandmarksWidget(AnyWidget):
 
     def get_obs_names(
         self,
-        adata: Any,
+        adata: Any = None,
         selection_id: str | None = "all",
         *,
         spatial_key: str = "spatial",
@@ -972,24 +975,31 @@ class LandmarksWidget(AnyWidget):
         Uses :func:`selection_mask` (geometry or stored ``point_indices``).
         Neighborhood expand is client-side; promote freezes membership into
         ``point_indices`` before syncing.
+
+        With no ``adata`` the widget's own coordinates and names are used, so
+        the result cannot depend on which ``spatial_key`` you pass.
         """
         import numpy as np
 
-        xy = np.asarray(adata.obsm[spatial_key], dtype=np.float64)
         cached = getattr(self, "_data_x", None)
-        if cached is None or xy.shape[0] != int(cached.shape[0]):
-            raise ValueError(
-                "adata row count != widget points; rebuild the widget after filtering"
-            )
+        if adata is None:
+            x, y, names = cached, self._data_y, np.asarray(self._obs_names.astype(str))
+        else:
+            xy = np.asarray(adata.obsm[spatial_key], dtype=np.float64)
+            if cached is None or xy.shape[0] != int(cached.shape[0]):
+                raise ValueError(
+                    "adata row count != widget points; rebuild the widget after filtering"
+                )
+            x, y, names = xy[:, 0], xy[:, 1], np.asarray(adata.obs_names.astype(str))
         mask = selection_mask(
             list(self.selections),
-            xy[:, 0],
-            xy[:, 1],
+            x,
+            y,
             selection_id,
             x_scale=self._x_scale,
             y_scale=self._y_scale,
         )
-        return np.asarray(adata.obs_names.astype(str))[np.asarray(mask, dtype=bool)]
+        return names[np.asarray(mask, dtype=bool)]
 
     def assign_obs_mask(
         self,

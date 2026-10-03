@@ -26,8 +26,7 @@ def test_infers_table_labels_image_and_frame(sdata):
 def test_overrides_and_opt_out(sdata):
     _, src = resolve_volume(sdata, labels="cells", image="mosaic", table="table")
     assert src.image == "mosaic"
-    with pytest.warns(UserWarning, match="no 3D image"):
-        _, none = resolve_volume(sdata, image=False)
+    _, none = resolve_volume(sdata, image=False)  # opting out is silent
     assert none is None
 
 
@@ -63,3 +62,27 @@ def test_toy_pyramid_levels_share_grids(sdata):
     labels = [root[f"labels/cells/s{i}"].shape for i in range(3)]
     assert image == [(64, 256, 256), (32, 128, 128), (16, 64, 64)]
     assert labels == image
+
+
+def test_several_tables_name_what_they_annotate(sdata):
+    sdata.tables["other"] = sdata.tables["table"].copy()
+    with pytest.raises(ValueError, match=r"annotates \['cells'\].*table="):
+        resolve_volume(sdata)
+
+
+def test_2d_labels_beside_a_3d_image_are_not_a_crash(sdata):
+    """Labels on a 2D grid cannot colour the cube: image only, with a notice."""
+    from spatialdata.models import Labels2DModel
+
+    sdata["flat"] = Labels2DModel.parse(np.ones((8, 8), dtype=np.uint32), dims=("y", "x"))
+    with pytest.warns(UserWarning, match="another grid"):
+        _, src = resolve_volume(sdata, labels="flat")
+    assert src.image == "mosaic" and src.labels is None
+
+
+def test_a_2d_sdata_has_no_cube_and_no_warning(recwarn):
+    from spatialdata.datasets import blobs
+
+    adata, src = resolve_volume(blobs())
+    assert src is None and adata.n_obs > 0
+    assert not [w for w in recwarn if issubclass(w.category, UserWarning)]
